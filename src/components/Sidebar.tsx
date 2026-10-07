@@ -6,7 +6,10 @@ import {
   MapPin,
   Users,
   Wallet,
-  Database,
+  Sliders,
+  Sparkles,
+  ShieldAlert,
+  Settings,
   MoreVertical
 } from 'lucide-react';
 
@@ -37,10 +40,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const mainNav = userRole === 'admin'
     ? [
-        { id: 'dashboard', label: 'Xem dashboard', icon: LayoutDashboard },
-        { id: 'locations', label: 'Quản lý địa điểm', icon: MapPin },
+        { id: 'dashboard', label: 'Dashboard / Thống kê', icon: LayoutDashboard },
         { id: 'users', label: 'Quản lý người dùng', icon: Users },
-        { id: 'system', label: 'Quản lý dữ liệu hệ thống', icon: Database },
+        { id: 'planning', label: 'Dữ liệu hoạch định', icon: MapPin },
+        { id: 'rules', label: 'Quy tắc điều phối', icon: Sliders },
+        { id: 'ai', label: 'Quản lý AI Engine', icon: Sparkles },
+        { id: 'monitoring', label: 'Giám sát lịch trình', icon: ShieldAlert, badge: alertCount },
+        { id: 'system', label: 'Hệ thống', icon: Settings },
       ]
     : [
         { id: 'dashboard', label: 'Bảng điều phối', icon: LayoutDashboard },

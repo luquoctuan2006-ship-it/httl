@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Clock, MapPin, Tag, FileText, Plus } from 'lucide-react';
+import { X, Clock, MapPin, Tag, FileText, Plus, DollarSign } from 'lucide-react';
 import { Activity } from '../types/travel';
 
 interface AddActivityModalProps {
@@ -22,6 +22,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [type, setType] = useState<Activity['type']>('sightseeing');
   const [status, setStatus] = useState<Activity['status']>('Đã xác nhận');
   const [details, setDetails] = useState('');
+  const [cost, setCost] = useState<number>(500000);
 
   if (!isOpen) return null;
 
@@ -31,13 +32,14 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
     const newActivity: Activity = {
       id: `act-custom-${Date.now()}`,
-      title,
+      title: title.trim(),
       timeStart,
       timeEnd,
       location: location || 'Đà Nẵng',
       type,
       status,
       details: details || 'Đã thêm bởi điều phối viên',
+      cost: Number(cost) || 0,
     };
 
     onAdd(newActivity);
@@ -143,6 +145,22 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <option value="Hoàn tất">Hoàn tất</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-teal-600" />
+              <span>Dự toán chi phí hoạt động (VNĐ)</span>
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={50000}
+              value={cost}
+              onChange={(e) => setCost(Number(e.target.value))}
+              placeholder="500000"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none"
+            />
           </div>
 
           <div>

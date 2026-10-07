@@ -172,6 +172,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'transport',
           details: 'Xe 29 chỗ đón 18 khách kèm 24 kiện hành lý',
+          cost: 1500000,
         },
         {
           id: 'act-2',
@@ -182,6 +183,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'hotel',
           details: 'Thực đơn Cao Lầu, Bánh Bao Bánh Vạc, Cơm Gà',
+          cost: 3200000,
         },
         {
           id: 'act-3',
@@ -192,6 +194,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'sightseeing',
           details: 'Vé tham quan 5 điểm di sản Hội An trọn gói',
+          cost: 800000,
         },
       ],
     },
@@ -214,6 +217,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'sightseeing',
           details: 'Ngâm chân thảo dược, tưới nước bằng gáo đôi truyền thống',
+          cost: 600000,
         },
         {
           id: 'act-5',
@@ -224,6 +228,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'sightseeing',
           details: 'Xem biểu diễn xoay thuyền thúng nghệ thuật & ăn trưa chòi tre',
+          cost: 1200000,
         },
         {
           id: 'act-6',
@@ -234,6 +239,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'hotel',
           details: 'Nhận 9 phòng hướng biển tầng 12-15',
+          cost: 3500000,
         },
       ],
     },
@@ -256,6 +262,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'meal',
           details: 'Đã điểm danh đủ 18/18 thành viên',
+          cost: 900000,
         },
         {
           id: 'act-8',
@@ -266,6 +273,7 @@ export const initialTripData: TripData = {
           status: 'Hoàn tất',
           type: 'sightseeing',
           details: 'Xe 29 chỗ • Hướng dẫn viên An',
+          cost: 500000,
         },
         {
           id: 'act-9',
@@ -277,6 +285,7 @@ export const initialTripData: TripData = {
           type: 'sightseeing',
           details: 'Đang di chuyển • ETA 10:24 • 42 phút',
           highlight: true,
+          cost: 2400000,
         },
         {
           id: 'act-10',
@@ -287,6 +296,7 @@ export const initialTripData: TripData = {
           status: 'Cần xử lý',
           type: 'transport',
           details: 'Cảnh báo mưa 75% • AI đề xuất đổi thứ tự',
+          cost: 1000000,
         },
         {
           id: 'act-11',
@@ -297,6 +307,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'hotel',
           details: 'Đặt bàn 18 khách • Mã LT-2048',
+          cost: 2000000,
         },
       ],
     },
@@ -320,6 +331,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'sightseeing',
           details: 'Ngắm cảnh đầm nước lợ và bè hàu tự nhiên',
+          cost: 1200000,
         },
         {
           id: 'act-13',
@@ -330,6 +342,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'meal',
           details: 'Thực đơn cơm sen, bánh nậm lọc cung đình',
+          cost: 2800000,
         },
         {
           id: 'act-14',
@@ -340,6 +353,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'sightseeing',
           details: 'Hướng dẫn viên thuyết minh trang phục triều Nguyễn',
+          cost: 1400000,
         },
       ],
     },
@@ -362,6 +376,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'sightseeing',
           details: 'Kiến trúc gốm sứ tinh xảo kết hợp Đông - Tây',
+          cost: 1200000,
         },
         {
           id: 'act-16',
@@ -372,6 +387,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'sightseeing',
           details: 'Trải nghiệm di sản phi vật thể nhân loại',
+          cost: 1600000,
         },
       ],
     },
@@ -394,6 +410,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'sightseeing',
           details: 'Tháp Phước Duyên 7 tầng và chuông Đại Hồng Chung',
+          cost: 800000,
         },
       ],
     },
@@ -416,6 +433,7 @@ export const initialTripData: TripData = {
           status: 'Đã xác nhận',
           type: 'transport',
           details: 'Trao quà lưu niệm và chụp ảnh kỷ niệm cả đoàn',
+          cost: 1200000,
         },
       ],
     },

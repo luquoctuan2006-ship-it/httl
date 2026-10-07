@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Layers,
   CloudSun,
@@ -9,29 +9,351 @@ import {
   Navigation,
   Check,
   MapPin,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Edit3,
+  X,
+  Radio,
+  Wind,
+  Droplets,
+  Gauge,
+  Phone,
+  Clock,
+  Car
 } from 'lucide-react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { Waypoint, TripData } from '../types/travel';
 
 interface LiveRouteMapProps {
   trip: TripData;
   onSelectWaypoint?: (wp: Waypoint) => void;
+  onUpdateTrip?: (updatedTrip: TripData, message?: string) => void;
+  searchQuery?: string;
+  onClearSearch?: () => void;
+}
+
+// Weather Code translation to Vietnamese
+function getWeatherDescription(code: number): string {
+  if (code === 0) return 'Trời quang, nắng đẹp';
+  if (code === 1) return 'Ít mây, trời trong';
+  if (code === 2) return 'Mây rải rác';
+  if (code === 3) return 'Nhiều mây';
+  if (code === 45 || code === 48) return 'Có sương mù nhẹ';
+  if (code >= 51 && code <= 55) return 'Mưa phùn nhẹ';
+  if (code >= 61 && code <= 65) return 'Mưa rào';
+  if (code >= 80 && code <= 82) return 'Mưa rào rải rác';
+  if (code >= 95) return 'Dông sét đèo Hải Vân';
+  return 'Thời tiết ổn định';
 }
 
 export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   trip,
   onSelectWaypoint,
+  onUpdateTrip,
+  searchQuery = '',
+  onClearSearch,
 }) => {
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [selectedLayer, setSelectedLayer] = useState<'all' | 'traffic' | 'weather'>('all');
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<{ [key: string]: L.Marker }>({});
+  const busMarkerRef = useRef<L.Marker | null>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
+
+  const [mapLayer, setMapLayer] = useState<'streets' | 'satellite'>('streets');
   const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
-  const [activeWaypointId, setActiveWaypointId] = useState<string>('wp-3');
+  const [isRefreshingWeather, setIsRefreshingWeather] = useState(false);
+  const [weatherNotice, setWeatherNotice] = useState<string | null>(null);
+  const [isEditTelematicsOpen, setIsEditTelematicsOpen] = useState(false);
 
-  const waypoints = trip.waypoints;
+  // Telematics Form State
+  const [telDriver, setTelDriver] = useState(trip.telematics.driver || 'Trần Bình');
+  const [telDriverPhone, setTelDriverPhone] = useState(trip.telematics.driverPhone || '0905 123 456');
+  const [telVehicleType, setTelVehicleType] = useState(trip.telematics.vehicleType || 'Xe 29 chỗ Universe');
+  const [telPlate, setTelPlate] = useState(trip.telematics.licensePlate || '43B-028.99');
+  const [telFrom, setTelFrom] = useState(trip.telematics.from || 'Sơn Trà');
+  const [telTo, setTelTo] = useState(trip.telematics.to || 'Bà Nà Hills');
+  const [telDuration, setTelDuration] = useState<number>(trip.telematics.durationMinutes || 42);
+  const [telEta, setTelEta] = useState(trip.telematics.eta || '10:24');
+  const [telPassengers, setTelPassengers] = useState<number>(trip.telematics.passengerCount || 18);
+  const [telSpeed, setTelSpeed] = useState<number>(trip.telematics.speedKmH || 54);
+  const [telGpsStatus, setTelGpsStatus] = useState(trip.telematics.gpsStatus || 'GPS ổn định');
+  const [telTrafficStatus, setTelTrafficStatus] = useState(trip.telematics.trafficStatus || 'Lưu thông tốt');
 
-  const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.15, 1.6));
-  const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.15, 0.85));
-  const handleResetZoom = () => setZoomLevel(1);
+  // Real coordinates for central Vietnam route
+  const defaultWaypoints = [
+    { id: 'wp-1', code: '01', name: 'Sân bay Quốc tế Đà Nẵng', lat: 16.0544, lng: 108.2022, time: '09:00 - 10:30', status: 'Hoàn tất' },
+    { id: 'wp-2', code: '02', name: 'Bán đảo Sơn Trà - Chùa Linh Ứng', lat: 16.1044, lng: 108.2755, time: '07:30 - 09:30', status: 'Hoàn tất' },
+    { id: 'wp-3', code: '03', name: 'Bà Nà Hills (Đang di chuyển)', lat: 15.9988, lng: 107.9868, time: '09:45 - 13:00', status: 'Đang diễn ra' },
+    { id: 'wp-4', code: '04', name: 'Đèo Hải Vân & Lăng Cô Retreat', lat: 16.2300, lng: 108.0100, time: '14:30 - 17:30', status: 'Chờ đến' },
+    { id: 'wp-5', code: '05', name: 'Cố đô Huế - Hoàng Thành Đại Nội', lat: 16.4637, lng: 107.5909, time: '08:00 - 17:30', status: 'Chờ đến' },
+  ];
+
+  // Bus current position: near Ba Na Hills / Da Nang bypass
+  const busLat = 16.0350;
+  const busLng = 108.0850;
+
+  // Initialize or update Leaflet Map
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    if (!mapInstanceRef.current) {
+      const map = L.map(mapContainerRef.current, {
+        center: [16.18, 108.12],
+        zoom: 10,
+        zoomControl: false,
+      });
+
+      mapInstanceRef.current = map;
+    }
+
+    const map = mapInstanceRef.current;
+
+    // Remove existing tile layer if any
+    map.eachLayer((layer) => {
+      if (layer instanceof L.TileLayer) {
+        map.removeLayer(layer);
+      }
+    });
+
+    // Add Tile Layer
+    if (mapLayer === 'satellite') {
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri &mdash; Satellite Imagery',
+        maxZoom: 18,
+      }).addTo(map);
+    } else {
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+    }
+
+    // Polyline connecting the route
+    if (polylineRef.current) {
+      map.removeLayer(polylineRef.current);
+    }
+    const routeCoords: [number, number][] = defaultWaypoints.map((wp) => [wp.lat, wp.lng]);
+    const routeLine = L.polyline(routeCoords, {
+      color: '#0F766E',
+      weight: 4,
+      opacity: 0.85,
+      dashArray: '6, 8',
+    }).addTo(map);
+    polylineRef.current = routeLine;
+
+    // Waypoint Markers
+    Object.values(markersRef.current).forEach((m) => map.removeLayer(m));
+    markersRef.current = {};
+
+    defaultWaypoints.forEach((wp) => {
+      const isCurrent = wp.id === 'wp-3';
+      const isCompleted = wp.status === 'Hoàn tất';
+      const bgColor = isCurrent ? '#0D9488' : isCompleted ? '#059669' : '#7C3AED';
+
+      const customIcon = L.divIcon({
+        className: 'custom-leaflet-marker',
+        html: `
+          <div style="
+            background: ${bgColor};
+            color: white;
+            font-size: 11px;
+            font-weight: 800;
+            width: 28px;
+            height: 28px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid white;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.25);
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+          ">
+            ${wp.code}
+          </div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+
+      const marker = L.marker([wp.lat, wp.lng], { icon: customIcon }).addTo(map);
+      marker.bindPopup(`
+        <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
+          <strong style="color: #0F172A; font-size: 13px;">${wp.name}</strong><br/>
+          <span style="color: #0D9488; font-weight: 700;">Điểm #${wp.code} • ${wp.status}</span><br/>
+          <span style="color: #64748B;">Khung giờ: ${wp.time}</span>
+        </div>
+      `);
+
+      marker.on('click', () => {
+        const found = trip.waypoints.find((w) => w.code === wp.code);
+        if (found && onSelectWaypoint) {
+          onSelectWaypoint(found);
+        }
+      });
+
+      markersRef.current[wp.id] = marker;
+    });
+
+    // Vehicle Bus Marker
+    if (busMarkerRef.current) {
+      map.removeLayer(busMarkerRef.current);
+    }
+
+    const busIcon = L.divIcon({
+      className: 'custom-bus-marker',
+      html: `
+        <div style="position: relative; cursor: pointer;">
+          <div style="
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            border-radius: 9999px;
+            background: rgba(13, 148, 136, 0.3);
+            animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+            top: -22px;
+            left: -22px;
+          "></div>
+          <div style="
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            background: #0F172A;
+            color: #2DD4BF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #2DD4BF;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
+            transform: translate(-50%, -50%);
+          ">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 6v6"></path>
+              <path d="M15 6v6"></path>
+              <path d="M2 12h19.6"></path>
+              <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-3.3-2.7-6-6-6H7c-3.3 0-6 2.7-6 6 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"></path>
+              <circle cx="7" cy="18" r="2"></circle>
+              <circle cx="17" cy="18" r="2"></circle>
+            </svg>
+          </div>
+        </div>
+      `,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+
+    const busMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(map);
+    busMarker.bindPopup(`
+      <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
+        <strong style="color: #0F172A; font-size: 13px;">${trip.telematics.vehicleType} (${trip.telematics.licensePlate || '43B-028.99'})</strong><br/>
+        <span style="color: #0D9488; font-weight: 700;">Tài xế: ${trip.telematics.driver} • ${trip.telematics.speedKmH || 54} km/h</span><br/>
+        <span style="color: #64748B;">Lộ trình: ${trip.telematics.from} → ${trip.telematics.to} (ETA ${trip.telematics.eta})</span>
+      </div>
+    `);
+    busMarkerRef.current = busMarker;
+
+    return () => {
+      // Map stays attached or is cleaned up on unmount
+    };
+  }, [mapLayer, trip]);
+
+  // Handle Search Query Pan
+  useEffect(() => {
+    if (!searchQuery.trim() || !mapInstanceRef.current) return;
+    const q = searchQuery.toLowerCase();
+    const matched = defaultWaypoints.find(
+      (wp) => wp.name.toLowerCase().includes(q) || wp.code.toLowerCase().includes(q)
+    );
+    if (matched) {
+      mapInstanceRef.current.flyTo([matched.lat, matched.lng], 13, { duration: 1.2 });
+      markersRef.current[matched.id]?.openPopup();
+    }
+  }, [searchQuery]);
+
+  // Live Weather Fetching from Open-Meteo API
+  const handleFetchLiveWeather = async () => {
+    setIsRefreshingWeather(true);
+    setWeatherNotice(null);
+    try {
+      // Coordinates for Da Nang (16.0544, 108.2022)
+      const res = await fetch(
+        'https://api.open-meteo.com/v1/forecast?latitude=16.0544&longitude=108.2022&current=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&timezone=Asia%2FHo_Chi_Minh'
+      );
+      if (!res.ok) throw new Error('Không thể tải dữ liệu thời tiết');
+      const data = await res.json();
+      const current = data.current;
+
+      const updatedWeather = {
+        temp: Math.round(current.temperature_2m),
+        description: getWeatherDescription(current.weather_code),
+        rainProb: `${current.precipitation_probability || 15}%`,
+        rainProbTime: '15:00 - 17:00',
+        humidity: current.relative_humidity_2m,
+        windSpeed: `${Math.round(current.wind_speed_10m)} km/h`,
+        isLive: true,
+        lastFetched: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      const updatedTrip: TripData = {
+        ...trip,
+        weather: updatedWeather,
+      };
+
+      if (onUpdateTrip) {
+        onUpdateTrip(updatedTrip, 'Đã cập nhật thời tiết thời gian thực từ Open-Meteo!');
+      }
+
+      setWeatherNotice(`Đã đồng bộ thời tiết trực tiếp: ${updatedWeather.temp}°C, ${updatedWeather.description}`);
+      setTimeout(() => setWeatherNotice(null), 4000);
+    } catch (err) {
+      console.error('Weather fetch error:', err);
+      setWeatherNotice('Lỗi kết nối API thời tiết thời gian thực');
+      setTimeout(() => setWeatherNotice(null), 3000);
+    } finally {
+      setIsRefreshingWeather(false);
+    }
+  };
+
+  // Zoom helpers
+  const handleZoomIn = () => mapInstanceRef.current?.zoomIn();
+  const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
+  const handleResetFocus = () => {
+    mapInstanceRef.current?.flyTo([busLat, busLng], 12, { duration: 1 });
+    busMarkerRef.current?.openPopup();
+  };
+
+  // Save Telematics
+  const handleSaveTelematics = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updatedTelematics = {
+      ...trip.telematics,
+      driver: telDriver.trim(),
+      driverPhone: telDriverPhone.trim(),
+      vehicleType: telVehicleType.trim(),
+      licensePlate: telPlate.trim(),
+      from: telFrom.trim(),
+      to: telTo.trim(),
+      durationMinutes: telDuration,
+      eta: telEta.trim(),
+      passengerCount: telPassengers,
+      speedKmH: telSpeed,
+      gpsStatus: telGpsStatus,
+      trafficStatus: telTrafficStatus,
+      lastUpdated: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const updatedTrip: TripData = {
+      ...trip,
+      telematics: updatedTelematics,
+    };
+
+    if (onUpdateTrip) {
+      onUpdateTrip(updatedTrip, 'Đã cập nhật thông tin viễn thông xe lên Firestore!');
+    }
+
+    setIsEditTelematicsOpen(false);
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col relative">
@@ -39,292 +361,147 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       <div className="p-4 sm:px-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-white z-10">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center shrink-0">
-            <svg className="w-5 h-5 fill-none stroke-[2] stroke-current" viewBox="0 0 24 24">
-              <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-              <line x1="9" y1="3" x2="9" y2="18" />
-              <line x1="15" y1="6" x2="15" y2="21" />
-            </svg>
+            <Navigation className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900 leading-tight">
-              Bản đồ tuyến đường trực tiếp
-            </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              Cập nhật vị trí lúc {trip.telematics.lastUpdated} • {trip.telematics.gpsStatus}
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-extrabold text-slate-900 leading-tight">
+                Bản đồ tuyến đường số tương tác (Leaflet &amp; OpenStreetMap)
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                <Radio className="w-2.5 h-2.5 animate-pulse" />
+                Live GPS
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Cập nhật vị trí lúc {trip.telematics.lastUpdated} • {trip.telematics.gpsStatus} • Tốc độ {trip.telematics.speedKmH || 54} km/h
             </p>
           </div>
         </div>
 
-        {/* Right Map Controls */}
-        <div className="flex items-center gap-2 relative">
+        {/* Right Map Controls: Layer Selector & Weather Live Button */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleFetchLiveWeather}
+            disabled={isRefreshingWeather}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition shadow-2xs disabled:opacity-60"
+            title="Lấy dữ liệu thời tiết thực tế từ trạm khí tượng"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingWeather ? 'animate-spin' : ''}`} />
+            <span>{isRefreshingWeather ? 'Đang đo thời tiết...' : 'Thời tiết Live API'}</span>
+          </button>
+
           <div className="relative">
             <button
+              type="button"
               onClick={() => setLayerDropdownOpen(!layerDropdownOpen)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition"
             >
               <Layers className="w-3.5 h-3.5 text-slate-500" />
-              <span>Giao thông & thời tiết</span>
+              <span>{mapLayer === 'satellite' ? 'Ảnh vệ tinh' : 'Bản đồ đường phố'}</span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
             {layerDropdownOpen && (
-              <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-30 text-xs">
+              <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 text-xs">
                 <button
-                  onClick={() => { setSelectedLayer('all'); setLayerDropdownOpen(false); }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${selectedLayer === 'all' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
+                  type="button"
+                  onClick={() => { setMapLayer('streets'); setLayerDropdownOpen(false); }}
+                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${mapLayer === 'streets' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
                 >
-                  <span>Hiển thị tất cả</span>
-                  {selectedLayer === 'all' && <Check className="w-3.5 h-3.5 text-teal-600" />}
+                  <span>Bản đồ đường phố</span>
+                  {mapLayer === 'streets' && <Check className="w-3.5 h-3.5 text-teal-600" />}
                 </button>
                 <button
-                  onClick={() => { setSelectedLayer('traffic'); setLayerDropdownOpen(false); }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${selectedLayer === 'traffic' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
+                  type="button"
+                  onClick={() => { setMapLayer('satellite'); setLayerDropdownOpen(false); }}
+                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${mapLayer === 'satellite' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
                 >
-                  <span>Chỉ dữ liệu giao thông</span>
-                  {selectedLayer === 'traffic' && <Check className="w-3.5 h-3.5 text-teal-600" />}
-                </button>
-                <button
-                  onClick={() => { setSelectedLayer('weather'); setLayerDropdownOpen(false); }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${selectedLayer === 'weather' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
-                >
-                  <span>Chỉ dự báo thời tiết</span>
-                  {selectedLayer === 'weather' && <Check className="w-3.5 h-3.5 text-teal-600" />}
+                  <span>Ảnh vệ tinh (Esri)</span>
+                  {mapLayer === 'satellite' && <Check className="w-3.5 h-3.5 text-teal-600" />}
                 </button>
               </div>
             )}
           </div>
 
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            {trip.telematics.trafficStatus}
-          </span>
+          <button
+            type="button"
+            onClick={() => setIsEditTelematicsOpen(true)}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs transition"
+          >
+            <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+            <span>Sửa viễn thông xe</span>
+          </button>
         </div>
       </div>
 
-      {/* Map Canvas Area */}
-      <div className="relative w-full h-[360px] md:h-[400px] lg:h-[420px] bg-[#E8EEF5] overflow-hidden select-none">
-        {/* Transform container for zoom */}
-        <div
-          className="w-full h-full relative transition-transform duration-300 ease-out"
-          style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
-        >
-          {/* Stylized Coastal Map SVG */}
-          <svg className="w-full h-full" viewBox="0 0 900 480" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              {/* Sea gradient */}
-              <linearGradient id="seaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#DFE8F3" />
-                <stop offset="100%" stopColor="#D2DFEC" />
-              </linearGradient>
+      {/* Weather toast notification if updated */}
+      {weatherNotice && (
+        <div className="bg-teal-600 text-white text-xs px-4 py-2 flex items-center justify-between z-20">
+          <span>{weatherNotice}</span>
+          <button type="button" onClick={() => setWeatherNotice(null)} className="font-bold">✕</button>
+        </div>
+      )}
 
-              {/* Land gradient */}
-              <linearGradient id="landGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#F8FAFC" />
-                <stop offset="100%" stopColor="#F1F5F9" />
-              </linearGradient>
+      {/* Interactive Map Canvas Container */}
+      <div className="relative w-full h-[400px] md:h-[440px] bg-slate-100 overflow-hidden">
+        <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-              {/* Route line gradient */}
-              <linearGradient id="routeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#0D9488" />
-                <stop offset="60%" stopColor="#0F766E" />
-                <stop offset="100%" stopColor="#7E22CE" />
-              </linearGradient>
-
-              {/* Route glow filter */}
-              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#0D9488" floodOpacity="0.4" />
-              </filter>
-            </defs>
-
-            {/* Ocean background */}
-            <rect width="900" height="480" fill="url(#seaGrad)" />
-
-            {/* Sea contour waves */}
-            <path d="M400,0 Q600,120 750,220 T900,320 L900,0 Z" fill="#D7E3EE" opacity="0.4" />
-            <path d="M500,0 Q680,100 820,180 T900,240 L900,0 Z" fill="#CFDDEB" opacity="0.3" />
-
-            {/* Mainland Terrain (Central Vietnam coastline shape) */}
-            <path
-              d="M0,0 L320,0 
-                 C350,40 370,80 390,130 
-                 C410,170 440,200 480,210 
-                 C520,220 560,200 580,230 
-                 C610,270 590,320 540,340 
-                 C480,360 410,330 380,360 
-                 C340,400 310,480 280,480 
-                 L0,480 Z"
-              fill="url(#landGrad)"
-              stroke="#CBD5E1"
-              strokeWidth="1.5"
-            />
-
-            {/* Son Tra Peninsula protrusion */}
-            <path
-              d="M390,130 C430,110 460,130 470,160 C465,185 435,180 410,170 Z"
-              fill="#E2E8F0"
-              stroke="#94A3B8"
-              strokeWidth="1"
-            />
-
-            {/* Road network grid lines (muted) */}
-            <g opacity="0.35" stroke="#94A3B8" strokeWidth="1" fill="none">
-              <path d="M50,150 Q180,180 320,170 T500,280" />
-              <path d="M120,40 Q250,90 380,140 T580,330" />
-              <path d="M300,50 L450,260" />
-              <path d="M180,260 Q320,310 450,390" />
-              <path d="M220,100 L260,400" />
-              <path d="M400,220 L580,260" />
-            </g>
-
-            {/* Mountain terrain hints (Hai Van Pass & Ba Na range) */}
-            <g opacity="0.4" stroke="#94A3B8" fill="none" strokeWidth="1.5" strokeDasharray="2,3">
-              <path d="M280,160 Q320,140 360,170 T420,190" />
-              <path d="M260,190 Q300,170 340,200 T400,220" />
-              <path d="M460,230 Q500,210 540,240" />
-            </g>
-
-            {/* Main Highway Route (Teal Ribbon) */}
-            {/* Completed section: Hoi An (wp1) -> Son Tra (wp2) -> Ba Na (wp3) */}
-            <path
-              d="M200,320 C260,290 320,240 350,220 C380,200 400,210 420,190"
-              fill="none"
-              stroke="#0D9488"
-              strokeWidth="7"
-              strokeLinecap="round"
-              filter="url(#glow)"
-            />
-            <path
-              d="M200,320 C260,290 320,240 350,220 C380,200 400,210 420,190"
-              fill="none"
-              stroke="#2DD4BF"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-
-            {/* Upcoming section to Lang Co & Hue (dashed/dotted purple) */}
-            <path
-              d="M420,190 C460,160 490,180 540,150 C580,120 620,100 680,80"
-              fill="none"
-              stroke="#7E22CE"
-              strokeWidth="4"
-              strokeDasharray="6,6"
-              strokeLinecap="round"
-              opacity="0.8"
-            />
-
-            {/* Route corridor pulse indicator at current vehicle */}
-            <circle cx="420" cy="190" r="14" fill="#0D9488" opacity="0.2" className="animate-ping" />
-            <circle cx="420" cy="190" r="8" fill="#0D9488" stroke="#ffffff" strokeWidth="2.5" />
-          </svg>
-
-          {/* Waypoint Markers Overlay (Positioned along the route) */}
-          {/* 01 Hoi An */}
-          <div
-            onClick={() => { setActiveWaypointId('wp-1'); onSelectWaypoint?.(waypoints[0]); }}
-            className="absolute left-[20%] top-[64%] -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group"
-          >
-            <div className="bg-white/95 px-2.5 py-1 rounded-xl shadow-md border border-emerald-500/40 flex items-center gap-1.5 hover:scale-105 transition-transform">
-              <span className="text-[11px] font-extrabold text-emerald-800">01</span>
-              <span className="text-xs font-bold text-slate-800">Hội An</span>
-              <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                <Check className="w-2.5 h-2.5 stroke-[3]" />
-              </div>
-            </div>
+        {/* Floating Live Weather Widget (Top Right) */}
+        <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-slate-200/90 flex items-center gap-3 z-10 max-w-xs">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 border border-amber-200">
+            <CloudSun className="w-6 h-6" />
           </div>
-
-          {/* 02 Son Tra */}
-          <div
-            onClick={() => { setActiveWaypointId('wp-2'); onSelectWaypoint?.(waypoints[1]); }}
-            className="absolute left-[36%] top-[45%] -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group"
-          >
-            <div className="bg-white/95 px-2.5 py-1 rounded-xl shadow-md border border-emerald-500/40 flex items-center gap-1.5 hover:scale-105 transition-transform">
-              <span className="text-[11px] font-extrabold text-emerald-800">02</span>
-              <span className="text-xs font-bold text-slate-800">Sơn Trà</span>
-              <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                <Check className="w-2.5 h-2.5 stroke-[3]" />
-              </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-base font-black text-slate-900 leading-tight">
+                {trip.weather.temp}°C
+              </span>
+              <span className="text-xs font-bold text-slate-700 truncate">
+                • {trip.weather.description}
+              </span>
             </div>
-          </div>
-
-          {/* 03 Ba Na (Active Waypoint) */}
-          <div
-            onClick={() => { setActiveWaypointId('wp-3'); onSelectWaypoint?.(waypoints[2]); }}
-            className="absolute left-[47%] top-[39%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer group"
-          >
-            <div className="bg-white px-3 py-1 rounded-xl shadow-xl border-2 border-teal-500 flex items-center gap-2 ring-4 ring-teal-500/20 hover:scale-105 transition-transform">
-              <span className="text-xs font-extrabold text-teal-800">03</span>
-              <span className="text-xs font-black text-slate-900">Bà Nà</span>
-              <div className="w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center shadow-xs">
-                <Navigation className="w-3 h-3 fill-current rotate-45" />
-              </div>
-            </div>
-          </div>
-
-          {/* 04 Lang Co */}
-          <div
-            onClick={() => { setActiveWaypointId('wp-4'); onSelectWaypoint?.(waypoints[3]); }}
-            className="absolute left-[62%] top-[30%] -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group"
-          >
-            <div className="bg-white/95 px-2.5 py-1 rounded-xl shadow-md border border-purple-400 flex items-center gap-1.5 hover:scale-105 transition-transform">
-              <span className="text-[11px] font-extrabold text-purple-700">04</span>
-              <span className="text-xs font-bold text-slate-800">Lăng Cô</span>
-              <div className="w-4 h-4 rounded-full bg-purple-600 text-white flex items-center justify-center">
-                <MapPin className="w-2.5 h-2.5 fill-current" />
-              </div>
-            </div>
-          </div>
-
-          {/* 05 Dai Noi Hue */}
-          <div
-            onClick={() => { setActiveWaypointId('wp-5'); onSelectWaypoint?.(waypoints[4]); }}
-            className="absolute left-[78%] top-[16%] -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group opacity-90"
-          >
-            <div className="bg-white/90 px-2 py-0.5 rounded-lg shadow-sm border border-slate-300 flex items-center gap-1 hover:scale-105 transition-transform">
-              <span className="text-[10px] font-bold text-slate-500">05</span>
-              <span className="text-[11px] font-bold text-slate-700">Đại Nội Huế</span>
+            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+              <span className="flex items-center gap-0.5">
+                <Droplets className="w-3 h-3 text-blue-500" /> Mưa: {trip.weather.rainProb}
+              </span>
+              {trip.weather.humidity && (
+                <span className="flex items-center gap-0.5">
+                  <Wind className="w-3 h-3 text-teal-500" /> {trip.weather.humidity}%
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Floating Weather Tag (Top Right) */}
-        {(selectedLayer === 'all' || selectedLayer === 'weather') && (
-          <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl px-3.5 py-2.5 shadow-md border border-slate-200/90 flex items-center gap-3 z-10">
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-              <CloudSun className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-slate-900 leading-tight">
-                {trip.weather.temp}°C • {trip.weather.description}
-              </div>
-              <div className="text-[11px] text-slate-500 font-medium">
-                Mưa {trip.weather.rainProb} lúc {trip.weather.rainProbTime}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Floating Vehicle Tracker Overlay Card (Bottom Left) */}
-        <div className="absolute bottom-4 left-4 max-w-sm sm:max-w-md bg-[#0F172A]/95 backdrop-blur-md text-white rounded-2xl p-3.5 sm:px-4 sm:py-3.5 shadow-xl border border-slate-700/80 flex items-center justify-between gap-4 z-10">
+        {/* Floating Telematics Overlay Card (Bottom Left) */}
+        <div className="absolute bottom-4 left-4 max-w-md bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-xl border border-slate-700/80 flex items-center justify-between gap-4 z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-slate-800 text-teal-400 border border-slate-700 flex items-center justify-center shrink-0">
               <Bus className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-bold text-white leading-tight">
-                {trip.telematics.from} → {trip.telematics.to}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-white leading-tight">
+                  {trip.telematics.from} → {trip.telematics.to}
+                </span>
+                <span className="text-[10px] bg-teal-900/80 text-teal-300 font-mono px-1.5 py-0.5 rounded border border-teal-700 font-bold">
+                  {trip.telematics.licensePlate || '43B-028.99'}
+                </span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                {trip.telematics.vehicleType} • Tài xế {trip.telematics.driver} • {trip.telematics.passengerCount} khách
+              <div className="text-[11px] text-slate-300 mt-0.5">
+                Tài xế {trip.telematics.driver} ({trip.telematics.driverPhone || '0905 123 456'}) • {trip.telematics.passengerCount} khách
               </div>
             </div>
           </div>
 
-          <div className="text-right border-l border-slate-800 pl-4 shrink-0">
-            <div className="text-base font-black text-white leading-tight">
-              {trip.telematics.durationMinutes} phút
+          <div className="text-right border-l border-slate-800 pl-3 shrink-0">
+            <div className="text-sm font-black text-emerald-400 font-mono">
+              {trip.telematics.speedKmH || 54} km/h
             </div>
-            <div className="text-[11px] text-slate-400">
-              Đến {trip.telematics.eta}
+            <div className="text-[10px] text-slate-400 font-medium">
+              ETA {trip.telematics.eta}
             </div>
           </div>
         </div>
@@ -332,6 +509,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         {/* Map Controls (Bottom Right) */}
         <div className="absolute bottom-4 right-4 flex flex-col bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden z-10">
           <button
+            type="button"
             onClick={handleZoomIn}
             title="Phóng to"
             className="p-2 text-slate-700 hover:bg-slate-100 border-b border-slate-100 transition"
@@ -339,6 +517,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
             <Plus className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={handleZoomOut}
             title="Thu nhỏ"
             className="p-2 text-slate-700 hover:bg-slate-100 border-b border-slate-100 transition"
@@ -346,14 +525,185 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
             <Minus className="w-4 h-4" />
           </button>
           <button
-            onClick={handleResetZoom}
-            title="Định vị tâm điểm đoàn"
+            type="button"
+            onClick={handleResetFocus}
+            title="Định vị tâm điểm xe du lịch"
             className="p-2 text-slate-700 hover:bg-slate-100 transition"
           >
             <LocateFixed className="w-4 h-4 text-teal-600" />
           </button>
         </div>
       </div>
+
+      {/* Modal: Chỉnh sửa Telematics xe */}
+      {isEditTelematicsOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-teal-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bus className="w-4 h-4" />
+                <h3 className="text-sm font-extrabold">Cập nhật Viễn thông &amp; Giám sát xe</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditTelematicsOpen(false)}
+                className="p-1 rounded-full hover:bg-white/20 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTelematics} className="p-6 space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Tài xế phụ trách *</label>
+                  <input
+                    type="text"
+                    required
+                    value={telDriver}
+                    onChange={(e) => setTelDriver(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">SĐT tài xế *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={telDriverPhone}
+                    onChange={(e) => setTelDriverPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Loại phương tiện</label>
+                  <input
+                    type="text"
+                    value={telVehicleType}
+                    onChange={(e) => setTelVehicleType(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Biển số xe</label>
+                  <input
+                    type="text"
+                    value={telPlate}
+                    onChange={(e) => setTelPlate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 focus:border-teal-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Điểm xuất phát chặng</label>
+                  <input
+                    type="text"
+                    value={telFrom}
+                    onChange={(e) => setTelFrom(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Điểm đến tiếp theo</label>
+                  <input
+                    type="text"
+                    value={telTo}
+                    onChange={(e) => setTelTo(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Tốc độ (km/h)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    value={telSpeed}
+                    onChange={(e) => setTelSpeed(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Dự kiến ETA</label>
+                  <input
+                    type="text"
+                    value={telEta}
+                    onChange={(e) => setTelEta(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Khách trên xe</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={telPassengers}
+                    onChange={(e) => setTelPassengers(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Trạng thái GPS</label>
+                  <select
+                    value={telGpsStatus}
+                    onChange={(e) => setTelGpsStatus(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 outline-none"
+                  >
+                    <option value="GPS ổn định">GPS ổn định</option>
+                    <option value="Đang hiệu chỉnh">Đang hiệu chỉnh</option>
+                    <option value="Mất sóng hầm Hải Vân">Mất sóng hầm Hải Vân</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Giao thông</label>
+                  <select
+                    value={telTrafficStatus}
+                    onChange={(e) => setTelTrafficStatus(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 outline-none"
+                  >
+                    <option value="Lưu thông tốt">Lưu thông tốt</option>
+                    <option value="Mật độ cao">Mật độ cao</option>
+                    <option value="Ùn tắc nhẹ">Ùn tắc nhẹ</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditTelematicsOpen(false)}
+                  className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-xs transition"
+                >
+                  Lưu &amp; Đồng bộ Firestore
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

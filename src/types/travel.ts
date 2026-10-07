@@ -60,11 +60,23 @@ export interface AISuggestion {
   applied?: boolean;
 }
 
+export interface ExpenseInvoice {
+  id: string;
+  title: string;
+  category: 'transport' | 'hotel' | 'meal' | 'sightseeing' | 'contingency';
+  amount: number;
+  date: string;
+  vendor?: string;
+  invoiceNumber?: string;
+  dayIndex?: number;
+  note?: string;
+}
+
 export interface TripMember {
   id: string;
   name: string;
   avatar: string;
-  role: 'Trưởng đoàn' | 'Hướng dẫn viên' | 'Tài xế' | 'Khách du lịch';
+  role: 'Trưởng đoàn' | 'Hướng dẫn viên' | 'Tài xế' | 'Khách du lịch' | 'Khách VIP' | string;
   phone: string;
   status: 'online' | 'busy' | 'offline';
   attendanceStatus?: 'Chưa điểm danh' | 'Có mặt' | 'Vắng mặt';
@@ -102,6 +114,10 @@ export interface TripData {
     description: string;
     rainProb: string;
     rainProbTime: string;
+    humidity?: number;
+    windSpeed?: string;
+    isLive?: boolean;
+    lastFetched?: string;
   };
   telematics: {
     from: string; // "Sơn Trà"
@@ -109,8 +125,11 @@ export interface TripData {
     durationMinutes: number; // 42
     eta: string; // "10:24"
     vehicleType: string; // "Xe 29 chỗ"
+    licensePlate?: string; // "43B-028.99"
     driver: string; // "Trần Bình"
+    driverPhone?: string; // "0905 123 456"
     passengerCount: number; // 18
+    speedKmH?: number; // 54
     gpsStatus: string; // "GPS ổn định"
     trafficStatus: string; // "Lưu thông tốt"
     lastUpdated: string; // "09:42"
@@ -121,4 +140,12 @@ export interface TripData {
   aiSavingsEstimate: string; // "640.000đ"
   aiConfidence: string; // "94%"
   days: DaySchedule[];
+  invoices?: ExpenseInvoice[];
+  customCategoryAllocations?: {
+    transport?: number;
+    hotel?: number;
+    meal?: number;
+    sightseeing?: number;
+    contingency?: number;
+  };
 }

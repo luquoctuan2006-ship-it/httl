@@ -1,0 +1,150 @@
+{
+  "entities": {
+    "Trip": {
+      "title": "Trip",
+      "description": "Hành trình và kế hoạch điều phối du lịch thông minh",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID duy nhất của chuyến đi"
+        },
+        "code": {
+          "type": "string",
+          "description": "Mã chuyến đi (VD: VN-1025)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Tiêu đề hành trình"
+        },
+        "status": {
+          "type": "string",
+          "description": "Trạng thái vận hành của chuyến đi"
+        },
+        "dates": {
+          "type": "string",
+          "description": "Khung ngày diễn ra chuyến đi"
+        },
+        "origin": {
+          "type": "string",
+          "description": "Mã điểm xuất phát"
+        },
+        "originFull": {
+          "type": "string",
+          "description": "Tên đầy đủ điểm xuất phát"
+        },
+        "destination": {
+          "type": "string",
+          "description": "Mã điểm đến"
+        },
+        "destinationFull": {
+          "type": "string",
+          "description": "Tên đầy đủ điểm đến"
+        },
+        "destinationsCount": {
+          "type": "number",
+          "description": "Số điểm dừng chân"
+        },
+        "totalKm": {
+          "type": "number",
+          "description": "Tổng chiều dài cung đường (km)"
+        },
+        "vehicle": {
+          "type": "string",
+          "description": "Phương tiện di chuyển chính"
+        },
+        "currentDay": {
+          "type": "number",
+          "description": "Ngày hiện tại đang điều phối"
+        },
+        "totalDays": {
+          "type": "number",
+          "description": "Tổng số ngày trong hành trình"
+        },
+        "totalActivities": {
+          "type": "number",
+          "description": "Tổng số hoạt động"
+        },
+        "confirmedActivities": {
+          "type": "number",
+          "description": "Số hoạt động đã xác nhận"
+        },
+        "pendingActivities": {
+          "type": "number",
+          "description": "Số hoạt động cần xử lý"
+        },
+        "budgetTotal": {
+          "type": "number",
+          "description": "Tổng ngân sách dự kiến"
+        },
+        "budgetUsed": {
+          "type": "number",
+          "description": "Ngân sách đã sử dụng"
+        },
+        "budgetRemaining": {
+          "type": "number",
+          "description": "Ngân sách còn lại"
+        },
+        "budgetUsedPercent": {
+          "type": "number",
+          "description": "Phần trăm ngân sách đã dùng"
+        },
+        "membersOnline": {
+          "type": "number",
+          "description": "Số thành viên đang trực tuyến"
+        },
+        "membersTotal": {
+          "type": "number",
+          "description": "Tổng số thành viên trong đoàn"
+        },
+        "membersStatus": {
+          "type": "string",
+          "description": "Tóm tắt trạng thái thành viên"
+        }
+      },
+      "required": ["id", "code", "title", "status"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Hồ sơ người dùng Voyager",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Firebase UID của người dùng"
+        },
+        "name": {
+          "type": "string",
+          "description": "Tên hiển thị của người dùng"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email người dùng"
+        },
+        "role": {
+          "type": "string",
+          "description": "Vai trò của người dùng: admin hoặc user"
+        }
+      },
+      "required": ["id", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/trips/{tripId}": {
+      "schema": "Trip",
+      "description": "Bộ sưu tập các chuyến đi và kế hoạch điều phối"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Thông tin hồ sơ và quyền người dùng"
+    },
+    "/admins/{userId}": {
+      "schema": "UserProfile",
+      "description": "Danh bạ quản trị viên hệ thống để kiểm tra RBAC"
+    },
+    "/test/{docId}": {
+      "schema": "UserProfile",
+      "description": "Kiểm tra kết nối Firestore lúc khởi động"
+    }
+  }
+}

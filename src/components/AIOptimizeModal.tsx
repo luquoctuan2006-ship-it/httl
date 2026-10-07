@@ -11,7 +11,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { TripData } from '../types/travel';
-import { authenticatedFetch } from '../api';
+import { authenticatedFetch, safeJsonResponse } from '../api';
 
 interface AIOptimizeModalProps {
   isOpen: boolean;
@@ -58,7 +58,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
           userGoal: 'Ưu tiên an toàn, đúng lịch trình và giảm chi phí phát sinh.',
         }),
       });
-      const result = await response.json();
+      const result = await safeJsonResponse(response);
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Không thể tối ưu lịch trình bằng Gemini');
       }

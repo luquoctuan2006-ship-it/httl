@@ -24,6 +24,9 @@ interface TimelineScheduleProps {
   filterMode: 'timeline' | 'all';
   onToggleFilterMode: () => void;
   canAddActivity?: boolean;
+  searchQuery?: string;
+  onClearSearch?: () => void;
+  onUpdateStatus?: (id: string, newStatus: Activity['status']) => void;
 }
 
 export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
@@ -35,8 +38,58 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   filterMode,
   onToggleFilterMode,
   canAddActivity = true,
+  searchQuery = '',
+  onClearSearch,
+  onUpdateStatus,
 }) => {
   const currentDay = days.find((d) => d.dayIndex === currentDayIndex) || days[0];
+  const normalizedQuery = (searchQuery || '').trim().toLowerCase();
+
+  // All activities if in 'all' mode or searching across the trip
+  const isSearchActive = Boolean(normalizedQuery);
+  const showAllDaysMode = filterMode === 'all';
+
+  // Current day activities matching search
+  const filteredActivities = currentDay.activities.filter((activity) => {
+    if (!normalizedQuery) return true;
+    return (
+      activity.title.toLowerCase().includes(normalizedQuery) ||
+      activity.location.toLowerCase().includes(normalizedQuery) ||
+      (activity.details && activity.details.toLowerCase().includes(normalizedQuery)) ||
+      activity.status.toLowerCase().includes(normalizedQuery) ||
+      activity.type.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  // All activities across all days matching search
+  const allMatchingActivitiesWithDay: { activity: Activity; day: DaySchedule }[] = [];
+  days.forEach((day) => {
+    day.activities.forEach((act) => {
+      const match =
+        !normalizedQuery ||
+        act.title.toLowerCase().includes(normalizedQuery) ||
+        act.location.toLowerCase().includes(normalizedQuery) ||
+        (act.details && act.details.toLowerCase().includes(normalizedQuery)) ||
+        act.status.toLowerCase().includes(normalizedQuery) ||
+        act.type.toLowerCase().includes(normalizedQuery);
+      if (match) {
+        allMatchingActivitiesWithDay.push({ activity: act, day });
+      }
+    });
+  });
+
+  const otherDaysWithMatches = normalizedQuery
+    ? days.filter(
+        (d) =>
+          d.dayIndex !== currentDay.dayIndex &&
+          d.activities.some(
+            (a) =>
+              a.title.toLowerCase().includes(normalizedQuery) ||
+              a.location.toLowerCase().includes(normalizedQuery) ||
+              (a.details && a.details.toLowerCase().includes(normalizedQuery))
+          )
+      )
+    : [];
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -164,6 +217,44 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
         </div>
       </div>
 
+      {/* Search Filter Banner */}
+      {normalizedQuery && (
+        <div className="px-5 py-2.5 bg-amber-50/90 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-amber-900">
+            <span className="font-bold">Lọc theo: &quot;{searchQuery}&quot;</span>
+            <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold text-[11px]">
+              {filteredActivities.length} kết quả
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {otherDaysWithMatches.length > 0 && (
+              <span className="text-amber-800 text-[11px]">
+                Có kết quả ở ngày khác: {otherDaysWithMatches.map((d) => (
+                  <button
+                    key={d.dayIndex}
+                    type="button"
+                    onClick={() => onSelectDay(d.dayIndex)}
+                    className="ml-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 font-bold text-amber-900 hover:bg-amber-100"
+                  >
+                    {d.dayName}
+                  </button>
+                ))}
+              </span>
+            )}
+            {onClearSearch && (
+              <button
+                type="button"
+                onClick={onClearSearch}
+                className="text-amber-900 hover:underline font-bold text-[11px]"
+              >
+                Xóa bộ lọc
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Timeline Current Indicator Bar */}
       <div className="px-5 py-3 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-4 text-xs font-semibold text-slate-400">
         <span className="font-mono text-slate-500 font-bold shrink-0">06:00</span>
@@ -182,19 +273,33 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
 
       {/* Activity Cards Row */}
       <div className="p-4 sm:p-5 overflow-x-auto scrollbar-thin">
-        <div className="flex gap-4 min-w-[980px] pb-1">
-          {currentDay.activities.map((activity) => {
-            const isOngoing = activity.status === 'Đang diễn ra';
-            return (
-              <div
-                key={activity.id}
-                onClick={() => onSelectActivity(activity)}
-                className={`flex-1 min-w-[210px] rounded-2xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                  isOngoing
-                    ? 'bg-white border-2 border-teal-500 shadow-md ring-4 ring-teal-500/10'
-                    : 'bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-slate-300'
-                }`}
+        {filteredActivities.length === 0 ? (
+          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-xs text-slate-500">
+            Không tìm thấy hoạt động nào phù hợp với từ khóa &quot;{searchQuery}&quot; trong ngày này.
+            {onClearSearch && (
+              <button
+                type="button"
+                onClick={onClearSearch}
+                className="block mx-auto mt-2 text-teal-600 font-bold hover:underline"
               >
+                Xem tất cả hoạt động
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-4 min-w-[980px] pb-1">
+            {filteredActivities.map((activity) => {
+              const isOngoing = activity.status === 'Đang diễn ra';
+              return (
+                <div
+                  key={activity.id}
+                  onClick={() => onSelectActivity(activity)}
+                  className={`flex-1 min-w-[210px] rounded-2xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                    isOngoing
+                      ? 'bg-white border-2 border-teal-500 shadow-md ring-4 ring-teal-500/10'
+                      : 'bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-slate-300'
+                  }`}
+                >
                 <div>
                   {/* Time & Status Badge */}
                   <div className="flex items-center justify-between gap-1 mb-3">
@@ -222,22 +327,51 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                 </div>
 
                 {/* Sub details footer */}
-                <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
-                  {activity.status === 'Hoàn tất' && (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 font-medium flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5 truncate">
+                    {activity.status === 'Hoàn tất' && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    )}
+                    {activity.status === 'Cần xử lý' && (
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    )}
+                    {activity.status === 'Đang diễn ra' && (
+                      <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0 animate-ping"></span>
+                    )}
+                    <span className="truncate">{activity.details}</span>
+                  </div>
+
+                  {activity.cost !== undefined && activity.cost > 0 && (
+                    <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                      {(activity.cost).toLocaleString('vi-VN')} ₫
+                    </span>
                   )}
-                  {activity.status === 'Cần xử lý' && (
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  )}
-                  {activity.status === 'Đang diễn ra' && (
-                    <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0 animate-ping"></span>
-                  )}
-                  <span className="truncate">{activity.details}</span>
                 </div>
+
+                {/* Quick Status Action Bar */}
+                {onUpdateStatus && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-2.5 pt-2 border-t border-dashed border-slate-100 flex items-center justify-between gap-1 text-[10px]"
+                  >
+                    <span className="text-slate-400 font-semibold">Đổi trạng thái:</span>
+                    <select
+                      value={activity.status}
+                      onChange={(e) => onUpdateStatus(activity.id, e.target.value as Activity['status'])}
+                      className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 font-bold text-slate-700 outline-none cursor-pointer transition text-[10px]"
+                    >
+                      <option value="Đã xác nhận">Đã xác nhận</option>
+                      <option value="Đang diễn ra">Đang diễn ra</option>
+                      <option value="Cần xử lý">Cần xử lý</option>
+                      <option value="Hoàn tất">Hoàn tất</option>
+                    </select>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
+      )}
       </div>
 
       {/* Footer Notes Bar */}

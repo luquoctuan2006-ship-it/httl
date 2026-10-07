@@ -15,6 +15,24 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
   onOpenBudget,
   onOpenSchedule,
 }) => {
+  const formatMillions = (amount: number) => {
+    if (!amount) return '0 ₫';
+    if (amount >= 1_000_000) {
+      const millions = amount / 1_000_000;
+      return `${millions % 1 === 0 ? millions.toFixed(0) : millions.toFixed(1).replace('.', ',')} triệu`;
+    }
+    return `${amount.toLocaleString('vi-VN')} ₫`;
+  };
+
+  const formatShortMillions = (amount: number) => {
+    if (!amount) return '0đ';
+    if (amount >= 1_000_000) {
+      const millions = amount / 1_000_000;
+      return `${millions % 1 === 0 ? millions.toFixed(0) : millions.toFixed(1).replace('.', ',')}tr`;
+    }
+    return `${amount.toLocaleString('vi-VN')}đ`;
+  };
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Card 1: Tuyến đang điều phối */}
@@ -108,10 +126,10 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
 
           <div className="mt-2">
             <div className="text-2xl font-black text-slate-900 tracking-tight">
-              48,6 triệu
+              {formatMillions(trip.budgetTotal)}
             </div>
             <div className="text-xs text-slate-500 mt-1 font-medium">
-              Đã dùng <span className="font-semibold text-slate-700">{trip.budgetUsedPercent}%</span> • còn 29,8tr
+              Đã dùng <span className="font-semibold text-slate-700">{trip.budgetUsedPercent}%</span> • còn {formatShortMillions(trip.budgetRemaining)}
             </div>
           </div>
         </div>

@@ -8,6 +8,8 @@ interface TripsListViewProps {
   onSelectTrip: (trip: TripData) => void;
   onOpenCreateModal: () => void;
   readOnly?: boolean;
+  searchQuery?: string;
+  onClearSearch?: () => void;
 }
 
 export const TripsListView: React.FC<TripsListViewProps> = ({
@@ -16,7 +18,21 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
   onSelectTrip,
   onOpenCreateModal,
   readOnly = false,
+  searchQuery = '',
+  onClearSearch,
 }) => {
+  const normalizedQuery = (searchQuery || '').trim().toLowerCase();
+  const filteredTrips = trips.filter((trip) => {
+    if (!normalizedQuery) return true;
+    return (
+      trip.title.toLowerCase().includes(normalizedQuery) ||
+      trip.code.toLowerCase().includes(normalizedQuery) ||
+      trip.originFull.toLowerCase().includes(normalizedQuery) ||
+      trip.destinationFull.toLowerCase().includes(normalizedQuery) ||
+      trip.status.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -37,8 +53,23 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
         )}
       </div>
 
+      {normalizedQuery && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+          <span>Tìm kiếm chuyến đi theo: <strong>&quot;{searchQuery}&quot;</strong> ({filteredTrips.length} kết quả)</span>
+          {onClearSearch && (
+            <button
+              type="button"
+              onClick={onClearSearch}
+              className="font-bold text-amber-800 hover:underline"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {trips.map((trip) => {
+        {filteredTrips.map((trip) => {
           const isCurrent = trip.id === currentTrip.id;
           const route = `${trip.originFull} → ${trip.destinationFull}`;
           const budget = `${(trip.budgetTotal / 1_000_000).toLocaleString('vi-VN')} triệu`;

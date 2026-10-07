@@ -13,7 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { TripData } from '../types/travel';
-import { authenticatedFetch } from '../api';
+import { authenticatedFetch, safeJsonResponse } from '../api';
 
 interface AIPlannerModalProps {
   isOpen: boolean;
@@ -65,7 +65,7 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
         }),
       });
 
-      const json = await res.json();
+      const json = await safeJsonResponse(res);
       if (json.success && json.data) {
         setGeneratedPlan(json.data);
       } else {
@@ -106,10 +106,14 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
       totalActivities: generatedPlan.days ? generatedPlan.days.length * 3 : 18,
       confirmedActivities: 16,
       pendingActivities: 2,
-      budgetTotal: 48600000,
-      budgetUsed: 15000000,
-      budgetRemaining: 33600000,
-      budgetUsedPercent: 31,
+      budgetTotal: generatedPlan.budget?.total || 48600000,
+      budgetUsed: generatedPlan.budget?.used || 15000000,
+      budgetRemaining: (generatedPlan.budget?.total && generatedPlan.budget?.used)
+        ? Math.max(0, generatedPlan.budget.total - generatedPlan.budget.used)
+        : 33600000,
+      budgetUsedPercent: (generatedPlan.budget?.total && generatedPlan.budget?.used)
+        ? Math.round((generatedPlan.budget.used / generatedPlan.budget.total) * 100)
+        : 31,
       membersOnline: 8,
       membersTotal: 8,
       membersStatus: 'Tất cả đã tập trung',

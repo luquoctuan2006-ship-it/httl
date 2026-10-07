@@ -57,6 +57,14 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                 {activity.type}
               </span>
             </div>
+            {activity.cost !== undefined && activity.cost > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-medium">Chi phí dự toán/thực tế:</span>
+                <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {activity.cost.toLocaleString('vi-VN')} ₫
+                </span>
+              </div>
+            )}
             <div className="pt-2 border-t border-slate-200">
               <span className="text-slate-400 font-medium block mb-1">Ghi chú điều hành:</span>
               <p className="text-slate-700 leading-relaxed font-normal">{activity.details}</p>
