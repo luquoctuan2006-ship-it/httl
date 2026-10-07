@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build and generated output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+/secrets/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs and temporary files
+*.log
+*.local
+*.tmp

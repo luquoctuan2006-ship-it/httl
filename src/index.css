@@ -1,0 +1,26 @@
+@charset "UTF-8";
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', 'Tahoma', 'Arial', sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', 'Tahoma', 'Arial', sans-serif;
+}
+
+body {
+  letter-spacing: 0.01em;
+}
+
+* {
+  font-family: inherit;
+}

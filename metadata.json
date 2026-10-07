@@ -1,0 +1,6 @@
+{
+  "name": "Voyager - Bảng điều phối du lịch thông minh",
+  "description": "Hệ thống hoạch định và điều phối lịch trình du lịch thông minh tích hợp Gemini AI và quản lý vận hành thời gian thực.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
