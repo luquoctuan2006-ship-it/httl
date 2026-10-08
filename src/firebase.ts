@@ -1,13 +1,35 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getAuth, Auth } from 'firebase/auth';
+import { Firestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
-export const auth = getAuth(app);
+const environmentConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseConfig.firestoreDatabaseId,
+};
+
+const requiredFirebaseValues = [
+  environmentConfig.apiKey,
+  environmentConfig.authDomain,
+  environmentConfig.projectId,
+  environmentConfig.appId,
+  environmentConfig.firestoreDatabaseId,
+];
+
+export const firebaseAuthConfigured = requiredFirebaseValues.every(Boolean);
+
+const app = firebaseAuthConfigured
+  ? getApps().length
+    ? getApp()
+    : initializeApp(environmentConfig)
+  : null;
+
+export const db: Firestore | null = app ? getFirestore(app, environmentConfig.firestoreDatabaseId) : null;
+export const auth: Auth | null = app ? getAuth(app) : null;
 export const firebaseAuth = auth;
-export const firebaseAuthConfigured = true;
 
 export enum OperationType {
   CREATE = 'create',
@@ -39,12 +61,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: auth?.currentUser?.providerData?.map((provider) => ({
         providerId: provider.providerId,
         email: provider.email,
       })) || [],
@@ -56,8 +78,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate connection to Firestore as per critical constraint
+// Validate connection to Firestore only when Firebase is configured.
 export async function testFirestoreConnection(): Promise<boolean> {
+  if (!db) return false;
+
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
@@ -66,6 +90,6 @@ export async function testFirestoreConnection(): Promise<boolean> {
       console.warn('Firestore is offline or unreachable:', error.message);
       return false;
     }
-    return true;
+    return false;
   }
 }

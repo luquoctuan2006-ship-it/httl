@@ -39,6 +39,7 @@ import {
   AdminSystemManagementView,
 } from './components/AdminManagementViews';
 import { initialTripData } from './data/mockData';
+import { normalizeTripData } from './data/normalizeTripData';
 import { TripData, Activity, TripMember } from './types/travel';
 import { authenticatedFetch, safeJsonResponse, setMockAuthToken } from './api';
 import {
@@ -340,70 +341,55 @@ export default function App() {
     if (!authUser) return;
     setFirebaseStatus('loading');
 
+    const loadFromApi = async () => {
+      try {
+        const response = await authenticatedFetch('/api/trips');
+        if (!response.ok) throw new Error('Không thể tải dữ liệu chuyến đi');
+        const { activeTrip, trips: savedTrips } = await safeJsonResponse(response);
+        if (cancelled || !activeTrip) return;
+
+        const correctedTrip = normalizeTripData(activeTrip);
+        const correctedTrips = Array.isArray(savedTrips)
+          ? savedTrips.map(normalizeTripData)
+          : [correctedTrip];
+        setTrips(correctedTrips);
+        setTrip(correctedTrip);
+        setCurrentDayIndex(correctedTrip.currentDay || 1);
+        setFirebaseStatus('connected');
+        setLoadedTripUserId(authUser.id);
+
+        if (db) {
+          await setDoc(doc(db, 'trips', 'active'), correctedTrip);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Trip loading error:', error);
+        setFirebaseStatus('error');
+      }
+    };
+
+    if (!db) {
+      void loadFromApi();
+      return () => { cancelled = true; };
+    }
+
     const activeTripDoc = doc(db, 'trips', 'active');
-    getDoc(activeTripDoc)
+    void getDoc(activeTripDoc)
       .then((snap) => {
         if (cancelled) return;
         if (snap.exists()) {
-          const savedTrip = sanitizeTripData(snap.data()) as TripData;
+          const savedTrip = normalizeTripData(snap.data());
           setTrips([savedTrip]);
           setTrip(savedTrip);
           setCurrentDayIndex(savedTrip.currentDay || 1);
           setFirebaseStatus('connected');
           setLoadedTripUserId(authUser.id);
-        } else {
-          authenticatedFetch('/api/trips')
-            .then(async (response) => {
-              if (!response.ok) throw new Error('Không thể tải dữ liệu chuyến đi');
-              return safeJsonResponse(response);
-            })
-            .then(({ activeTrip: savedTrip, trips: savedTrips }) => {
-              if (cancelled || !savedTrip) return;
-              const correctedTrip = sanitizeTripData(savedTrip) as TripData;
-              const correctedTrips = Array.isArray(savedTrips)
-                ? savedTrips.map((saved: TripData) => sanitizeTripData(saved) as TripData)
-                : [correctedTrip];
-              setTrips(correctedTrips);
-              setTrip(correctedTrip);
-              setCurrentDayIndex(correctedTrip.currentDay || 1);
-              setFirebaseStatus('connected');
-              setLoadedTripUserId(authUser.id);
-              setDoc(activeTripDoc, correctedTrip).catch((err) => {
-                handleFirestoreError(err, OperationType.WRITE, 'trips/active');
-              });
-            })
-            .catch((error) => {
-              if (cancelled) return;
-              console.error('Firebase sync error:', error);
-              setFirebaseStatus('error');
-            });
+          return;
         }
+        void loadFromApi();
       })
-      .catch((error) => {
-        if (cancelled) return;
-        console.warn('Direct Firestore read error, falling back to API:', error);
-        authenticatedFetch('/api/trips')
-          .then(async (response) => {
-            if (!response.ok) throw new Error('Không thể tải dữ liệu chuyến đi');
-            return safeJsonResponse(response);
-          })
-          .then(({ activeTrip: savedTrip, trips: savedTrips }) => {
-            if (cancelled || !savedTrip) return;
-            const correctedTrip = sanitizeTripData(savedTrip) as TripData;
-            const correctedTrips = Array.isArray(savedTrips)
-              ? savedTrips.map((saved: TripData) => sanitizeTripData(saved) as TripData)
-              : [correctedTrip];
-            setTrips(correctedTrips);
-            setTrip(correctedTrip);
-            setCurrentDayIndex(correctedTrip.currentDay || 1);
-            setFirebaseStatus('connected');
-            setLoadedTripUserId(authUser.id);
-          })
-          .catch((fetchErr) => {
-            if (cancelled) return;
-            console.error('Firebase sync error:', fetchErr);
-            setFirebaseStatus('error');
-          });
+      .catch(() => {
+        if (!cancelled) void loadFromApi();
       });
 
     return () => {
@@ -415,26 +401,32 @@ export default function App() {
     if (!authUser || loadedTripUserId !== authUser.id) return;
 
     const timeout = window.setTimeout(() => {
-      setDoc(doc(db, 'trips', 'active'), trip)
-        .then(() => {
-          setFirebaseStatus('connected');
-        })
-        .catch((error) => {
-          console.warn('Direct Firestore save error, trying API route:', error);
-          authenticatedFetch('/api/trips/active', {
+      const saveTrip = async () => {
+        if (db) {
+          try {
+            await setDoc(doc(db, 'trips', 'active'), normalizeTripData(trip));
+            setFirebaseStatus('connected');
+            return;
+          } catch (error) {
+            console.warn('Direct Firestore save error, trying API route:', error);
+          }
+        }
+
+        try {
+          const response = await authenticatedFetch('/api/trips/active', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(trip),
-          })
-            .then((response) => {
-              if (!response.ok) throw new Error('Không thể lưu dữ liệu chuyến đi');
-              setFirebaseStatus('connected');
-            })
-            .catch((err) => {
-              console.error('Firebase sync error:', err);
-              setFirebaseStatus('error');
-            });
-        });
+            body: JSON.stringify(normalizeTripData(trip)),
+          });
+          if (!response.ok) throw new Error('Không thể lưu dữ liệu chuyến đi');
+          setFirebaseStatus('connected');
+        } catch (error) {
+          console.error('Trip save error:', error);
+          setFirebaseStatus('error');
+        }
+      };
+
+      void saveTrip();
     }, 300);
 
     return () => window.clearTimeout(timeout);
@@ -457,35 +449,32 @@ export default function App() {
   };
 
   const saveTripToFirestore = async (updatedTrip: TripData, successMessage?: string) => {
-    setTrip(updatedTrip);
+    const normalizedTrip = normalizeTripData(updatedTrip);
+    setTrip(normalizedTrip);
     setFirebaseStatus('loading');
+
     try {
-      await setDoc(doc(db, 'trips', 'active'), updatedTrip);
-      setFirebaseStatus('connected');
-      if (successMessage) {
-        showToast(successMessage, 'success');
-      }
-    } catch (firestoreError) {
-      console.warn('Direct Firestore write error, trying backend API:', firestoreError);
-      try {
+      if (db) {
+        await setDoc(doc(db, 'trips', 'active'), normalizedTrip);
+        setFirebaseStatus('connected');
+      } else {
         const response = await authenticatedFetch('/api/trips/active', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedTrip),
+          body: JSON.stringify(normalizedTrip),
         });
         const result = await safeJsonResponse(response);
         if (!response.ok || !result.success) {
           throw new Error(result.error || 'Lỗi lưu chuyến đi');
         }
         setFirebaseStatus('connected');
-        if (successMessage) {
-          showToast(successMessage, 'success');
-        }
-      } catch (err) {
-        console.error('All Firestore save methods failed:', err);
-        setFirebaseStatus('error');
-        showToast('Lỗi khi lưu vào Firestore, vui lòng thử lại', 'error');
       }
+
+      if (successMessage) showToast(successMessage, 'success');
+    } catch (error) {
+      console.error('All trip save methods failed:', error);
+      setFirebaseStatus('error');
+      showToast('Lỗi khi lưu chuyến đi, vui lòng thử lại', 'error');
     }
   };
 

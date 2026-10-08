@@ -41,34 +41,83 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<OptimizationRecommendation[]>([]);
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const pollJob = async (jobId: string) => {
+    try {
+      const response = await authenticatedFetch(`/api/gemini/jobs/${jobId}`);
+      const job = await safeJsonResponse(response);
+      if (!response.ok || !job.success) {
+        throw new Error(job.error || 'Không thể kiểm tra tiến trình AI');
+      }
+      setJobStatus(job.job.progress);
+      if (job.job.status === 'completed') {
+        if (!Array.isArray(job.job.result?.recommendations) || job.job.result.recommendations.length === 0) {
+          throw new Error('Gemini không trả về đề xuất tối ưu hợp lệ');
+        }
+        setRecommendations(job.job.result.recommendations);
+        setIsLoading(false);
+        return;
+      }
+      if (job.job.status === 'failed') {
+        throw new Error(job.job.error || 'Gemini xử lý yêu cầu thất bại');
+      }
+      window.setTimeout(() => void pollJob(jobId), 1500);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Không thể tối ưu lịch trình bằng Gemini');
+      setIsLoading(false);
+    }
+  };
 
   const handleAnalyze = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     setRecommendations([]);
+    setJobStatus('Đang chuẩn bị yêu cầu');
     try {
+      const compactTrip = {
+        id: trip.id,
+        title: trip.title,
+        dates: trip.dates,
+        origin: trip.origin,
+        destination: trip.destination,
+        totalDays: trip.totalDays,
+        totalKm: trip.totalKm,
+        vehicle: trip.vehicle,
+        budgetTotal: trip.budgetTotal,
+        days: trip.days?.slice(0, 7).map((day) => ({
+          dayIndex: day.dayIndex,
+          fullDate: day.fullDate,
+          summary: day.dispatcherNote,
+          activities: day.activities?.slice(0, 3).map((activity) => ({
+            timeStart: activity.timeStart,
+            timeEnd: activity.timeEnd,
+            title: activity.title,
+            location: activity.location,
+            status: activity.status,
+            type: activity.type,
+          })),
+        })),
+      };
+
       const response = await authenticatedFetch('/api/gemini/optimize-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          currentTrip: trip,
+          currentTrip: compactTrip,
           alertDetails: trip.alerts,
           userGoal: 'Ưu tiên an toàn, đúng lịch trình và giảm chi phí phát sinh.',
         }),
       });
       const result = await safeJsonResponse(response);
-      if (!response.ok || !result.success) {
+      if (!response.ok || !result.success || !result.jobId) {
         throw new Error(result.error || 'Không thể tối ưu lịch trình bằng Gemini');
       }
-      if (!Array.isArray(result.data?.recommendations) || result.data.recommendations.length === 0) {
-        throw new Error('Gemini không trả về đề xuất tối ưu hợp lệ');
-      }
-      setRecommendations(result.data.recommendations);
+      await pollJob(result.jobId);
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : 'Không thể tối ưu lịch trình bằng Gemini');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -141,7 +190,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                 disabled={isLoading}
                 className="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold disabled:opacity-60"
               >
-                {isLoading ? 'Gemini đang phân tích...' : recommendations.length ? 'Phân tích lại' : 'Phân tích với Gemini'}
+                {isLoading ? jobStatus || 'Đang phân tích...' : recommendations.length ? 'Phân tích lại' : 'Phân tích với Gemini'}
               </button>
             </div>
             {errorMsg && <p role="alert" className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">{errorMsg}</p>}

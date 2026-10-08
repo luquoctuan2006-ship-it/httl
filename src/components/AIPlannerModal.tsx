@@ -39,21 +39,43 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const pollJob = async (jobId: string) => {
+    try {
+      const response = await authenticatedFetch(`/api/gemini/jobs/${jobId}`);
+      const job = await safeJsonResponse(response);
+      if (!response.ok || !job.success) {
+        throw new Error(job.error || 'Không thể kiểm tra tiến trình AI');
+      }
+      setJobStatus(job.job.progress);
+      if (job.job.status === 'completed') {
+        setGeneratedPlan(job.job.result);
+        setIsLoading(false);
+        return;
+      }
+      if (job.job.status === 'failed') {
+        throw new Error(job.job.error || 'Gemini xử lý yêu cầu thất bại');
+      }
+      window.setTimeout(() => void pollJob(jobId), 1500);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Không thể tạo lịch trình');
+      setIsLoading(false);
+    }
+  };
 
   const handleGenerate = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     setGeneratedPlan(null);
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 190_000);
+    setJobStatus('Đang chuẩn bị yêu cầu');
 
     try {
-      const res = await authenticatedFetch('/api/gemini/generate-itinerary', {
+      const response = await authenticatedFetch('/api/gemini/generate-itinerary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
         body: JSON.stringify({
           destination,
           days,
@@ -64,23 +86,13 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
           startLocation: 'Sân bay Quốc tế Đà Nẵng',
         }),
       });
-
-      const json = await safeJsonResponse(res);
-      if (json.success && json.data) {
-        setGeneratedPlan(json.data);
-      } else {
-        throw new Error(json.error || 'Không thể tạo lịch trình');
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result.success || !result.jobId) {
+        throw new Error(result.error || 'Không thể tạo lịch trình');
       }
-    } catch (err) {
-      setErrorMsg(
-        err instanceof DOMException && err.name === 'AbortError'
-          ? 'Yêu cầu tạo lịch trình vượt quá thời gian chờ. Vui lòng thử lại hoặc giảm số ngày hành trình.'
-          : err instanceof Error
-            ? err.message
-            : 'Không thể tạo lịch trình bằng Gemini',
-      );
-    } finally {
-      window.clearTimeout(timeoutId);
+      await pollJob(result.jobId);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Không thể tạo lịch trình bằng Gemini');
       setIsLoading(false);
     }
   };
@@ -296,7 +308,6 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
                 <option value={3}>3 ngày 2 đêm (Tour ngắn ngày)</option>
                 <option value={5}>5 ngày 4 đêm (Tiêu chuẩn)</option>
                 <option value={7}>7 ngày 6 đêm (Trọn vẹn di sản)</option>
-                <option value={10}>10 ngày (Xuyên Việt miền Trung)</option>
               </select>
             </div>
           </div>
@@ -377,7 +388,7 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Gemini AI đang phân tích dữ liệu & hoạch định hành trình...</span>
+                  <span>{jobStatus || 'Gemini AI đang xử lý...'}</span>
                 </>
               ) : (
                 <>

@@ -7,8 +7,12 @@ import { App as FirebaseAdminApp, cert, getApps, initializeApp } from 'firebase-
 import { Auth as FirebaseAdminAuth, DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { FieldValue, Firestore, getFirestore } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
+import rateLimit from 'express-rate-limit';
 import { initialTripData } from './src/data/mockData';
+import { normalizeTripData } from './src/data/normalizeTripData';
+import { createTripPersistenceStore } from './src/data/tripPersistence';
 import { TripData } from './src/types/travel';
+import { parseGeminiJson } from './src/utils/geminiJson';
 
 dotenv.config();
 
@@ -44,6 +48,18 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
+const aiRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Đã vượt quá giới hạn yêu cầu AI cho project. Vui lòng đợi 5 phút rồi thử lại.',
+  },
+  keyGenerator: () => 'shared-project',
+});
+
 const serviceAccountPath = path.resolve(
   __dirname,
   process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'secrets/firebase-service-account.json',
@@ -67,9 +83,13 @@ if (existsSync(serviceAccountPath)) {
 }
 
 const activeTripRef = firestore ? firestore.collection('trips').doc('active') : null;
+const persistenceStore = await createTripPersistenceStore(
+  path.resolve(__dirname, 'data/trip-persistence.json'),
+);
+const savedTrip = await persistenceStore.load();
 const memoryTrips = new Map<string, TripData>([
-  ['active', structuredClone(initialTripData) as TripData],
-  [initialTripData.id, structuredClone(initialTripData) as TripData],
+  ['active', structuredClone(savedTrip || initialTripData) as TripData],
+  [(savedTrip?.id || initialTripData.id), structuredClone(savedTrip || initialTripData) as TripData],
 ]);
 
 async function findTripRef(tripId: string) {
@@ -99,24 +119,17 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
   }
 
   if (!firebaseAuth) {
-    req.authUser = {
-      uid: 'mock-admin',
-      role: 'admin',
-      email: 'admin@voyager.vn',
-    } as unknown as DecodedIdToken;
-    return next();
+    return res.status(503).json({
+      success: false,
+      error: 'Firebase Authentication chưa được cấu hình. Sử dụng token mock-token: để chạy chế độ demo.',
+    });
   }
 
   try {
     req.authUser = await firebaseAuth.verifyIdToken(token, true);
     return next();
   } catch {
-    req.authUser = {
-      uid: 'mock-user',
-      role: 'user',
-      email: 'user@voyager.vn',
-    } as unknown as DecodedIdToken;
-    return next();
+    return res.status(401).json({ success: false, error: 'Token không hợp lệ hoặc đã hết hạn' });
   }
 }
 
@@ -129,7 +142,7 @@ function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFuncti
 
 app.get('/api/trips/active', requireAuth, async (_req, res) => {
   if (!firestore || !activeTripRef) {
-    const active = memoryTrips.get('active') || (initialTripData as TripData);
+    const active = normalizeTripData(memoryTrips.get('active') || initialTripData);
     memoryTrips.set('active', active);
     return res.json({ success: true, trip: active });
   }
@@ -137,7 +150,7 @@ app.get('/api/trips/active', requireAuth, async (_req, res) => {
   try {
     const snapshot = await activeTripRef.get();
     if (!snapshot.exists) {
-      const seededTrip = initialTripData as TripData;
+      const seededTrip = normalizeTripData(initialTripData);
       await activeTripRef.create({
         ...seededTrip,
         updatedAt: FieldValue.serverTimestamp(),
@@ -146,7 +159,7 @@ app.get('/api/trips/active', requireAuth, async (_req, res) => {
     }
 
     const rawTrip = snapshot.data() as TripData | undefined;
-    const correctedTrip = rawTrip ? (sanitizeTripPayload(rawTrip) as TripData) : null;
+    const correctedTrip = normalizeTripData(rawTrip);
 
     if (correctedTrip && JSON.stringify(rawTrip) !== JSON.stringify(correctedTrip)) {
       await activeTripRef.set({
@@ -155,7 +168,7 @@ app.get('/api/trips/active', requireAuth, async (_req, res) => {
       });
     }
 
-    return res.json({ success: true, trip: correctedTrip || initialTripData });
+    return res.json({ success: true, trip: correctedTrip });
   } catch (error) {
     console.error('Error loading active trip from Firestore:', error);
     return res.status(503).json({ success: false, error: 'Không thể tải dữ liệu từ Firestore' });
@@ -164,13 +177,13 @@ app.get('/api/trips/active', requireAuth, async (_req, res) => {
 
 app.get('/api/trips', requireAuth, async (_req, res) => {
   if (!firestore || !activeTripRef) {
-    const activeTrip = sanitizeTripPayload(memoryTrips.get('active') || initialTripData) as TripData;
+    const activeTrip = normalizeTripData(memoryTrips.get('active') || initialTripData);
     memoryTrips.set('active', activeTrip);
     const tripsById = new Map<string, TripData>([[activeTrip.id, activeTrip]]);
     for (const [key, candidate] of memoryTrips.entries()) {
       if (key === 'active') continue;
       if (candidate && typeof candidate.id === 'string' && Array.isArray(candidate.days)) {
-        tripsById.set(candidate.id, sanitizeTripPayload(candidate) as TripData);
+        tripsById.set(candidate.id, normalizeTripData(candidate));
       }
     }
     return res.json({ success: true, activeTrip, trips: Array.from(tripsById.values()) });
@@ -179,7 +192,7 @@ app.get('/api/trips', requireAuth, async (_req, res) => {
   try {
     let activeSnapshot = await activeTripRef.get();
     if (!activeSnapshot.exists) {
-      const seededTrip = initialTripData as TripData;
+      const seededTrip = normalizeTripData(initialTripData);
       await activeTripRef.create({
         ...seededTrip,
         updatedAt: FieldValue.serverTimestamp(),
@@ -187,12 +200,12 @@ app.get('/api/trips', requireAuth, async (_req, res) => {
       activeSnapshot = await activeTripRef.get();
     }
 
-    const activeTrip = sanitizeTripPayload(activeSnapshot.data()) as TripData;
+    const activeTrip = normalizeTripData(activeSnapshot.data());
     const snapshot = await firestore.collection('trips').get();
     const tripsById = new Map<string, TripData>([[activeTrip.id, activeTrip]]);
     for (const document of snapshot.docs) {
       if (document.id === 'active') continue;
-      const candidate = sanitizeTripPayload(document.data()) as TripData;
+      const candidate = normalizeTripData(document.data());
       if (candidate && typeof candidate.id === 'string' && Array.isArray(candidate.days)) {
         tripsById.set(candidate.id, candidate);
       }
@@ -206,7 +219,7 @@ app.get('/api/trips', requireAuth, async (_req, res) => {
 });
 
 app.post('/api/trips', requireAuth, async (req, res) => {
-  const trip = sanitizeTripPayload(req.body) as TripData;
+  const trip = normalizeTripData(req.body);
   if (!trip || typeof trip.id !== 'string' || trip.id === 'active' || !Array.isArray(trip.days)) {
     return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
   }
@@ -217,6 +230,7 @@ app.post('/api/trips', requireAuth, async (req, res) => {
     }
     memoryTrips.set(trip.id, trip);
     memoryTrips.set('active', trip);
+    await persistenceStore.save(trip);
     return res.status(201).json({ success: true, trip });
   }
 
@@ -236,7 +250,7 @@ app.post('/api/trips', requireAuth, async (req, res) => {
 });
 
 app.put('/api/trips/active', requireAuth, async (req, res) => {
-  const trip = sanitizeTripPayload(req.body) as TripData;
+  const trip = normalizeTripData(req.body);
   if (!trip || typeof trip.id !== 'string' || !Array.isArray(trip.days)) {
     return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
   }
@@ -244,6 +258,7 @@ app.put('/api/trips/active', requireAuth, async (req, res) => {
   if (!firestore || !activeTripRef) {
     memoryTrips.set('active', trip);
     memoryTrips.set(trip.id, trip);
+    await persistenceStore.save(trip);
     return res.json({ success: true });
   }
 
@@ -262,21 +277,21 @@ app.put('/api/trips/active', requireAuth, async (req, res) => {
 // Alias for singular /api/trip/active
 app.get('/api/trip/active', requireAuth, async (_req, res) => {
   if (!firestore || !activeTripRef) {
-    const active = memoryTrips.get('active') || (initialTripData as TripData);
+    const active = normalizeTripData(memoryTrips.get('active') || initialTripData);
     memoryTrips.set('active', active);
     return res.json({ success: true, trip: active });
   }
   try {
     const snapshot = await activeTripRef.get();
     const rawTrip = snapshot.data() as TripData | undefined;
-    return res.json({ success: true, trip: rawTrip ? sanitizeTripPayload(rawTrip) : initialTripData });
+    return res.json({ success: true, trip: normalizeTripData(rawTrip || initialTripData) });
   } catch (error) {
     return res.status(503).json({ success: false, error: 'Lỗi nạp chuyến đi' });
   }
 });
 
 app.put('/api/trip/active', requireAuth, async (req, res) => {
-  const trip = sanitizeTripPayload(req.body) as TripData;
+  const trip = normalizeTripData(req.body);
   if (!trip || typeof trip.id !== 'string' || !Array.isArray(trip.days)) {
     return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
   }
@@ -300,24 +315,24 @@ app.get('/api/trips/:tripId', requireAuth, async (req, res) => {
   const { tripId } = req.params;
   if (tripId === 'active') {
     if (!firestore || !activeTripRef) {
-      const active = memoryTrips.get('active') || (initialTripData as TripData);
+      const active = normalizeTripData(memoryTrips.get('active') || initialTripData);
       return res.json({ success: true, trip: active });
     }
     const snap = await activeTripRef.get();
     if (!snap.exists) return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    return res.json({ success: true, trip: sanitizeTripPayload(snap.data()) });
+    return res.json({ success: true, trip: normalizeTripData(snap.data()) });
   }
 
   if (!firestore) {
     const trip = memoryTrips.get(tripId);
     if (!trip) return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    return res.json({ success: true, trip: sanitizeTripPayload(trip) });
+    return res.json({ success: true, trip: normalizeTripData(trip) });
   }
 
   try {
     const snap = await firestore.collection('trips').doc(tripId).get();
     if (!snap.exists) return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    return res.json({ success: true, trip: sanitizeTripPayload(snap.data()) });
+    return res.json({ success: true, trip: normalizeTripData(snap.data()) });
   } catch {
     return res.status(503).json({ success: false, error: 'Không thể tải chuyến đi' });
   }
@@ -325,7 +340,7 @@ app.get('/api/trips/:tripId', requireAuth, async (req, res) => {
 
 app.put('/api/trips/:tripId', requireAuth, async (req, res) => {
   const { tripId } = req.params;
-  const trip = sanitizeTripPayload(req.body) as TripData;
+  const trip = normalizeTripData(req.body);
   if (!trip || typeof trip.id !== 'string' || !Array.isArray(trip.days)) {
     return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
   }
@@ -431,11 +446,12 @@ const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
 const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 const geminiFallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.7-flash';
 const geminiCacheTtlMs = Math.max(0, Number.parseInt(process.env.GEMINI_CACHE_TTL_MS || '300000', 10));
+const geminiRequestTimeoutMs = Math.max(30_000, Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '30000', 10));
 const ai = geminiApiKey
   ? new GoogleGenAI({
       apiKey: geminiApiKey,
       httpOptions: {
-        timeout: 90_000,
+        timeout: geminiRequestTimeoutMs,
         retryOptions: { attempts: 1 },
         headers: {
           'User-Agent': 'aistudio-build',
@@ -451,9 +467,28 @@ type GeminiCacheEntry = {
 
 const geminiCache = new Map<string, GeminiCacheEntry>();
 const maxGeminiCacheEntries = 200;
+const inFlightGeminiRequests = new Map<string, Promise<any>>();
 
-function createGeminiCacheKey(userId: string, operation: string, payload: unknown): string {
-  return `${userId}:${operation}:${JSON.stringify(payload)}`;
+type GeminiJobStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+type GeminiJob = {
+  id: string;
+  status: GeminiJobStatus;
+  progress: string;
+  createdAt: number;
+  updatedAt: number;
+  result?: any;
+  error?: string;
+};
+
+const geminiJobs = new Map<string, GeminiJob>();
+
+function createJobId(): string {
+  return `gemini-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createGeminiCacheKey(operation: string, payload: unknown): string {
+  return `${operation}:${JSON.stringify(payload)}`;
 }
 
 function getCachedGeminiResult(cacheKey: string): any | undefined {
@@ -492,24 +527,125 @@ async function generateWithGemini(prompt: string): Promise<any> {
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
+          responseModalities: ['TEXT'],
+          thinkingConfig: { thinkingBudget: 0 },
+          maxOutputTokens: 4000,
+          temperature: 0.55,
         },
       });
     } catch (error: any) {
+      const status = Number(error?.status ?? error?.response?.status ?? 0);
       const message = String(error?.message || error?.status || error || '');
-      const temporarilyUnavailable = /429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|RATE_LIMIT|high demand|temporar|overloaded/i.test(message);
-      if (!temporarilyUnavailable || index === models.length - 1) {
+      const retryable = status === 503 || status === 504 || status === 500;
+      const isRateLimit = status === 429 || /RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(message);
+
+      if (isRateLimit || !retryable || index === models.length - 1) {
         throw error;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 
   throw new Error('Gemini không phản hồi sau khi thử model dự phòng.');
 }
 
-// API Route: Generate personalized itinerary using Gemini 2.0 Flash
-app.post('/api/gemini/generate-itinerary', requireAuth, async (req: AuthenticatedRequest, res) => {
+function getOrCreateGeminiRequest(cacheKey: string, request: () => Promise<any>): Promise<any> {
+  const existingRequest = inFlightGeminiRequests.get(cacheKey);
+  if (existingRequest) return existingRequest;
+
+  const newRequest = request();
+  inFlightGeminiRequests.set(cacheKey, newRequest);
+  void newRequest.catch(() => undefined).finally(() => {
+    inFlightGeminiRequests.delete(cacheKey);
+  });
+  return newRequest;
+}
+
+function createGeminiJob(operation: string, payload: unknown): GeminiJob {
+  const now = Date.now();
+  const job: GeminiJob = {
+    id: createJobId(),
+    status: 'queued',
+    progress: 'Đang chuẩn bị yêu cầu',
+    createdAt: now,
+    updatedAt: now,
+  };
+  geminiJobs.set(job.id, job);
+  void Promise.resolve().then(() => {
+    job.status = 'running';
+    job.progress = 'Gemini đang xử lý';
+    job.updatedAt = Date.now();
+  });
+  void (async () => {
+    try {
+      job.result = await executeGeminiOperation(operation, payload);
+      job.status = 'completed';
+      job.progress = 'Đã hoàn tất';
+    } catch (error) {
+      job.status = 'failed';
+      job.progress = 'Xảy ra lỗi';
+      job.error = error instanceof Error ? error.message : 'Lỗi xử lý Gemini';
+    } finally {
+      job.updatedAt = Date.now();
+    }
+  })();
+  return job;
+}
+
+async function executeGeminiOperation(operation: string, payload: unknown): Promise<any> {
+  if (operation === 'generate-itinerary') {
+    const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = payload as Record<string, any>;
+    const normalizedDays = Number.parseInt(days, 10);
+    const prompt = `Lập kế hoạch du lịch Việt Nam dưới đây. Chỉ trả về JSON hợp lệ, không markdown.
+Điểm đến: ${destination || 'Đà Nẵng - Huế - Hội An'}
+Số ngày: ${normalizedDays}
+Ngân sách: ${budget || 'Tiêu chuẩn'}
+Phong cách: ${travelStyle || 'Khám phá văn hóa & ẩm thực'}
+Đối tượng: ${groupType || 'Nhóm du khách'}
+Xuất phát: ${startLocation || 'Đà Nẵng'}
+Sở thích: ${preferences || 'Tránh nắng gắt buổi trưa'}
+Trả về tối đa ${normalizedDays * 3} hoạt động và mỗi ngày tối đa 3 hoạt động. Schema: {tripCode,title,routeSummary:{origin,destination,totalKm,vehicle,destinationsCount},budget:{total,used,unit,breakdown},days:[{dayIndex,dateLabel,fullDate,summary,activities:[{id,timeStart,timeEnd,title,location,status,type,details,cost,coordinates:{lat,lng}}]}],aiOperationalSuggestions:[{id,title,impact,description,savingEstimate,confidence}],potentialRisks:[{title,level,advice}]}.`;
+    const response = await getOrCreateGeminiRequest(`generate-itinerary:${JSON.stringify(payload)}`, () => generateWithGemini(prompt));
+    const text = response.text || '{}';
+    return parseGeminiJson(text);
+  }
+
+  const { currentTrip, alertDetails, userGoal } = payload as Record<string, any>;
+  const compactTrip = {
+    id: currentTrip?.id,
+    title: currentTrip?.title,
+    totalDays: currentTrip?.totalDays,
+    totalKm: currentTrip?.totalKm,
+    budgetTotal: currentTrip?.budgetTotal,
+    days: Array.isArray(currentTrip?.days)
+      ? currentTrip.days.slice(0, 7).map((day: any) => ({
+          dayIndex: day.dayIndex,
+          fullDate: day.fullDate,
+          summary: day.dispatcherNote,
+          activities: Array.isArray(day.activities) ? day.activities.slice(0, 3).map((activity: any) => ({
+            timeStart: activity.timeStart,
+            timeEnd: activity.timeEnd,
+            title: activity.title,
+            location: activity.location,
+            status: activity.status,
+            type: activity.type,
+          })) : [],
+        }))
+      : [],
+  };
+  const prompt = `Tối ưu lịch trình du lịch theo các yếu tố thực tế. Chỉ trả về JSON hợp lệ.
+Thông tin chuyến đi: ${JSON.stringify(compactTrip)}
+Cảnh báo: ${JSON.stringify(alertDetails || {})}
+Mục tiêu: ${userGoal || 'An toàn, đúng lịch trình, giảm chi phí'}
+Trả về {recommendations:[{id,actionTitle,timeSaved,reason,confidence,costSaved,scheduleChanges:[{oldTime,newTime,action}]}],dispatcherNotice}. Giữ tối đa 3 đề xuất, mỗi đề xuất ngắn gọn.`;
+  const response = await getOrCreateGeminiRequest(`optimize-schedule:${JSON.stringify(payload)}`, () => generateWithGemini(prompt));
+  const text = response.text || '{}';
+  return parseGeminiJson(text);
+}
+
+// API Route: Generate personalized itinerary using Gemini
+app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
   if (!ai) {
     return res.status(503).json({
       success: false,
@@ -517,120 +653,36 @@ app.post('/api/gemini/generate-itinerary', requireAuth, async (req: Authenticate
     });
   }
 
-  try {
-    const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = req.body;
-    const cacheKey = createGeminiCacheKey(req.authUser!.uid, 'generate-itinerary', req.body);
-    const cachedResult = getCachedGeminiResult(cacheKey);
-
-    if (cachedResult !== undefined) {
-      return res.json({ success: true, data: cachedResult, cached: true });
-    }
-
-    const prompt = `Bạn là chuyên gia quy hoạch và điều phối tour du lịch chuyên nghiệp tại Việt Nam cho hệ thống "Voyager Travel Ops".
-Hãy lập kế hoạch lịch trình du lịch thông minh, tối ưu và chi tiết theo các thông tin sau:
-- Điểm đến: ${destination || 'Đà Nẵng - Huế - Hội An'}
-- Số ngày: ${days || 7} ngày
-- Ngân sách: ${budget || 'Tiêu chuẩn'}
-- Phong cách du lịch: ${travelStyle || 'Khám phá văn hóa & di sản kết hợp ẩm thực'}
-- Đối tượng đoàn: ${groupType || 'Đoàn gia đình / nhóm bạn'}
-- Nơi xuất phát: ${startLocation || 'Đà Nẵng'}
-- Yêu cầu đặc biệt/Sở thích cá nhân hóa: ${preferences || 'Tối ưu thời gian di chuyển, tránh giờ nắng gắt trưa, trải nghiệm văn hóa bản địa'}
-
-Hãy trả về định dạng DUY NHẤT là chuỗi JSON hợp lệ (không kèm markdown \`\`\`json hay text thừa bên ngoài), theo schema sau:
-{
-  "tripCode": "VN-1025",
-  "title": "Tên hành trình hấp dẫn",
-  "routeSummary": {
-    "origin": "ĐN",
-    "destination": "HUE",
-    "totalKm": 428,
-    "vehicle": "Xe 29 chỗ",
-    "destinationsCount": 5
-  },
-  "budget": {
-    "total": 48600000,
-    "used": 15000000,
-    "unit": "VNĐ",
-    "breakdown": [
-      {"category": "Vận chuyển", "amount": 12000000},
-      {"category": "Khách sạn", "amount": 18000000},
-      {"category": "Ăn uống & Vé", "amount": 14000000},
-      {"category": "Dự phòng", "amount": 4600000}
-    ]
-  },
-  "days": [
-    {
-      "dayIndex": 1,
-      "dateLabel": "T2 12",
-      "fullDate": "Thứ Hai, 12 tháng 10",
-      "summary": "Tóm tắt ngắn gọn ngày 1",
-      "activities": [
-        {
-          "id": "act-1-1",
-          "timeStart": "08:00",
-          "timeEnd": "09:30",
-          "title": "Tên hoạt động",
-          "location": "Địa điểm cụ thể",
-          "status": "Hoàn tất", // hoặc "Đang diễn ra", "Đã xác nhận", "Cần xử lý"
-          "type": "transport" | "meal" | "sightseeing" | "hotel" | "checkin",
-          "details": "Mô tả chi tiết và lưu ý điều phối",
-          "cost": 1500000,
-          "coordinates": {"lat": 16.0544, "lng": 108.2022}
-        }
-      ]
-    }
-  ],
-  "aiOperationalSuggestions": [
-    {
-      "id": "sug-1",
-      "title": "Đề xuất tối ưu thứ tự di chuyển",
-      "impact": "-36 phút di chuyển",
-      "description": "Lý do và lợi ích tối ưu",
-      "savingEstimate": "640.000đ",
-      "confidence": "94%"
-    }
-  ],
-  "potentialRisks": [
-    {
-      "title": "Dự báo thời tiết cục bộ",
-      "level": "Cảnh báo vừa",
-      "advice": "Chuẩn bị phương án dự phòng bảo đảm lịch trình"
-    }
-  ]
-}`;
-
-    const response = await generateWithGemini(prompt);
-
-    const text = response.text || '{}';
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      // Clean possible fences if any
-      const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      data = JSON.parse(cleaned);
-    }
-
-    setCachedGeminiResult(cacheKey, data);
-    res.json({ success: true, data, cached: false });
-  } catch (error: any) {
-    console.error('Error generating itinerary with Gemini:', error);
-    const errorMessage = String(error?.message || error?.status || '');
-    const wasAborted = error?.name === 'AbortError' || /operation was aborted|timed out/i.test(errorMessage);
-    const temporarilyUnavailable = /429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|RATE_LIMIT|high demand|temporar|overloaded/i.test(errorMessage);
-    res.status(wasAborted ? 504 : temporarilyUnavailable ? 503 : 500).json({
+  const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = req.body;
+  const normalizedDays = Number.parseInt(days, 10);
+  if (!Number.isInteger(normalizedDays) || normalizedDays < 3 || normalizedDays > 7) {
+    return res.status(400).json({
       success: false,
-      error: wasAborted
-        ? 'Gemini mất hơn 90 giây để tạo lịch trình. Vui lòng thử lại hoặc giảm số ngày hành trình.'
-        : temporarilyUnavailable
-          ? 'Gemini đang quá tải hoặc giới hạn yêu cầu. Đã thử model dự phòng; vui lòng đợi một chút rồi thử lại.'
-        : error.message || 'Lỗi khi tạo lịch trình với Gemini AI',
+      error: 'Số ngày phải nằm trong khoảng 3–7 ngày.',
     });
   }
+
+  const cacheKey = createGeminiCacheKey('generate-itinerary', {
+    destination,
+    days: normalizedDays,
+    budget,
+    travelStyle,
+    groupType,
+    preferences,
+    startLocation,
+  });
+  const cachedResult = getCachedGeminiResult(cacheKey);
+
+  if (cachedResult !== undefined) {
+    return res.json({ success: true, data: cachedResult, cached: true });
+  }
+
+  const job = createGeminiJob('generate-itinerary', req.body);
+  return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 
 // API Route: Optimize active schedule based on real-time factors
-app.post('/api/gemini/optimize-schedule', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.post('/api/gemini/optimize-schedule', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
   if (!ai) {
     return res.status(503).json({
       success: false,
@@ -638,71 +690,24 @@ app.post('/api/gemini/optimize-schedule', requireAuth, async (req: Authenticated
     });
   }
 
-  try {
-    const { currentTrip, alertDetails, userGoal } = req.body;
-    const cacheKey = createGeminiCacheKey(req.authUser!.uid, 'optimize-schedule', req.body);
-    const cachedResult = getCachedGeminiResult(cacheKey);
+  const { currentTrip, alertDetails, userGoal } = req.body;
+  const cacheKey = createGeminiCacheKey('optimize-schedule', req.body);
+  const cachedResult = getCachedGeminiResult(cacheKey);
 
-    if (cachedResult !== undefined) {
-      return res.json({ success: true, data: cachedResult, cached: true });
-    }
-
-    const prompt = `Bạn là Trợ lý Điều phối Vận hành Du lịch Thông minh của hệ thống Voyager.
-Thông tin chuyến đi hiện tại:
-${JSON.stringify(currentTrip, null, 2)}
-
-Sự kiện/Cảnh báo vận hành thực tế:
-${JSON.stringify(alertDetails || 'Mưa lớn tại đèo Hải Vân và Lăng Cô từ 15:00-17:00, có nguy cơ trễ giờ nhận phòng 14:00 tại Lăng Cô Bay Retreat')}
-
-Mục tiêu tối ưu: ${userGoal || 'Đảm bảo an toàn, tối thiểu thời gian kẹt xe, giảm chi phí phát sinh và không ảnh hưởng trải nghiệm du khách'}.
-
-Hãy đưa ra giải pháp điều phối thông minh gồm 2-3 đề xuất cụ thể kèm kế hoạch hành động từng bước. Trả về JSON:
-{
-  "recommendations": [
-    {
-      "id": "rec-1",
-      "actionTitle": "Đảo thứ tự Lăng Cô – Đại Nội",
-      "timeSaved": "-36 phút",
-      "reason": "Tránh vùng mưa lớn từ 15:00-17:00, di chuyển vào Đại Nội sớm hơn",
-      "confidence": "94%",
-      "costSaved": "640.000đ",
-      "scheduleChanges": [
-        {"oldTime": "14:30 - 17:30", "newTime": "13:00 - 15:00", "action": "Tham quan điểm trong nhà trước"}
-      ]
-    },
-    {
-      "id": "rec-2",
-      "actionTitle": "Khởi hành sớm 20 phút",
-      "timeSaved": "Đúng giờ 100%",
-      "reason": "Dự phòng ùn tắc QL1A, kịp giờ nhận phòng khách sạn",
-      "confidence": "92%",
-      "costSaved": "Tránh phụ thu trễ hẹn",
-      "scheduleChanges": []
-    }
-  ],
-  "dispatcherNotice": "Ghi chú cho Điều phối viên hiện trường để thông báo cho tài xế và hướng dẫn viên."
-}`;
-
-    const response = await generateWithGemini(prompt);
-
-    const text = response.text || '{}';
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      data = JSON.parse(cleaned);
-    }
-
-    setCachedGeminiResult(cacheKey, data);
-    res.json({ success: true, data, cached: false });
-  } catch (error: any) {
-    console.error('Error optimizing schedule with Gemini:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Lỗi khi tối ưu lịch trình với Gemini AI',
-    });
+  if (cachedResult !== undefined) {
+    return res.json({ success: true, data: cachedResult, cached: true });
   }
+
+  const job = createGeminiJob('optimize-schedule', req.body);
+  return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
+});
+
+app.get('/api/gemini/jobs/:jobId', requireAuth, (req, res) => {
+  const job = geminiJobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ success: false, error: 'Không tìm thấy job AI' });
+  }
+  return res.json({ success: true, job });
 });
 
 // Alias for itinerary endpoints mentioned in architecture
