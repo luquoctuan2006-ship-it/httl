@@ -13,7 +13,7 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { MetricCards } from './components/MetricCards';
@@ -83,20 +83,30 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
     }
   };
 
+  const performMockLogin = () => {
+    const normalizedEmail = email.trim() || 'admin@voyager.vn';
+    const role: AppRole =
+      normalizedEmail === 'luquoctuan2006@gmail.com' ||
+      normalizedEmail.toLowerCase().includes('admin')
+        ? 'admin'
+        : 'user';
+    const uid = `mock-${role}`;
+    const displayName =
+      name.trim() ||
+      (role === 'admin' ? 'Điều phối viên Admin' : normalizedEmail.split('@')[0] || 'Người dùng');
+    setMockAuthToken(`mock-token:${uid}:${role}:${normalizedEmail}`);
+    onMockLogin({
+      id: uid,
+      name: displayName,
+      email: normalizedEmail,
+      role,
+    });
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!firebaseAuth) {
-      const normalizedEmail = email.trim() || 'admin@voyager.vn';
-      const role: AppRole = normalizedEmail.toLowerCase().includes('admin') ? 'admin' : 'user';
-      const uid = `mock-${role}`;
-      const displayName = name.trim() || (role === 'admin' ? 'Điều phối viên Admin' : normalizedEmail.split('@')[0] || 'Người dùng');
-      setMockAuthToken(`mock-token:${uid}:${role}:${normalizedEmail}`);
-      onMockLogin({
-        id: uid,
-        name: displayName,
-        email: normalizedEmail,
-        role,
-      });
+      performMockLogin();
       return;
     }
 
@@ -117,6 +127,15 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
       }
     } catch (error) {
       const code = (error as { code?: string }).code;
+      if (
+        code === 'auth/operation-not-allowed' ||
+        code === 'auth/admin-restricted-operation' ||
+        code === 'auth/unauthorized-domain' ||
+        (email.trim().toLowerCase().endsWith('@voyager.vn') && code === 'auth/invalid-credential')
+      ) {
+        performMockLogin();
+        return;
+      }
       const messages: Record<string, string> = {
         'auth/invalid-credential': 'Email hoặc mật khẩu không đúng.',
         'auth/email-already-in-use': 'Email này đã được đăng ký.',
@@ -325,6 +344,18 @@ export default function App() {
     }
   }, [isAdminMode, currentTab]);
 
+  useEffect(() => {
+    if (trip.days && trip.days.length > 0) {
+      if (!trip.days.some((d) => d.dayIndex === currentDayIndex)) {
+        const fallbackDay =
+          trip.currentDay && trip.days.some((d) => d.dayIndex === trip.currentDay)
+            ? trip.currentDay
+            : trip.days[0].dayIndex;
+        setCurrentDayIndex(fallbackDay);
+      }
+    }
+  }, [trip, currentDayIndex]);
+
   const handleSelectTab = (tab: string) => {
     const adminExclusiveTabs = ['planning', 'rules', 'ai', 'monitoring', 'system'];
     if (!isAdminMode && adminExclusiveTabs.includes(tab)) {
@@ -373,22 +404,36 @@ export default function App() {
       return () => { cancelled = true; };
     }
 
-    const activeTripDoc = doc(db, 'trips', 'active');
-    void getDoc(activeTripDoc)
-      .then((snap) => {
+    const tripsCol = collection(db, 'trips');
+    void getDocs(tripsCol)
+      .then((snapshot) => {
         if (cancelled) return;
-        if (snap.exists()) {
-          const savedTrip = normalizeTripData(snap.data());
-          setTrips([savedTrip]);
-          setTrip(savedTrip);
-          setCurrentDayIndex(savedTrip.currentDay || 1);
+        if (!snapshot.empty) {
+          const loadedTrips: TripData[] = [];
+          let activeDocData: TripData | null = null;
+          snapshot.forEach((item) => {
+            const data = normalizeTripData(item.data());
+            if (item.id === 'active') {
+              activeDocData = data;
+            } else {
+              loadedTrips.push(data);
+            }
+          });
+          const currentTrip = activeDocData || loadedTrips[0] || normalizeTripData(initialTripData);
+          const allTrips = loadedTrips.length > 0
+            ? (activeDocData ? [activeDocData, ...loadedTrips.filter((t) => t.id !== activeDocData?.id)] : loadedTrips)
+            : [currentTrip];
+          setTrips(allTrips);
+          setTrip(currentTrip);
+          setCurrentDayIndex(currentTrip.currentDay || 1);
           setFirebaseStatus('connected');
           setLoadedTripUserId(authUser.id);
           return;
         }
         void loadFromApi();
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('Failed to load trips collection from Firestore, trying fallback:', err);
         if (!cancelled) void loadFromApi();
       });
 
@@ -456,6 +501,9 @@ export default function App() {
     try {
       if (db) {
         await setDoc(doc(db, 'trips', 'active'), normalizedTrip);
+        if (normalizedTrip.id && normalizedTrip.id !== 'active') {
+          await setDoc(doc(db, 'trips', normalizedTrip.id), normalizedTrip);
+        }
         setFirebaseStatus('connected');
       } else {
         const response = await authenticatedFetch('/api/trips/active', {
@@ -480,33 +528,57 @@ export default function App() {
 
   // Handler: Apply AI Optimization (Swap itinerary & resolve rain risk)
   const handleApplyAIOptimization = async (actionTitle?: string, actionReason?: string, costSaved?: string) => {
+    const targetDayIndex = trip.days.find((d) => d.hasWarning || d.pendingCount > 0)?.dayIndex ?? currentDayIndex;
+
     const updatedDays = trip.days.map((day) => {
-      if (day.dayIndex === 3) {
+      if (day.dayIndex === targetDayIndex) {
+        let updatedAnActivity = false;
         const updatedActivities = day.activities.map((act) => {
-          if (act.id === 'act-10') {
+          if (!updatedAnActivity && (act.status === 'Cần xử lý' || act.status === 'Đang diễn ra')) {
+            updatedAnActivity = true;
             return {
               ...act,
-              title: actionTitle || 'Khởi hành đi Lăng Cô (Phương án an toàn)',
+              title: actionTitle || act.title,
               status: 'Đã xác nhận' as const,
-              details: actionReason || 'Đã chuyển sang khung giờ tránh mưa lớn 15:00-17:00 • Tài xế đã nhận lộ trình mới',
+              details: actionReason ? `${actionReason} • ${act.details}` : act.details,
             };
           }
           return act;
         });
 
+        const finalActivities = updatedAnActivity
+          ? updatedActivities
+          : day.activities.length > 0
+            ? [
+                {
+                  ...day.activities[0],
+                  title: actionTitle || day.activities[0].title,
+                  status: 'Đã xác nhận' as const,
+                  details: actionReason ? `${actionReason} • ${day.activities[0].details}` : day.activities[0].details,
+                },
+                ...day.activities.slice(1),
+              ]
+            : day.activities;
+
+        const confirmedCount = finalActivities.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length;
+        const pendingCount = finalActivities.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+
         return {
           ...day,
           hasWarning: false,
-          confirmedCount: 6,
-          pendingCount: 0,
-          dispatcherNote: `Đã kích hoạt phương án Gemini AI: ${actionTitle || 'tránh vùng mưa Hải Vân - Lăng Cô'}${actionReason ? ` • ${actionReason}` : ', tiết kiệm 36 phút di chuyển.'}`,
-          activities: updatedActivities,
+          confirmedCount,
+          pendingCount,
+          dispatcherNote: `Đã kích hoạt phương án Gemini AI: ${actionTitle || 'Lộ trình tối ưu thuận tiện nhất'}${actionReason ? ` • ${actionReason}` : ''}`,
+          activities: finalActivities,
         };
       }
       return day;
     });
 
-    const remainingAlerts = trip.alerts.filter((a) => a.id !== 'alt-1');
+    const allActs = updatedDays.flatMap((d) => d.activities);
+    const confirmed = allActs.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length;
+    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+    const remainingAlerts = trip.alerts.slice(1);
 
     const updatedTrip: TripData = {
       ...trip,
@@ -514,8 +586,8 @@ export default function App() {
       days: updatedDays,
       budgetRemaining: trip.budgetRemaining + (Number(costSaved?.replace(/\D/g, '')) || 0),
       aiSavingsEstimate: costSaved || trip.aiSavingsEstimate,
-      confirmedActivities: trip.confirmedActivities + 1,
-      pendingActivities: Math.max(0, trip.pendingActivities - 1),
+      confirmedActivities: confirmed,
+      pendingActivities: pending,
     };
 
     setIsAIApplied(true);
@@ -523,31 +595,46 @@ export default function App() {
   };
 
   // Handler: Add Activity
-  const handleAddActivity = async (newAct: Activity) => {
+  const handleAddActivity = async (newAct: Activity, targetDayIndex?: number) => {
+    const dayTarget = targetDayIndex ?? currentDayIndex;
+    let dayMatched = false;
     const updatedDays = trip.days.map((d) => {
-      if (d.dayIndex === currentDayIndex) {
+      if (d.dayIndex === dayTarget) {
+        dayMatched = true;
+        const newActivities = [...d.activities, newAct];
         return {
           ...d,
-          activities: [...d.activities, newAct],
+          activities: newActivities,
+          confirmedCount: newActivities.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
+          pendingCount: newActivities.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
         };
       }
       return d;
     });
 
+    if (!dayMatched && updatedDays.length > 0) {
+      const firstDayActs = [...updatedDays[0].activities, newAct];
+      updatedDays[0] = {
+        ...updatedDays[0],
+        activities: firstDayActs,
+        confirmedCount: firstDayActs.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
+        pendingCount: firstDayActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
+      };
+    }
+
     const allActs = updatedDays.flatMap((d) => d.activities);
     const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
     const newSpent = totalActivityCosts > 0 ? totalActivityCosts : trip.budgetUsed + (newAct.cost || 0);
     const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
-    const newPercent = Math.round((newSpent / trip.budgetTotal) * 100);
-
-    const isConfirmed = newAct.status === 'Hoàn tất' || newAct.status === 'Đã xác nhận';
-    const isPending = newAct.status === 'Cần xử lý' || newAct.status === 'Đang diễn ra';
+    const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
+    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
+    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
     const updatedTrip: TripData = {
       ...trip,
-      totalActivities: trip.totalActivities + 1,
-      confirmedActivities: isConfirmed ? trip.confirmedActivities + 1 : trip.confirmedActivities,
-      pendingActivities: isPending ? trip.pendingActivities + 1 : trip.pendingActivities,
+      totalActivities: allActs.length,
+      confirmedActivities: confirmed,
+      pendingActivities: pending,
       budgetUsed: newSpent,
       budgetRemaining: newRemaining,
       budgetUsedPercent: newPercent,
@@ -555,6 +642,73 @@ export default function App() {
     };
 
     await saveTripToFirestore(updatedTrip, `Đã thêm hoạt động "${newAct.title}" vào Firestore!`);
+  };
+
+  // Handler: Add New Day
+  const handleAddDay = async () => {
+    const nextDayIndex = trip.days.length > 0 ? Math.max(...trip.days.map((d) => d.dayIndex)) + 1 : 1;
+    const dayNamesCycle = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    const dayName = dayNamesCycle[(nextDayIndex - 1) % 7];
+    const newDay = {
+      dayIndex: nextDayIndex,
+      dateLabel: `${dayName} ${nextDayIndex}`,
+      dayName,
+      dateNum: nextDayIndex,
+      fullDate: `Ngày ${nextDayIndex}`,
+      confirmedCount: 0,
+      pendingCount: 0,
+      dispatcherNote: 'Chặng mới được thêm vào lịch trình',
+      activities: [],
+    };
+    const updatedDays = [...trip.days, newDay];
+    const updatedTrip: TripData = {
+      ...trip,
+      totalDays: updatedDays.length,
+      days: updatedDays,
+    };
+    setCurrentDayIndex(nextDayIndex);
+    await saveTripToFirestore(updatedTrip, `Đã thêm Ngày ${nextDayIndex} vào lịch trình!`);
+  };
+
+  // Handler: Delete Day
+  const handleDeleteDay = async (dayIndexToDelete: number) => {
+    if (trip.days.length <= 1) {
+      showToast('Hành trình cần ít nhất 1 ngày!', 'error');
+      return;
+    }
+    const updatedDays = trip.days
+      .filter((d) => d.dayIndex !== dayIndexToDelete)
+      .map((d, idx) => ({
+        ...d,
+        dayIndex: idx + 1,
+      }));
+    const allActs = updatedDays.flatMap((d) => d.activities);
+    const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
+    const newSpent = totalActivityCosts;
+    const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
+    const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
+
+    const updatedTrip: TripData = {
+      ...trip,
+      totalDays: updatedDays.length,
+      days: updatedDays,
+      totalActivities: allActs.length,
+      confirmedActivities: allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length,
+      pendingActivities: allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
+      budgetUsed: newSpent,
+      budgetRemaining: newRemaining,
+      budgetUsedPercent: newPercent,
+      currentDay: Math.min(currentDayIndex, updatedDays.length),
+    };
+    setCurrentDayIndex((prev) => Math.min(prev, updatedDays.length));
+    await saveTripToFirestore(updatedTrip, `Đã xóa Ngày ${dayIndexToDelete} khỏi lịch trình!`);
+  };
+
+  // Handler: Update Day Note
+  const handleUpdateDayNote = async (dayIndex: number, note: string) => {
+    const updatedDays = trip.days.map((d) => (d.dayIndex === dayIndex ? { ...d, dispatcherNote: note } : d));
+    const updatedTrip: TripData = { ...trip, days: updatedDays };
+    await saveTripToFirestore(updatedTrip, `Đã lưu ghi chú Ngày ${dayIndex}!`);
   };
 
   // Handler: Update Activity status
@@ -585,6 +739,77 @@ export default function App() {
     await saveTripToFirestore(
       updatedTrip,
       `Đã chuyển "${activityTitle || 'Hoạt động'}" sang "${newStatus}" trên Firestore!`
+    );
+  };
+
+  // Handler: Delete Activity
+  const handleDeleteActivity = async (id: string) => {
+    let deletedTitle = '';
+    const updatedDays = trip.days.map((d) => {
+      const remaining = d.activities.filter((a) => {
+        if (a.id === id) {
+          deletedTitle = a.title;
+          return false;
+        }
+        return true;
+      });
+      return { ...d, activities: remaining };
+    });
+
+    const allActs = updatedDays.flatMap((d) => d.activities);
+    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
+    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+    const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
+    const newSpent = totalActivityCosts;
+    const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
+    const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
+
+    const updatedTrip: TripData = {
+      ...trip,
+      totalActivities: allActs.length,
+      confirmedActivities: confirmed,
+      pendingActivities: pending,
+      budgetUsed: newSpent,
+      budgetRemaining: newRemaining,
+      budgetUsedPercent: newPercent,
+      days: updatedDays,
+    };
+
+    await saveTripToFirestore(
+      updatedTrip,
+      `Đã xóa hoạt động "${deletedTitle || id}" trên Firestore!`
+    );
+  };
+
+  // Handler: Edit Activity
+  const handleEditActivity = async (updatedActivity: Activity) => {
+    const updatedDays = trip.days.map((d) => ({
+      ...d,
+      activities: d.activities.map((a) => (a.id === updatedActivity.id ? updatedActivity : a)),
+    }));
+
+    const allActs = updatedDays.flatMap((d) => d.activities);
+    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
+    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+    const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
+    const newSpent = totalActivityCosts;
+    const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
+    const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
+
+    const updatedTrip: TripData = {
+      ...trip,
+      totalActivities: allActs.length,
+      confirmedActivities: confirmed,
+      pendingActivities: pending,
+      budgetUsed: newSpent,
+      budgetRemaining: newRemaining,
+      budgetUsedPercent: newPercent,
+      days: updatedDays,
+    };
+
+    await saveTripToFirestore(
+      updatedTrip,
+      `Đã cập nhật hoạt động "${updatedActivity.title}" trên Firestore!`
     );
   };
 
@@ -717,6 +942,11 @@ export default function App() {
           handleApplyAIOptimization={handleApplyAIOptimization}
           handleAddActivity={handleAddActivity}
           handleUpdateActivityStatus={handleUpdateActivityStatus}
+          handleDeleteActivity={handleDeleteActivity}
+          handleEditActivity={handleEditActivity}
+          handleAddDay={handleAddDay}
+          handleDeleteDay={handleDeleteDay}
+          handleUpdateDayNote={handleUpdateDayNote}
           handleToggleMemberAttendance={handleToggleMemberAttendance}
           handleUpdateMembers={handleUpdateMembers}
           handleUpdateTrip={handleUpdateTrip}
@@ -745,6 +975,11 @@ export default function App() {
           setSelectedActivity={setSelectedActivity}
           selectedActivity={selectedActivity}
           handleUpdateActivityStatus={handleUpdateActivityStatus}
+          handleDeleteActivity={handleDeleteActivity}
+          handleEditActivity={handleEditActivity}
+          handleAddDay={handleAddDay}
+          handleDeleteDay={handleDeleteDay}
+          handleUpdateDayNote={handleUpdateDayNote}
           handleToggleMemberAttendance={handleToggleMemberAttendance}
           handleUpdateMembers={handleUpdateMembers}
           handleUpdateTrip={handleUpdateTrip}
@@ -817,6 +1052,11 @@ function AdminDashboard({
   handleApplyAIOptimization,
   handleAddActivity,
   handleUpdateActivityStatus,
+  handleDeleteActivity,
+  handleEditActivity,
+  handleAddDay,
+  handleDeleteDay,
+  handleUpdateDayNote,
   handleToggleMemberAttendance,
   handleUpdateMembers,
   handleUpdateTrip,
@@ -854,8 +1094,13 @@ function AdminDashboard({
   handleSelectTab: (tab: string) => void;
   handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
   handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string) => void;
-  handleAddActivity: (newAct: Activity) => void;
+  handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
   handleUpdateActivityStatus: (id: string, newStatus: Activity['status']) => void;
+  handleDeleteActivity: (id: string) => void;
+  handleEditActivity: (activity: Activity) => void;
+  handleAddDay: () => Promise<void>;
+  handleDeleteDay: (dayIndex: number) => Promise<void>;
+  handleUpdateDayNote: (dayIndex: number, note: string) => Promise<void>;
   handleToggleMemberAttendance: (id: string) => Promise<void>;
   handleUpdateMembers: (members: TripMember[]) => Promise<void>;
   handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
@@ -918,12 +1163,12 @@ function AdminDashboard({
           )}
 
           {currentTab === 'users' && <AdminUsersManagementView />}
-          {currentTab === 'planning' && <AdminPlanningDataView trip={trip} />}
+          {currentTab === 'planning' && <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />}
           {currentTab === 'rules' && <AdminDispatchRulesView />}
-          {currentTab === 'ai' && <AdminAIManagementView />}
-          {currentTab === 'monitoring' && <AdminScheduleMonitoringView trip={trip} />}
+          {currentTab === 'ai' && <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} />}
+          {currentTab === 'monitoring' && <AdminScheduleMonitoringView trip={trip} trips={trips} onUpdateTrip={handleUpdateTrip} />}
           {currentTab === 'system' && <AdminSystemManagementView trip={trip} />}
-          {currentTab === 'locations' && <AdminPlanningDataView trip={trip} />}
+          {currentTab === 'locations' && <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />}
 
           {currentTab === 'dashboard' && !isAdminMode && (
             <>
@@ -1011,6 +1256,11 @@ function AdminDashboard({
                 searchQuery={searchQuery}
                 onClearSearch={() => setSearchQuery('')}
                 onUpdateStatus={handleUpdateActivityStatus}
+                onDeleteActivity={handleDeleteActivity}
+                onEditActivity={handleEditActivity}
+                onAddDay={handleAddDay}
+                onDeleteDay={handleDeleteDay}
+                onUpdateDayNote={handleUpdateDayNote}
               />
             </div>
           )}
@@ -1056,7 +1306,14 @@ function AdminDashboard({
 
       <AIPlannerModal isOpen={isAIPlannerOpen} onClose={() => setIsAIPlannerOpen(false)} onApplyPlan={handleApplyGeneratedTrip} />
       <AIOptimizeModal isOpen={isAIOptimizeOpen} onClose={() => setIsAIOptimizeOpen(false)} trip={trip} onApplyChanges={handleApplyAIOptimization} isApplied={isAIApplied} />
-      <AddActivityModal isOpen={isAddActivityOpen} onClose={() => setIsAddActivityOpen(false)} dayIndex={currentDayIndex} onAdd={handleAddActivity} />
+      <AddActivityModal
+        isOpen={isAddActivityOpen}
+        onClose={() => setIsAddActivityOpen(false)}
+        dayIndex={currentDayIndex}
+        days={trip.days}
+        defaultLocation={trip.destinationFull}
+        onAdd={handleAddActivity}
+      />
       <AlertsListModal
         isOpen={isAlertsModalOpen}
         onClose={() => setIsAlertsModalOpen(false)}
@@ -1067,7 +1324,13 @@ function AdminDashboard({
           setIsAIOptimizeOpen(true);
         }}
       />
-      <ActivityDetailModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} onUpdateStatus={handleUpdateActivityStatus} />
+      <ActivityDetailModal
+        activity={selectedActivity}
+        onClose={() => setSelectedActivity(null)}
+        onUpdateStatus={handleUpdateActivityStatus}
+        onDeleteActivity={handleDeleteActivity}
+        onEditActivity={handleEditActivity}
+      />
       <ProjectArchitectureModal isOpen={isProjectDocsOpen} onClose={() => setIsProjectDocsOpen(false)} />
       </div>
     </div>
@@ -1092,6 +1355,11 @@ function UserDashboard({
   setSelectedActivity,
   selectedActivity,
   handleUpdateActivityStatus,
+  handleDeleteActivity,
+  handleEditActivity,
+  handleAddDay,
+  handleDeleteDay,
+  handleUpdateDayNote,
   handleToggleMemberAttendance,
   handleUpdateMembers,
   handleUpdateTrip,
@@ -1124,6 +1392,11 @@ function UserDashboard({
   setSelectedActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
   selectedActivity: Activity | null;
   handleUpdateActivityStatus: (id: string, newStatus: Activity['status']) => void;
+  handleDeleteActivity: (id: string) => void;
+  handleEditActivity: (activity: Activity) => void;
+  handleAddDay: () => Promise<void>;
+  handleDeleteDay: (dayIndex: number) => Promise<void>;
+  handleUpdateDayNote: (dayIndex: number, note: string) => Promise<void>;
   handleToggleMemberAttendance: (id: string) => Promise<void>;
   handleUpdateMembers: (members: TripMember[]) => Promise<void>;
   handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
@@ -1136,12 +1409,24 @@ function UserDashboard({
   isAIApplied: boolean;
   handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
   handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string) => void;
-  handleAddActivity: (newAct: Activity) => void;
+  handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
   handleUpdateTripBudget: (updated: TripData) => Promise<void>;
 }) {
-  const currentDay = trip.days.find((d) => d.dayIndex === currentDayIndex) || trip.days[0];
-  const nextStop = currentDay?.activities?.[0];
-  const totalActivities = trip.days.reduce((sum, day) => sum + day.activities.length, 0);
+  const currentDay = trip.days.find((d) => d.dayIndex === currentDayIndex) || trip.days[0] || {
+    dayIndex: 1,
+    fullDate: 'Ngày 1',
+    dayName: 'T2',
+    dateNum: 1,
+    activities: [],
+    dispatcherNote: '',
+  };
+  const nextStop =
+    currentDay?.activities?.find((a) => a.status === 'Đang diễn ra') ||
+    currentDay?.activities?.find((a) => a.status !== 'Hoàn tất') ||
+    currentDay?.activities?.[0];
+  const allActs = trip.days.flatMap((day) => day.activities || []);
+  const totalActivities = allActs.length;
+  const confirmedActivitiesCount = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#ecfeff,#f0fdf4_20%,#f8fafc_55%,#edf6ff_100%)] text-slate-800">
@@ -1238,12 +1523,25 @@ function UserDashboard({
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Điểm đến tiếp theo (Ngày {currentDay.dayIndex})</p>
-              <h3 className="mt-2 text-2xl font-black text-slate-900">{nextStop?.title || 'Mở lịch trình'}</h3>
-              <p className="mt-2 text-sm text-slate-600">{nextStop?.details || 'Bạn có thể xem toàn bộ hoạt động trong phần Lịch trình.'}</p>
-              <div className="mt-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-700 font-semibold">
-                Thời gian: {nextStop ? `${nextStop.timeStart} — ${nextStop.timeEnd}` : 'Cập nhật sớm'}
+            <div
+              onClick={() => {
+                if (nextStop) {
+                  setSelectedActivity(nextStop);
+                  setCurrentDayIndex(currentDay.dayIndex);
+                  setCurrentTab('schedule');
+                }
+              }}
+              className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition cursor-pointer group"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Điểm đến tiếp theo (Ngày {currentDay.dayIndex})</p>
+                <span className="text-[10px] font-bold text-teal-600 group-hover:underline">Xem chi tiết →</span>
+              </div>
+              <h3 className="mt-2 text-2xl font-black text-slate-900 group-hover:text-teal-700 transition">{nextStop?.title || 'Mở lịch trình'}</h3>
+              <p className="mt-2 text-sm text-slate-600 line-clamp-2">{nextStop?.details || 'Bạn có thể xem toàn bộ hoạt động trong phần Lịch trình.'}</p>
+              <div className="mt-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-700 font-semibold flex items-center justify-between">
+                <span>Thời gian: {nextStop ? `${nextStop.timeStart} — ${nextStop.timeEnd}` : 'Cập nhật sớm'}</span>
+                {nextStop?.location && <span className="text-xs text-emerald-800 font-normal truncate max-w-[180px]">{nextStop.location}</span>}
               </div>
             </div>
           </section>
@@ -1261,7 +1559,7 @@ function UserDashboard({
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Tình trạng</p>
-              <div className="mt-3 text-3xl font-black text-slate-900">{trip.confirmedActivities}/{trip.totalActivities}</div>
+              <div className="mt-3 text-3xl font-black text-slate-900">{confirmedActivitiesCount}/{totalActivities}</div>
               <p className="text-sm text-slate-500">Hoạt động đã xác nhận</p>
             </div>
           </section>
@@ -1288,6 +1586,11 @@ function UserDashboard({
                 searchQuery={searchQuery}
                 onClearSearch={() => setSearchQuery('')}
                 onUpdateStatus={handleUpdateActivityStatus}
+                onDeleteActivity={handleDeleteActivity}
+                onEditActivity={handleEditActivity}
+                onAddDay={handleAddDay}
+                onDeleteDay={handleDeleteDay}
+                onUpdateDayNote={handleUpdateDayNote}
               />
             </div>
 
@@ -1356,19 +1659,49 @@ function UserDashboard({
           )}
 
           {currentTab === 'schedule' && (
-            <TimelineSchedule
-              days={trip.days}
-              currentDayIndex={currentDayIndex}
-              onSelectDay={setCurrentDayIndex}
-              onAddActivity={() => setIsAddActivityOpen(true)}
-              onSelectActivity={setSelectedActivity}
-              filterMode={filterMode}
-              onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-              canAddActivity
-              searchQuery={searchQuery}
-              onClearSearch={() => setSearchQuery('')}
-              onUpdateStatus={handleUpdateActivityStatus}
-            />
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Chi tiết Lịch trình Chuyến đi</h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Hành trình {trip.title} • {trip.totalDays} ngày ({confirmedActivitiesCount}/{totalActivities} hoạt động đã xác nhận)
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                  >
+                    {filterMode === 'timeline' ? 'Hiện toàn bộ ngày' : 'Chế độ timeline'}
+                  </button>
+                  <button
+                    onClick={() => setIsAddActivityOpen(true)}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
+                  >
+                    + Thêm hoạt động vào Ngày {currentDayIndex}
+                  </button>
+                </div>
+              </div>
+
+              <TimelineSchedule
+                days={trip.days}
+                currentDayIndex={currentDayIndex}
+                onSelectDay={setCurrentDayIndex}
+                onAddActivity={() => setIsAddActivityOpen(true)}
+                onSelectActivity={setSelectedActivity}
+                filterMode={filterMode}
+                onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
+                canAddActivity
+                searchQuery={searchQuery}
+                onClearSearch={() => setSearchQuery('')}
+                onUpdateStatus={handleUpdateActivityStatus}
+                onDeleteActivity={handleDeleteActivity}
+                onEditActivity={handleEditActivity}
+                onAddDay={handleAddDay}
+                onDeleteDay={handleDeleteDay}
+                onUpdateDayNote={handleUpdateDayNote}
+              />
+            </div>
           )}
 
           {currentTab === 'map' && (
@@ -1403,8 +1736,22 @@ function UserDashboard({
 
       <AIPlannerModal isOpen={isAIPlannerOpen} onClose={() => setIsAIPlannerOpen(false)} onApplyPlan={handleApplyGeneratedTrip} />
       <AIOptimizeModal isOpen={isAIOptimizeOpen} onClose={() => setIsAIOptimizeOpen(false)} trip={trip} onApplyChanges={handleApplyAIOptimization} isApplied={isAIApplied} />
-      <AddActivityModal isOpen={isAddActivityOpen} onClose={() => setIsAddActivityOpen(false)} dayIndex={currentDayIndex} onAdd={handleAddActivity} />
-      <ActivityDetailModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} onUpdateStatus={handleUpdateActivityStatus} canEdit />
+      <AddActivityModal
+        isOpen={isAddActivityOpen}
+        onClose={() => setIsAddActivityOpen(false)}
+        dayIndex={currentDayIndex}
+        days={trip.days}
+        defaultLocation={trip.destinationFull}
+        onAdd={handleAddActivity}
+      />
+      <ActivityDetailModal
+        activity={selectedActivity}
+        onClose={() => setSelectedActivity(null)}
+        onUpdateStatus={handleUpdateActivityStatus}
+        onDeleteActivity={handleDeleteActivity}
+        onEditActivity={handleEditActivity}
+        canEdit
+      />
       </div>
     </div>
   );

@@ -27,7 +27,11 @@ const app = firebaseAuthConfigured
     : initializeApp(environmentConfig)
   : null;
 
-export const db: Firestore | null = app ? getFirestore(app, environmentConfig.firestoreDatabaseId) : null;
+export const db: Firestore | null = app
+  ? (!environmentConfig.firestoreDatabaseId || environmentConfig.firestoreDatabaseId === '(default)'
+      ? getFirestore(app)
+      : getFirestore(app, environmentConfig.firestoreDatabaseId))
+  : null;
 export const auth: Auth | null = app ? getAuth(app) : null;
 export const firebaseAuth = auth;
 

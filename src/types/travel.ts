@@ -37,6 +37,12 @@ export interface Waypoint {
   yPercent: number;
   arrivalTime?: string;
   departureTime?: string;
+  category?: 'nature' | 'food' | 'entertainment' | 'culture' | 'stay' | string;
+  categoryLabel?: string;
+  openHours?: string;
+  ticketPrice?: string;
+  description?: string;
+  isHidden?: boolean;
 }
 
 export interface OperationalAlert {
