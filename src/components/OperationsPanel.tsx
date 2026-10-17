@@ -112,50 +112,41 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
           </div>
 
           <p className="text-xs text-slate-400 font-medium mb-3">
-            {isAIApplied ? 'Lịch trình đã được tối ưu hoàn tất' : '2 đề xuất ưu tiên'}
+            {isAIApplied
+              ? 'Lịch trình đã được tối ưu hoàn tất'
+              : `${trip.aiSuggestions?.length || 0} đề xuất ưu tiên`}
           </p>
 
           {/* AI Suggestions List */}
           <div className="space-y-2.5">
-            {/* Suggestion 1 */}
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-teal-900/40 text-teal-400 flex items-center justify-center shrink-0">
-                    <Shuffle className="w-3.5 h-3.5" />
+            {trip.aiSuggestions && trip.aiSuggestions.length > 0 ? (
+              trip.aiSuggestions.map((sug, idx) => (
+                <div key={sug.id || idx} className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-teal-900/40 text-teal-400 flex items-center justify-center shrink-0">
+                        {idx % 2 === 0 ? <Shuffle className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                      </div>
+                      <span className="text-xs font-bold text-slate-200">
+                        {sug.title}
+                      </span>
+                    </div>
+                    {sug.badge && (
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-teal-900/50 text-teal-300 border border-teal-700/50 shrink-0">
+                        {sug.badge}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-xs font-bold text-slate-200">
-                    Đảo thứ tự Lăng Cô – Đại Nội
-                  </span>
+                  <p className="text-[11px] text-slate-400 mt-1 pl-8">
+                    {sug.description}
+                  </p>
                 </div>
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-teal-900/50 text-teal-300 border border-teal-700/50 shrink-0">
-                  -36’
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1 pl-8">
-                Tránh vùng mưa, giảm 36 phút di chuyển.
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 italic py-2">
+                Không có đề xuất khẩn cấp nào cho chặng hiện tại.
               </p>
-            </div>
-
-            {/* Suggestion 2 */}
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-emerald-900/40 text-emerald-400 flex items-center justify-center shrink-0">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-200">
-                    Khởi hành sớm 20 phút
-                  </span>
-                </div>
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-900/50 text-emerald-300 border border-emerald-700/50 shrink-0">
-                  +92%
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1 pl-8">
-                Dự phòng ùn tắc QL1A, đúng giờ nhận phòng.
-              </p>
-            </div>
+            )}
           </div>
         </div>
 

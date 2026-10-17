@@ -112,7 +112,15 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
         }),
       });
       const result = await safeJsonResponse(response);
-      if (!response.ok || !result.success || !result.jobId) {
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Không thể tối ưu lịch trình bằng Gemini');
+      }
+      if (result.cached && Array.isArray(result.data?.recommendations)) {
+        setRecommendations(result.data.recommendations);
+        setIsLoading(false);
+        return;
+      }
+      if (!result.jobId) {
         throw new Error(result.error || 'Không thể tối ưu lịch trình bằng Gemini');
       }
       await pollJob(result.jobId);
@@ -148,7 +156,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                   Phương án Tối ưu Điều phối Gemini AI
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-900/60 text-teal-300 border border-teal-700/60">
-                  94% Tin cậy
+                  {trip.aiConfidence || '94%'} Tin cậy
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
@@ -173,10 +181,19 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
               <AlertTriangle className="w-4 h-4 text-amber-600" />
               <span>Phân tích rủi ro vận hành thời gian thực:</span>
             </div>
-            <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
-              <li>Mưa giông cường độ lớn tại đèo Hải Vân - Lăng Cô từ 15:00 - 17:00 (Xác suất 75%).</li>
-              <li>Giờ nhận phòng dự kiến tại Lăng Cô Bay Retreat (14:00) trùng thời gian đoàn đang di chuyển.</li>
-            </ul>
+            {trip.alerts && trip.alerts.length > 0 ? (
+              <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
+                {trip.alerts.map((alert) => (
+                  <li key={alert.id}>
+                    <strong>{alert.title}</strong>: {alert.description}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-amber-800">
+                Tuyến đường hiện tại đang thuận lợi. Gemini AI sẽ phân tích tối ưu thời gian di chuyển, tối thiểu hóa chi phí phát sinh và đảm bảo an toàn cho hành khách.
+              </p>
+            )}
           </div>
 
           {/* AI Solution Comparison */}

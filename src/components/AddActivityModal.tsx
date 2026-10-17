@@ -6,23 +6,38 @@ interface AddActivityModalProps {
   isOpen: boolean;
   onClose: () => void;
   dayIndex: number;
-  onAdd: (activity: Activity) => void;
+  days?: { dayIndex: number; dayName?: string; dateNum?: number; fullDate?: string }[];
+  defaultLocation?: string;
+  onAdd: (activity: Activity, targetDayIndex?: number) => void;
 }
 
 export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   isOpen,
   onClose,
   dayIndex,
+  days,
+  defaultLocation = '',
   onAdd,
 }) => {
+  const [selectedDay, setSelectedDay] = useState<number>(dayIndex);
   const [title, setTitle] = useState('');
-  const [timeStart, setTimeStart] = useState('10:00');
-  const [timeEnd, setTimeEnd] = useState('11:30');
-  const [location, setLocation] = useState('');
+  const [timeStart, setTimeStart] = useState('09:00');
+  const [timeEnd, setTimeEnd] = useState('11:00');
+  const [location, setLocation] = useState(defaultLocation);
   const [type, setType] = useState<Activity['type']>('sightseeing');
   const [status, setStatus] = useState<Activity['status']>('Đã xác nhận');
   const [details, setDetails] = useState('');
-  const [cost, setCost] = useState<number>(500000);
+  const [cost, setCost] = useState<number>(0);
+
+  React.useEffect(() => {
+    setSelectedDay(dayIndex);
+  }, [dayIndex, isOpen]);
+
+  React.useEffect(() => {
+    if (defaultLocation && !location) {
+      setLocation(defaultLocation);
+    }
+  }, [defaultLocation, isOpen]);
 
   if (!isOpen) return null;
 
@@ -35,14 +50,14 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
       title: title.trim(),
       timeStart,
       timeEnd,
-      location: location || 'Đà Nẵng',
+      location: location.trim() || defaultLocation || 'Điểm tham quan',
       type,
       status,
-      details: details || 'Đã thêm bởi điều phối viên',
+      details: details.trim() || 'Hoạt động được lập theo lịch trình',
       cost: Number(cost) || 0,
     };
 
-    onAdd(newActivity);
+    onAdd(newActivity, selectedDay);
     onClose();
   };
 
@@ -52,7 +67,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
         <div className="px-6 py-4 bg-teal-600 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Plus className="w-5 h-5" />
-            <h3 className="text-sm font-extrabold">Thêm hoạt động cho Ngày {dayIndex}</h3>
+            <h3 className="text-sm font-extrabold">Thêm hoạt động cho Ngày {selectedDay}</h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 transition">
             <X className="w-4 h-4" />
@@ -60,6 +75,23 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {days && days.length > 1 && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Chọn ngày trong hành trình</label>
+              <select
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none bg-white font-semibold text-slate-800"
+              >
+                {days.map((d) => (
+                  <option key={d.dayIndex} value={d.dayIndex}>
+                    Ngày {d.dayIndex} ({d.dayName ? `${d.dayName} ${d.dateNum || ''}`.trim() : d.fullDate || `Chặng ${d.dayIndex}`})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Tên hoạt động</label>
             <input
@@ -67,7 +99,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="VD: Dùng bữa trưa hải sản tại Lăng Cô"
+              placeholder="VD: Dùng bữa trưa hải sản, tham quan di tích"
               className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none"
             />
           </div>

@@ -87,7 +87,15 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
         }),
       });
       const result = await safeJsonResponse(response);
-      if (!response.ok || !result.success || !result.jobId) {
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Không thể tạo lịch trình');
+      }
+      if (result.cached && result.data) {
+        setGeneratedPlan(result.data);
+        setIsLoading(false);
+        return;
+      }
+      if (!result.jobId) {
         throw new Error(result.error || 'Không thể tạo lịch trình');
       }
       await pollJob(result.jobId);
@@ -181,17 +189,27 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
         { id: 'm4', name: 'Quốc Khánh', avatar: 'QK', role: 'Khách du lịch', phone: '0977 111 222', status: 'online' },
       ],
       days: (generatedPlan.days && generatedPlan.days.length > 0)
-        ? generatedPlan.days.map((d: any, idx: number) => ({
-            dayIndex: idx + 1,
-            dateLabel: `T${idx + 2} ${12 + idx}`,
-            dayName: `T${idx + 2}`,
-            dateNum: 12 + idx,
-            fullDate: d.fullDate || `Ngày ${idx + 1}`,
-            confirmedCount: 3,
-            pendingCount: 0,
-            dispatcherNote: d.summary || 'Theo dõi hành trình',
-            activities: d.activities || [],
-          }))
+        ? generatedPlan.days.map((d: any, idx: number) => {
+            const dayNamesCycle = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+            const calculatedDayName = dayNamesCycle[idx % 7];
+            const dayName = d.dayName || calculatedDayName;
+            const dateNum = d.dateNum || idx + 1;
+            const activities = Array.isArray(d.activities) ? d.activities : [];
+            const confirmedCount = activities.filter((a: any) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length;
+            const pendingCount = activities.filter((a: any) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+
+            return {
+              dayIndex: idx + 1,
+              dateLabel: d.dateLabel || `${dayName} ${dateNum}`,
+              dayName,
+              dateNum,
+              fullDate: d.fullDate || `Ngày ${idx + 1}`,
+              confirmedCount,
+              pendingCount,
+              dispatcherNote: d.summary || 'Theo dõi hành trình',
+              activities,
+            };
+          })
         : [
             {
               dayIndex: 1,
