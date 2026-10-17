@@ -83,18 +83,41 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
     }
   };
 
-  const performMockLogin = () => {
-    const normalizedEmail = email.trim() || 'admin@voyager.vn';
+  const performMockLogin = (overrideEmail?: string, overrideRole?: AppRole, overrideName?: string) => {
+    const normalizedEmail = (overrideEmail || email).trim() || 'admin@voyager.vn';
     const role: AppRole =
-      normalizedEmail === 'luquoctuan2006@gmail.com' ||
-      normalizedEmail.toLowerCase().includes('admin')
+      overrideRole ||
+      (normalizedEmail === 'luquoctuan2006@gmail.com' ||
+      normalizedEmail.toLowerCase().includes('admin') ||
+      normalizedEmail.toLowerCase().startsWith('admin@')
         ? 'admin'
-        : 'user';
-    const uid = `mock-${role}`;
+        : 'user');
+    const uid = `mock-${role}-${Date.now().toString().slice(-4)}`;
     const displayName =
+      overrideName ||
       name.trim() ||
-      (role === 'admin' ? 'Điều phối viên Admin' : normalizedEmail.split('@')[0] || 'Người dùng');
-    setMockAuthToken(`mock-token:${uid}:${role}:${normalizedEmail}`);
+      (role === 'admin' ? 'Điều phối viên Admin' : normalizedEmail.split('@')[0] || 'Khách du lịch');
+    
+    const token = `mock-token:${uid}:${role}:${normalizedEmail}`;
+    setMockAuthToken(token);
+
+    // Lưu vào database users phía server
+    try {
+      void fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: displayName,
+          email: normalizedEmail,
+          phone: '0905 123 789',
+          role: role === 'admin' ? 'Admin' : 'Khách du lịch',
+        }),
+      }).catch(() => {});
+    } catch {}
+
     onMockLogin({
       id: uid,
       name: displayName,
@@ -127,30 +150,44 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
       }
     } catch (error) {
       const code = (error as { code?: string }).code;
+      const cleanEmail = email.trim().toLowerCase();
+      const isVoyagerOrDemo =
+        cleanEmail.endsWith('@voyager.vn') ||
+        cleanEmail.includes('admin') ||
+        cleanEmail.includes('demo') ||
+        cleanEmail.includes('test');
+
       if (
         code === 'auth/operation-not-allowed' ||
         code === 'auth/admin-restricted-operation' ||
         code === 'auth/unauthorized-domain' ||
-        (email.trim().toLowerCase().endsWith('@voyager.vn') && code === 'auth/invalid-credential')
+        code === 'auth/network-request-failed' ||
+        (isVoyagerOrDemo &&
+          (code === 'auth/invalid-credential' ||
+            code === 'auth/user-not-found' ||
+            code === 'auth/wrong-password'))
       ) {
         performMockLogin();
         return;
       }
+
       const messages: Record<string, string> = {
         'auth/invalid-credential': 'Email hoặc mật khẩu không đúng.',
-        'auth/email-already-in-use': 'Email này đã được đăng ký.',
+        'auth/user-not-found': 'Tài khoản chưa tồn tại. Vui lòng đăng ký mới.',
+        'auth/wrong-password': 'Mật khẩu không chính xác.',
+        'auth/email-already-in-use': 'Email này đã được đăng ký trong hệ thống.',
         'auth/weak-password': 'Mật khẩu phải có ít nhất 6 ký tự.',
-        'auth/invalid-email': 'Email không hợp lệ.',
-        'auth/too-many-requests': 'Có quá nhiều lần thử. Vui lòng thử lại sau.',
-        'auth/operation-not-allowed': 'Firebase chưa bật phương thức Email/Password. Hãy sử dụng Đăng nhập bằng Google bên trên hoặc bật trong Firebase Console.',
-        'auth/admin-restricted-operation': 'Firebase đang chặn đăng ký Email/Password. Hãy kiểm tra Authentication settings trong Firebase Console.',
-        'auth/unauthorized-domain': 'Tên miền hiện tại chưa được cho phép trong Firebase Authentication > Settings > Authorized domains.',
-        'auth/network-request-failed': 'Không kết nối được Firebase. Hãy kiểm tra mạng và thử lại.',
+        'auth/invalid-email': 'Định dạng email không hợp lệ.',
+        'auth/too-many-requests': 'Có quá nhiều lần thử. Vui lòng thử lại sau giây lát.',
+        'auth/operation-not-allowed': 'Firebase chưa bật Email/Password. Hệ thống sẽ tự động dùng chế độ Demo.',
+        'auth/admin-restricted-operation': 'Firebase đang chặn đăng ký. Hệ thống chuyển sang Demo.',
+        'auth/unauthorized-domain': 'Tên miền chưa được xác thực trong Firebase Console.',
+        'auth/network-request-failed': 'Mạng yếu hoặc không kết nối được Firebase. Vui lòng thử lại.',
         'auth/invalid-api-key': 'Firebase API key không hợp lệ.',
         'auth/app-not-authorized': 'Ứng dụng chưa được cấp quyền cho Firebase project này.',
       };
       console.error('Firebase authentication failed:', code || error);
-      setMessage(messages[code || ''] || `Firebase trả về lỗi${code ? ` (${code})` : ''}. Vui lòng thử đăng nhập bằng Google.`);
+      setMessage(messages[code || ''] || `Lỗi xác thực: ${code || 'Vui lòng kiểm tra lại'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -166,6 +203,7 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
           <h1 className="text-2xl font-black text-white">Voyager Travel Ops</h1>
           <p className="mt-2 text-sm text-slate-400">{mode === 'login' ? 'Đăng nhập vào hệ thống' : 'Tạo tài khoản mới'}</p>
         </div>
+
 
         {firebaseAuth && (
           <button
@@ -184,25 +222,34 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
           </button>
         )}
 
-        {firebaseAuth && (
-          <div className="relative mb-4 text-center">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700" /></div>
-            <span className="relative bg-slate-900 px-3 text-xs uppercase tracking-wider text-slate-400">hoặc bằng email</span>
-          </div>
-        )}
+        <div className="relative mb-4 text-center">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700" /></div>
+          <span className="relative bg-slate-900 px-3 text-xs uppercase tracking-wider text-slate-400">hoặc tài khoản email</span>
+        </div>
 
         <div className="mb-5 grid grid-cols-2 rounded-xl bg-slate-800 p-1">
           <button
             type="button"
-            onClick={() => setMode('login')}
-            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'login' ? 'bg-teal-600 text-white' : 'text-slate-300'}`}
+            onClick={() => {
+              setMode('login');
+              setEmail('admin@voyager.vn');
+              setPassword('123456');
+              setMessage('');
+            }}
+            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'login' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
           >
             Đăng nhập
           </button>
           <button
             type="button"
-            onClick={() => setMode('register')}
-            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'register' ? 'bg-teal-600 text-white' : 'text-slate-300'}`}
+            onClick={() => {
+              setMode('register');
+              setName('');
+              setEmail('');
+              setPassword('');
+              setMessage('');
+            }}
+            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'register' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
           >
             Đăng ký
           </button>
@@ -216,6 +263,7 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
+                required
                 className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
                 placeholder="Nguyễn Văn A"
               />
@@ -231,8 +279,13 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
               autoComplete="email"
               required
               className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-              placeholder="admin@voyager.vn"
+              placeholder={mode === 'register' ? 'vidu@voyager.vn hoặc email của bạn' : 'admin@voyager.vn'}
             />
+            {mode === 'register' && (
+              <p className="mt-1 text-[11px] text-slate-400">
+                * Mẹo: Email có đuôi <code className="text-teal-400 font-mono">@voyager.vn</code> hoặc chứa <code className="text-teal-400 font-mono">admin</code> sẽ nhận quyền <strong>Admin</strong>. Email khác nhận quyền <strong>User</strong>.
+              </p>
+            )}
           </div>
 
           <div>
@@ -249,14 +302,21 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
             />
           </div>
 
-          {message && <p className="text-sm text-amber-300">{message}</p>}
+          {message && (
+            <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-2.5 text-xs text-amber-300 flex items-start gap-2">
+              <span>⚠️</span>
+              <span>{message}</span>
+            </div>
+          )}
 
-          <button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50">
-            {isSubmitting ? 'Đang xác thực...' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-teal-900/30 active:scale-98"
+          >
+            {isSubmitting ? 'Đang xác thực...' : mode === 'login' ? 'Đăng nhập vào hệ thống' : 'Tạo tài khoản & Đăng nhập'}
           </button>
         </form>
-
-        {!firebaseAuthConfigured && <p className="mt-4 text-xs text-slate-400">Chế độ bộ nhớ tạm (In-memory Demo): Nhập email có chữ &quot;admin&quot; để vào quyền Admin, hoặc email khác để vào quyền User.</p>}
       </div>
     </div>
   );
@@ -920,9 +980,17 @@ export default function App() {
           firebaseStatus={firebaseStatus}
           isAIApplied={isAIApplied}
           authUser={authUser}
-          onLogout={() => {
-            if (firebaseAuth) void signOut(firebaseAuth);
-            else setAuthUser(null);
+          onLogout={async () => {
+            try {
+              if (firebaseAuth && firebaseAuth.currentUser) {
+                await signOut(firebaseAuth);
+              }
+            } catch (err) {
+              console.warn('SignOut error:', err);
+            } finally {
+              setMockAuthToken('mock-token:mock-guest:user:guest@voyager.vn');
+              setAuthUser(null);
+            }
           }}
           isAdminMode={isAdminMode}
           isAIPlannerOpen={isAIPlannerOpen}
@@ -967,9 +1035,17 @@ export default function App() {
           setSearchQuery={setSearchQuery}
           firebaseStatus={firebaseStatus}
           authUser={authUser}
-          onLogout={() => {
-            if (firebaseAuth) void signOut(firebaseAuth);
-            else setAuthUser(null);
+          onLogout={async () => {
+            try {
+              if (firebaseAuth && firebaseAuth.currentUser) {
+                await signOut(firebaseAuth);
+              }
+            } catch (err) {
+              console.warn('SignOut error:', err);
+            } finally {
+              setMockAuthToken('mock-token:mock-guest:user:guest@voyager.vn');
+              setAuthUser(null);
+            }
           }}
           setCurrentTab={setCurrentTab}
           setSelectedActivity={setSelectedActivity}

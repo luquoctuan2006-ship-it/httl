@@ -10,7 +10,8 @@ import {
   Sparkles,
   ShieldAlert,
   Settings,
-  MoreVertical
+  MoreVertical,
+  LogOut,
 } from 'lucide-react';
 
 type AppRole = 'user' | 'admin';
@@ -129,29 +130,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* User Dispatcher Profile */}
       <div className="p-3 border-t border-slate-800/80 bg-slate-900/40">
-        <div className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-800/60 transition cursor-pointer">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-9 h-9 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center font-bold text-xs text-white">
-                ML
+        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/40 border border-slate-700/50 transition">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="relative shrink-0">
+              <div className="w-9 h-9 rounded-full bg-teal-700 border border-teal-500/50 flex items-center justify-center font-bold text-xs text-white uppercase shadow">
+                {userName.split(' ').map((n) => n[0]).filter(Boolean).slice(-2).join('') || 'U'}
               </div>
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-[#0B1320] rounded-full"></span>
             </div>
-            <div>
-              <div className="text-sm font-bold text-white leading-tight">{userName}</div>
+            <div className="truncate">
+              <div className="text-sm font-bold text-white leading-tight truncate" title={userName}>{userName}</div>
               <div className="text-xs text-emerald-400 font-medium flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-                {userRole === 'admin' ? 'Điều phối viên' : 'User portal'}
+                {userRole === 'admin' ? 'Điều phối viên (Admin)' : 'Khách du lịch (User)'}
               </div>
             </div>
           </div>
           <button
             onClick={onLogout}
-            className="text-slate-400 hover:text-white p-1 rounded-lg"
-            aria-label="Đăng xuất"
-            title="Đăng xuất"
+            className="text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 p-2 rounded-lg transition shrink-0 ml-1"
+            aria-label="Đăng xuất khỏi hệ thống"
+            title="Đăng xuất khỏi hệ thống"
           >
-            <MoreVertical className="w-4 h-4" />
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>

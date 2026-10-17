@@ -42,6 +42,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../types/travel';
+import { authenticatedFetch } from '../api';
 
 // ============================================================================
 // 1. DASHBOARD / THỐNG KÊ TỔNG QUAN
@@ -75,7 +76,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
   // Load stats from server if available
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/admin/config')
+    authenticatedFetch('/api/admin/config')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.config?.aiModel && isMounted) {
@@ -84,7 +85,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
       })
       .catch(() => {});
 
-    fetch('/api/admin/users')
+    authenticatedFetch('/api/admin/users')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.users && isMounted) {
@@ -95,7 +96,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
       })
       .catch(() => {});
 
-    fetch('/api/admin/ai-logs')
+    authenticatedFetch('/api/admin/ai-logs')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.requests && isMounted) {
@@ -565,7 +566,7 @@ export const AdminUsersManagementView: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/admin/users');
+      const res = await authenticatedFetch('/api/admin/users');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.users) && data.users.length > 0) {
@@ -607,7 +608,7 @@ export const AdminUsersManagementView: React.FC = () => {
     setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, isLocked: nextLocked } : u)));
 
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await authenticatedFetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isLocked: nextLocked }),
@@ -629,7 +630,7 @@ export const AdminUsersManagementView: React.FC = () => {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
 
     try {
-      await fetch(`/api/admin/users/${userId}`, {
+      await authenticatedFetch(`/api/admin/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
@@ -647,7 +648,7 @@ export const AdminUsersManagementView: React.FC = () => {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
 
     try {
-      await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      await authenticatedFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
       showToast(`Đã xóa tài khoản "${name}" thành công`);
     } catch {
       showToast(`Đã xóa tài khoản "${name}" (cục bộ)`);
@@ -670,7 +671,7 @@ export const AdminUsersManagementView: React.FC = () => {
     };
 
     try {
-      const res = await fetch('/api/admin/users', {
+      const res = await authenticatedFetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1872,7 +1873,7 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
   // Nạp cấu hình từ server
   const fetchAIConfig = async () => {
     try {
-      const res = await fetch('/api/admin/config');
+      const res = await authenticatedFetch('/api/admin/config');
       if (res.ok) {
         const data = await res.json();
         if (data.config) {
@@ -1887,7 +1888,7 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
     }
 
     try {
-      const resLogs = await fetch('/api/admin/ai-logs');
+      const resLogs = await authenticatedFetch('/api/admin/ai-logs');
       if (resLogs.ok) {
         const dataLogs = await resLogs.json();
         if (Array.isArray(dataLogs.requests) && dataLogs.requests.length > 0) {
@@ -1908,7 +1909,7 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
   const handleSaveConfig = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch('/api/admin/config', {
+      const res = await authenticatedFetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1935,7 +1936,7 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
     setIsTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/admin/test-ai', {
+      const res = await authenticatedFetch('/api/admin/test-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -2581,7 +2582,7 @@ export const AdminDispatchRulesView: React.FC = () => {
 
   // Nạp từ server
   useEffect(() => {
-    fetch('/api/admin/config')
+    authenticatedFetch('/api/admin/config')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.config?.rules) {
@@ -2604,7 +2605,7 @@ export const AdminDispatchRulesView: React.FC = () => {
 
   const handleSaveRules = async () => {
     try {
-      await fetch('/api/admin/config', {
+      await authenticatedFetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2843,7 +2844,7 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('/api/admin/audit-logs');
+      const res = await authenticatedFetch('/api/admin/audit-logs');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.logs) && data.logs.length > 0) {
@@ -2853,7 +2854,7 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
     } catch {}
 
     try {
-      const resCfg = await fetch('/api/admin/config');
+      const resCfg = await authenticatedFetch('/api/admin/config');
       if (resCfg.ok) {
         const dataCfg = await resCfg.json();
         if (dataCfg.config) {
@@ -2871,7 +2872,7 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
 
   const handleSaveSystemConfig = async () => {
     try {
-      await fetch('/api/admin/config', {
+      await authenticatedFetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
