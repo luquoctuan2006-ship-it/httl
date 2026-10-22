@@ -134,6 +134,7 @@ export interface TripData {
     licensePlate?: string; // "43B-028.99"
     driver: string; // "Trần Bình"
     driverPhone?: string; // "0905 123 456"
+    driverMemberId?: string; // id thành viên (vai trò "Tài xế") đang phụ trách xe
     passengerCount: number; // 18
     speedKmH?: number; // 54
     gpsStatus: string; // "GPS ổn định"

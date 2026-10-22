@@ -285,7 +285,8 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
 
 function hasMojibake(value: unknown): boolean {
   if (typeof value === 'string') {
-    return /�|Ã|Â|Ð|ð|Ñ|Õ|\?\s|\?\w/.test(value) || value.includes('??');
+    // Chỉ bắt lỗi mã hóa thật (UTF-8 bị đọc thành Latin-1); không báo nhầm chữ Â, Ã, Õ hay dấu "?" hợp lệ
+    return /�|Ã[\u0080-\u00BF]|Â[\u00A0-\u00BF]|á[»º]/.test(value);
   }
 
   if (Array.isArray(value)) {
@@ -835,25 +836,45 @@ export default function App() {
   };
 
   // Handler: Toggle Member Attendance
+  // Chỉ cập nhật đúng 1 thành viên qua PATCH (không ghi đè cả chuyến đi); lỗi mới dùng lưu toàn bộ làm dự phòng.
   const handleToggleMemberAttendance = async (id: string) => {
     const member = trip.members.find((item) => item.id === id);
     if (!member) return;
 
     const attendanceStatus: TripMember['attendanceStatus'] = member.attendanceStatus === 'Có mặt' ? 'Vắng mặt' : 'Có mặt';
-    const updatedMembers = trip.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
-    const presentCount = updatedMembers.filter((item) => item.attendanceStatus === 'Có mặt').length;
-    const membersStatus = `${presentCount}/${updatedMembers.length} đã điểm danh`;
+    const tripId = trip.id;
 
-    const updatedTrip = {
-      ...trip,
-      members: updatedMembers,
-      membersStatus,
-    };
+    try {
+      const response = await authenticatedFetch(
+        `/api/trips/${encodeURIComponent(tripId)}/members/${encodeURIComponent(id)}/attendance`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attendanceStatus }),
+        },
+      );
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Không thể lưu điểm danh');
+      }
 
-    await saveTripToFirestore(
-      updatedTrip,
-      `Đã lưu điểm danh: ${member.name} (${attendanceStatus}) trên Firestore!`
-    );
+      // Cập nhật theo state mới nhất để không làm mất các thay đổi khác
+      setTrip((prev) => {
+        if (prev.id !== tripId) return prev;
+        const members = prev.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
+        const presentCount = members.filter((item) => item.attendanceStatus === 'Có mặt').length;
+        return { ...prev, members, membersStatus: `${presentCount}/${members.length} đã điểm danh` };
+      });
+      showToast(`Đã lưu điểm danh: ${member.name} (${attendanceStatus})`, 'success');
+    } catch (error) {
+      console.warn('PATCH điểm danh thất bại, chuyển sang lưu toàn bộ chuyến đi:', error);
+      const updatedMembers = trip.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
+      const presentCount = updatedMembers.filter((item) => item.attendanceStatus === 'Có mặt').length;
+      await saveTripToFirestore(
+        { ...trip, members: updatedMembers, membersStatus: `${presentCount}/${updatedMembers.length} đã điểm danh` },
+        `Đã lưu điểm danh: ${member.name} (${attendanceStatus})`,
+      );
+    }
   };
 
   // Handler: Update Trip Budget
@@ -862,15 +883,35 @@ export default function App() {
   };
 
   // Handler: Update Trip Members list (Add, Edit, Delete)
+  // Đồng bộ "tài xế phụ trách xe" (telematics) với thành viên có vai trò "Tài xế".
   const handleUpdateMembers = async (updatedMembers: TripMember[]) => {
     const presentCount = updatedMembers.filter((item) => item.attendanceStatus === 'Có mặt').length;
     const membersStatus = `${presentCount}/${updatedMembers.length} đã điểm danh`;
+
+    const drivers = updatedMembers.filter((m) => m.role === 'Tài xế');
+    const wasLinked = Boolean(trip.telematics.driverMemberId);
+    const noDriverYet = !trip.telematics.driver || trip.telematics.driver === 'Chưa phân công';
+    const assigned =
+      drivers.find((m) => m.id === trip.telematics.driverMemberId) ||
+      drivers.find((m) => m.name === trip.telematics.driver) ||
+      (wasLinked || noDriverYet ? drivers[0] : undefined);
+
+    const { driverMemberId: _previousDriverId, ...baseTelematics } = trip.telematics;
+    let telematics: TripData['telematics'] = trip.telematics;
+    if (assigned) {
+      telematics = { ...baseTelematics, driver: assigned.name, driverPhone: assigned.phone, driverMemberId: assigned.id };
+    } else if (wasLinked) {
+      // Tài xế đã liên kết bị xóa hoặc đổi vai trò và không còn tài xế nào khác
+      telematics = { ...baseTelematics, driver: 'Chưa phân công', driverPhone: '' };
+    }
+
     const updatedTrip: TripData = {
       ...trip,
       members: updatedMembers,
       membersStatus,
       membersTotal: updatedMembers.length,
       membersOnline: updatedMembers.filter((m) => m.status === 'online').length,
+      telematics,
     };
     await saveTripToFirestore(updatedTrip, 'Đã cập nhật danh sách thành viên trên Firestore!');
   };
@@ -907,7 +948,8 @@ export default function App() {
       throw new Error(result.error || 'Không thể lưu chuyến đi mới');
     }
 
-    const savedTrip = sanitizeTripData(result.trip) as TripData;
+    // Không thay chuyến đi vừa tạo bằng dữ liệu mẫu; server đã chuẩn hóa, client chỉ chuẩn hóa lại
+    const savedTrip = normalizeTripData(result.trip);
     setTrips((prev) => [savedTrip, ...prev.filter((item) => item.id !== savedTrip.id)]);
     setTrip(savedTrip);
     setCurrentDayIndex(1);

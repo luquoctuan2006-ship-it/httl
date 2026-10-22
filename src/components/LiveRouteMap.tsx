@@ -47,6 +47,17 @@ function getWeatherDescription(code: number): string {
   return 'Thời tiết ổn định';
 }
 
+const escapeHtml = (value: unknown): string =>
+  String(value ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c],
+  );
+
+const STATUS_LABEL: Record<string, string> = {
+  completed: 'Hoàn tất',
+  current: 'Đang diễn ra',
+  pending: 'Chờ đến',
+};
+
 export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   trip,
   onSelectWaypoint,
@@ -80,18 +91,23 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   const [telGpsStatus, setTelGpsStatus] = useState(trip.telematics.gpsStatus || 'GPS ổn định');
   const [telTrafficStatus, setTelTrafficStatus] = useState(trip.telematics.trafficStatus || 'Lưu thông tốt');
 
-  // Real coordinates for central Vietnam route
-  const defaultWaypoints = [
-    { id: 'wp-1', code: '01', name: 'Sân bay Quốc tế Đà Nẵng', lat: 16.0544, lng: 108.2022, time: '09:00 - 10:30', status: 'Hoàn tất' },
-    { id: 'wp-2', code: '02', name: 'Bán đảo Sơn Trà - Chùa Linh Ứng', lat: 16.1044, lng: 108.2755, time: '07:30 - 09:30', status: 'Hoàn tất' },
-    { id: 'wp-3', code: '03', name: 'Bà Nà Hills (Đang di chuyển)', lat: 15.9988, lng: 107.9868, time: '09:45 - 13:00', status: 'Đang diễn ra' },
-    { id: 'wp-4', code: '04', name: 'Đèo Hải Vân & Lăng Cô Retreat', lat: 16.2300, lng: 108.0100, time: '14:30 - 17:30', status: 'Chờ đến' },
-    { id: 'wp-5', code: '05', name: 'Cố đô Huế - Hoàng Thành Đại Nội', lat: 16.4637, lng: 107.5909, time: '08:00 - 17:30', status: 'Chờ đến' },
-  ];
+  // Waypoints lấy trực tiếp từ chuyến đi hiện tại (không còn viết cứng)
+  const waypoints = React.useMemo(
+    () =>
+      (trip.waypoints || []).filter(
+        (w) => !w.isHidden && Number.isFinite(Number(w.lat)) && Number.isFinite(Number(w.lng)),
+      ),
+    [trip.waypoints],
+  );
 
-  // Bus current position: near Ba Na Hills / Da Nang bypass
-  const busLat = 16.0350;
-  const busLng = 108.0850;
+  // Vị trí xe: điểm đang diễn ra -> điểm hoàn tất gần nhất -> điểm đầu tiên
+  const busPos = React.useMemo(() => {
+    const wp =
+      waypoints.find((w) => w.status === 'current') ||
+      [...waypoints].reverse().find((w) => w.status === 'completed') ||
+      waypoints[0];
+    return wp ? { lat: wp.lat, lng: wp.lng } : null;
+  }, [waypoints]);
 
   // Initialize or update Leaflet Map
   useEffect(() => {
@@ -133,7 +149,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     if (polylineRef.current) {
       map.removeLayer(polylineRef.current);
     }
-    const routeCoords: [number, number][] = defaultWaypoints.map((wp) => [wp.lat, wp.lng]);
+    const routeCoords: [number, number][] = waypoints.map((wp) => [wp.lat, wp.lng]);
     const routeLine = L.polyline(routeCoords, {
       color: '#0F766E',
       weight: 4,
@@ -146,9 +162,10 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     Object.values(markersRef.current).forEach((m) => map.removeLayer(m));
     markersRef.current = {};
 
-    defaultWaypoints.forEach((wp) => {
-      const isCurrent = wp.id === 'wp-3';
-      const isCompleted = wp.status === 'Hoàn tất';
+    waypoints.forEach((wp) => {
+      const isCurrent = wp.status === 'current';
+      const isCompleted = wp.status === 'completed';
+      const timeLabel = [wp.arrivalTime, wp.departureTime].filter(Boolean).join(' - ') || '—';
       const bgColor = isCurrent ? '#0D9488' : isCompleted ? '#059669' : '#7C3AED';
 
       const customIcon = L.divIcon({
@@ -180,17 +197,14 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       const marker = L.marker([wp.lat, wp.lng], { icon: customIcon }).addTo(map);
       marker.bindPopup(`
         <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
-          <strong style="color: #0F172A; font-size: 13px;">${wp.name}</strong><br/>
-          <span style="color: #0D9488; font-weight: 700;">Điểm #${wp.code} • ${wp.status}</span><br/>
-          <span style="color: #64748B;">Khung giờ: ${wp.time}</span>
+          <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(wp.name)}</strong><br/>
+          <span style="color: #0D9488; font-weight: 700;">Điểm #${escapeHtml(wp.code)} • ${STATUS_LABEL[wp.status] || ''}</span><br/>
+          <span style="color: #64748B;">Khung giờ: ${escapeHtml(timeLabel)}</span>
         </div>
       `);
 
       marker.on('click', () => {
-        const found = trip.waypoints.find((w) => w.code === wp.code);
-        if (found && onSelectWaypoint) {
-          onSelectWaypoint(found);
-        }
+        onSelectWaypoint?.(wp);
       });
 
       markersRef.current[wp.id] = marker;
@@ -243,42 +257,61 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       iconAnchor: [18, 18],
     });
 
-    const busMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(map);
-    busMarker.bindPopup(`
-      <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
-        <strong style="color: #0F172A; font-size: 13px;">${trip.telematics.vehicleType} (${trip.telematics.licensePlate || '43B-028.99'})</strong><br/>
-        <span style="color: #0D9488; font-weight: 700;">Tài xế: ${trip.telematics.driver} • ${trip.telematics.speedKmH || 54} km/h</span><br/>
-        <span style="color: #64748B;">Lộ trình: ${trip.telematics.from} → ${trip.telematics.to} (ETA ${trip.telematics.eta})</span>
-      </div>
-    `);
-    busMarkerRef.current = busMarker;
+    busMarkerRef.current = null;
+    if (busPos) {
+      const busMarker = L.marker([busPos.lat, busPos.lng], { icon: busIcon }).addTo(map);
+      busMarker.bindPopup(`
+        <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
+          <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(trip.telematics.vehicleType)} (${escapeHtml(trip.telematics.licensePlate || '43B-028.99')})</strong><br/>
+          <span style="color: #0D9488; font-weight: 700;">Tài xế: ${escapeHtml(trip.telematics.driver)} • ${trip.telematics.speedKmH || 54} km/h</span><br/>
+          <span style="color: #64748B;">Lộ trình: ${escapeHtml(trip.telematics.from)} → ${escapeHtml(trip.telematics.to)} (ETA ${escapeHtml(trip.telematics.eta)})</span>
+        </div>
+      `);
+      busMarkerRef.current = busMarker;
+    }
 
     return () => {
       // Map stays attached or is cleaned up on unmount
     };
-  }, [mapLayer, trip]);
+  }, [mapLayer, trip, waypoints, busPos]);
+
+  // Tự động zoom vừa khít tuyến mỗi khi đổi chuyến đi / đổi waypoints
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || waypoints.length === 0) return;
+    map.invalidateSize();
+    if (waypoints.length === 1) {
+      map.setView([waypoints[0].lat, waypoints[0].lng], 12);
+      return;
+    }
+    map.fitBounds(
+      L.latLngBounds(waypoints.map((w) => [w.lat, w.lng] as [number, number])),
+      { padding: [40, 40], maxZoom: 12 },
+    );
+  }, [trip.id, waypoints]);
 
   // Handle Search Query Pan
   useEffect(() => {
     if (!searchQuery.trim() || !mapInstanceRef.current) return;
     const q = searchQuery.toLowerCase();
-    const matched = defaultWaypoints.find(
+    const matched = waypoints.find(
       (wp) => wp.name.toLowerCase().includes(q) || wp.code.toLowerCase().includes(q)
     );
     if (matched) {
       mapInstanceRef.current.flyTo([matched.lat, matched.lng], 13, { duration: 1.2 });
       markersRef.current[matched.id]?.openPopup();
     }
-  }, [searchQuery]);
+  }, [searchQuery, waypoints]);
 
   // Live Weather Fetching from Open-Meteo API
   const handleFetchLiveWeather = async () => {
     setIsRefreshingWeather(true);
     setWeatherNotice(null);
     try {
-      // Coordinates for Da Nang (16.0544, 108.2022)
+      // Thời tiết tại vị trí xe hiện tại của chuyến đi (mặc định Đà Nẵng nếu chưa có waypoint)
+      const weatherPos = busPos ?? { lat: 16.0544, lng: 108.2022 };
       const res = await fetch(
-        'https://api.open-meteo.com/v1/forecast?latitude=16.0544&longitude=108.2022&current=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&timezone=Asia%2FHo_Chi_Minh'
+        `https://api.open-meteo.com/v1/forecast?latitude=${weatherPos.lat}&longitude=${weatherPos.lng}&current=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&timezone=Asia%2FHo_Chi_Minh`
       );
       if (!res.ok) throw new Error('Không thể tải dữ liệu thời tiết');
       const data = await res.json();
@@ -319,15 +352,37 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   const handleZoomIn = () => mapInstanceRef.current?.zoomIn();
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
   const handleResetFocus = () => {
-    mapInstanceRef.current?.flyTo([busLat, busLng], 12, { duration: 1 });
+    if (!busPos) return;
+    mapInstanceRef.current?.flyTo([busPos.lat, busPos.lng], 12, { duration: 1 });
     busMarkerRef.current?.openPopup();
+  };
+
+  // Mở form sửa viễn thông với dữ liệu mới nhất của chuyến đi hiện tại
+  const openTelematicsEditor = () => {
+    const t = trip.telematics;
+    setTelDriver(t.driver || '');
+    setTelDriverPhone(t.driverPhone || '');
+    setTelVehicleType(t.vehicleType || '');
+    setTelPlate(t.licensePlate || '');
+    setTelFrom(t.from || '');
+    setTelTo(t.to || '');
+    setTelDuration(t.durationMinutes || 0);
+    setTelEta(t.eta || '');
+    setTelPassengers(t.passengerCount || 1);
+    setTelSpeed(t.speedKmH ?? 0);
+    setTelGpsStatus(t.gpsStatus || 'GPS ổn định');
+    setTelTrafficStatus(t.trafficStatus || 'Lưu thông tốt');
+    setIsEditTelematicsOpen(true);
   };
 
   // Save Telematics
   const handleSaveTelematics = (e: React.FormEvent) => {
     e.preventDefault();
+    // Nếu đổi tên tài xế khác với tài xế đã liên kết thì gỡ liên kết để không bị đồng bộ ghi đè lại
+    const { driverMemberId, ...baseTelematics } = trip.telematics;
     const updatedTelematics = {
-      ...trip.telematics,
+      ...baseTelematics,
+      ...(driverMemberId && telDriver.trim() === trip.telematics.driver ? { driverMemberId } : {}),
       driver: telDriver.trim(),
       driverPhone: telDriverPhone.trim(),
       vehicleType: telVehicleType.trim(),
@@ -427,7 +482,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsEditTelematicsOpen(true)}
+            onClick={openTelematicsEditor}
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs transition"
           >
             <Edit3 className="w-3.5 h-3.5 text-slate-500" />
@@ -447,6 +502,14 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       {/* Interactive Map Canvas Container */}
       <div className="relative w-full h-[400px] md:h-[440px] bg-slate-100 overflow-hidden">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+        {waypoints.length === 0 && (
+          <div className="absolute inset-0 z-[5] flex items-center justify-center bg-white/70 backdrop-blur-[1px] pointer-events-none">
+            <p className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
+              Chuyến đi này chưa có tọa độ điểm dừng để vẽ tuyến.
+            </p>
+          </div>
+        )}
 
         {/* Floating Live Weather Widget (Top Right) */}
         <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-slate-200/90 flex items-center gap-3 z-10 max-w-xs">
@@ -491,7 +554,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                 </span>
               </div>
               <div className="text-[11px] text-slate-300 mt-0.5">
-                Tài xế {trip.telematics.driver} ({trip.telematics.driverPhone || '0905 123 456'}) • {trip.telematics.passengerCount} khách
+                Tài xế {trip.telematics.driver}{trip.telematics.driverPhone ? ` (${trip.telematics.driverPhone})` : ''} • {trip.telematics.passengerCount} khách
               </div>
             </div>
           </div>
@@ -570,7 +633,6 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                   <label className="block font-bold text-slate-700 mb-1">SĐT tài xế *</label>
                   <input
                     type="tel"
-                    required
                     value={telDriverPhone}
                     onChange={(e) => setTelDriverPhone(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none font-mono"

@@ -12,13 +12,80 @@ import {
   Clock,
   ArrowRight
 } from 'lucide-react';
-import { TripData } from '../types/travel';
+import { TripData, TripMember, Waypoint } from '../types/travel';
 import { authenticatedFetch, safeJsonResponse } from '../api';
 
 interface AIPlannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyPlan: (newTrip: TripData) => Promise<void>;
+}
+
+// Đọc số người từ ô "Đối tượng thành viên đoàn" (VD: "Đoàn gia đình & bạn bè (3 người)" -> 3)
+function parseGroupSize(groupType: string): number {
+  const m =
+    groupType.match(/(\d{1,3})\s*(?:người|khách|pax|thành viên)/i) ||
+    groupType.match(/(\d{1,3})/);
+  const n = m ? parseInt(m[1], 10) : 1;
+  return Math.min(Math.max(Number.isFinite(n) ? n : 1, 1), 50);
+}
+
+// Tạo danh sách thành viên theo đúng số người nhập; người dùng tự đổi tên/vai trò sau.
+// Không bịa tên thật, không tự tạo tài xế/HDV (gán sau trong tab Thành viên).
+function buildMembers(count: number): TripMember[] {
+  const stamp = Date.now();
+  return Array.from({ length: count }, (_, i) => ({
+    id: `member-${stamp}-${i + 1}`,
+    name: `Thành viên ${i + 1}`,
+    avatar: String(i + 1),
+    role: i === 0 ? 'Trưởng đoàn' : 'Khách du lịch',
+    phone: '',
+    status: 'offline' as const,
+    attendanceStatus: 'Chưa điểm danh' as const,
+  }));
+}
+
+// Tách điểm xuất phát từ ô "Điểm đến" (VD: "Hồ Chí Minh - Huế" -> "Hồ Chí Minh")
+function getStartLocation(destination: string): string {
+  const first = destination.split(/\s*(?:-|–|—|→|>)\s*/)[0]?.trim();
+  return first || 'Đà Nẵng';
+}
+
+// Dựng waypoints từ tọa độ Gemini trả về trong activities (bỏ điểm thiếu/sai tọa độ & trùng lặp)
+function buildWaypoints(days: any[]): Waypoint[] {
+  const seen = new Set<string>();
+  const pts: { name: string; lat: number; lng: number; time?: string }[] = [];
+
+  for (const d of Array.isArray(days) ? days : []) {
+    for (const a of Array.isArray(d?.activities) ? d.activities : []) {
+      const lat = Number(a?.coordinates?.lat);
+      const lng = Number(a?.coordinates?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      if (lat < 8 || lat > 24 || lng < 102 || lng > 110) continue; // ngoài lãnh thổ Việt Nam
+      const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pts.push({ name: a.location || a.title || `Điểm ${pts.length + 1}`, lat, lng, time: a.timeStart });
+    }
+  }
+
+  if (pts.length === 0) return [];
+  const lats = pts.map((p) => p.lat);
+  const lngs = pts.map((p) => p.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+
+  return pts.map((p, i) => ({
+    id: `wp-${i + 1}`,
+    code: String(i + 1).padStart(2, '0'),
+    name: p.name,
+    status: i === 0 ? 'current' : 'pending',
+    lat: p.lat,
+    lng: p.lng,
+    xPercent: 10 + (80 * (p.lng - minLng)) / (maxLng - minLng || 1),
+    yPercent: 10 + (80 * (maxLat - p.lat)) / (maxLat - minLat || 1),
+    ...(p.time ? { arrivalTime: p.time } : {}), // Firestore không nhận giá trị undefined
+  }));
 }
 
 export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
@@ -83,7 +150,7 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
           travelStyle,
           groupType,
           preferences,
-          startLocation: 'Sân bay Quốc tế Đà Nẵng',
+          startLocation: getStartLocation(destination),
         }),
       });
       const result = await safeJsonResponse(response);
@@ -107,6 +174,12 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
 
   const handleApply = async () => {
     if (!generatedPlan) return;
+    // Waypoints lấy từ tọa độ AI trả về cho chuyến đi này
+    const aiWaypoints = buildWaypoints(generatedPlan.days);
+    const startName = aiWaypoints[0]?.name || getStartLocation(destination);
+    const endName = aiWaypoints[aiWaypoints.length - 1]?.name || destination;
+    const memberCount = parseGroupSize(groupType);
+
     // Map to TripData structure
     const updatedTrip: TripData = {
       id: `trip-${Date.now()}`,
@@ -114,11 +187,11 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
       title: generatedPlan.title || `Khám phá ${destination} ${days} ngày`,
       status: 'Đang vận hành',
       dates: '12–18 THG 10, 2026',
-      origin: generatedPlan.routeSummary?.origin || 'ĐN',
-      originFull: 'Đà Nẵng',
-      destination: generatedPlan.routeSummary?.destination || 'HUE',
-      destinationFull: 'Huế',
-      destinationsCount: generatedPlan.routeSummary?.destinationsCount || 5,
+      origin: generatedPlan.routeSummary?.origin || startName,
+      originFull: startName,
+      destination: generatedPlan.routeSummary?.destination || endName,
+      destinationFull: endName,
+      destinationsCount: generatedPlan.routeSummary?.destinationsCount || aiWaypoints.length || 5,
       totalKm: generatedPlan.routeSummary?.totalKm || 428,
       vehicle: generatedPlan.routeSummary?.vehicle || 'Xe 29 chỗ',
       currentDay: 1,
@@ -134,9 +207,9 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
       budgetUsedPercent: (generatedPlan.budget?.total && generatedPlan.budget?.used)
         ? Math.round((generatedPlan.budget.used / generatedPlan.budget.total) * 100)
         : 31,
-      membersOnline: 8,
-      membersTotal: 8,
-      membersStatus: 'Tất cả đã tập trung',
+      membersOnline: 0,
+      membersTotal: memberCount,
+      membersStatus: `0/${memberCount} đã điểm danh`,
       weather: {
         temp: 28,
         description: 'Mây nhẹ',
@@ -144,24 +217,19 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
         rainProbTime: '15:00',
       },
       telematics: {
-        from: 'Sân bay Đà Nẵng',
-        to: 'Hội An',
+        from: aiWaypoints[0]?.name || startName,
+        to: aiWaypoints[1]?.name || endName,
         durationMinutes: 35,
         eta: '10:15',
         vehicleType: 'Xe 29 chỗ',
-        driver: 'Trần Bình',
-        passengerCount: 18,
+        driver: 'Chưa phân công',
+        driverPhone: '',
+        passengerCount: memberCount,
         gpsStatus: 'GPS ổn định',
         trafficStatus: 'Lưu thông tốt',
         lastUpdated: '10:00',
       },
-      waypoints: [
-        { id: 'wp-1', code: '01', name: 'Đà Nẵng', status: 'completed', lat: 16.0544, lng: 108.2022, xPercent: 24, yPercent: 52 },
-        { id: 'wp-2', code: '02', name: 'Hội An', status: 'current', lat: 15.8801, lng: 108.338, xPercent: 36, yPercent: 44 },
-        { id: 'wp-3', code: '03', name: 'Bà Nà', status: 'pending', lat: 15.9988, lng: 107.986, xPercent: 46, yPercent: 40 },
-        { id: 'wp-4', code: '04', name: 'Lăng Cô', status: 'pending', lat: 16.2294, lng: 108.082, xPercent: 60, yPercent: 33 },
-        { id: 'wp-5', code: '05', name: 'Huế', status: 'pending', lat: 16.4698, lng: 107.578, xPercent: 82, yPercent: 24 },
-      ],
+      waypoints: aiWaypoints,
       alerts: [
         {
           id: 'alt-new-1',
@@ -177,17 +245,12 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
           id: 'sug-new-1',
           title: 'Gợi ý check-in khung giờ vàng',
           badge: '-20’',
-          description: 'Đến Hội An lúc hoàng hôn để du khách chụp ảnh hoa đăng đẹp nhất.',
+          description: 'Đến điểm tham quan đầu tiên vào khung giờ vàng để du khách chụp ảnh đẹp nhất.',
         },
       ],
       aiSavingsEstimate: '520.000đ',
       aiConfidence: '96%',
-      members: [
-        { id: 'm1', name: 'Minh Lê', avatar: 'ML', role: 'Trưởng đoàn', phone: '0905 123 456', status: 'online' },
-        { id: 'm2', name: 'An Nguyễn', avatar: 'AN', role: 'Hướng dẫn viên', phone: '0912 345 678', status: 'online' },
-        { id: 'm3', name: 'Hải Trần', avatar: 'HT', role: 'Tài xế', phone: '0988 777 999', status: 'online' },
-        { id: 'm4', name: 'Quốc Khánh', avatar: 'QK', role: 'Khách du lịch', phone: '0977 111 222', status: 'online' },
-      ],
+      members: buildMembers(memberCount),
       days: (generatedPlan.days && generatedPlan.days.length > 0)
         ? generatedPlan.days.map((d: any, idx: number) => {
             const dayNamesCycle = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];

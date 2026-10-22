@@ -74,6 +74,7 @@ if (existsSync(serviceAccountPath)) {
     const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
     firebaseApp = getApps()[0] || initializeApp({ credential: cert(serviceAccount) });
     firestore = getFirestore(firebaseApp);
+    try { firestore.settings({ ignoreUndefinedProperties: true }); } catch { /* đã được khởi tạo */ }
     firebaseAuth = getAuth(firebaseApp);
   } catch (err) {
     console.warn('[AI Studio] Firebase Admin could not be initialized — using in-memory store:', err);
@@ -257,6 +258,11 @@ app.post('/api/trips', requireAuth, async (req, res) => {
 
   try {
     await firestore.collection('trips').doc(trip.id).create({
+      ...trip,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    // Đồng bộ như chế độ in-memory: chuyến vừa tạo trở thành chuyến đang hoạt động
+    await activeTripRef!.set({
       ...trip,
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -464,11 +470,11 @@ app.patch('/api/trips/:tripId/members/:memberId/attendance', requireAuth, async 
 });
 
 const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
-let dynamicGeminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
+let dynamicGeminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash';
 let dynamicGeminiTemperature = 0.55;
-let dynamicGeminiMaxTokens = 4000;
+let dynamicGeminiMaxTokens = 16000; // lịch trình tiếng Việt nhiều ngày cần nhiều token (model thinking tính cả token suy nghĩ)
 let dynamicGeminiSystemPrompt = 'Bạn là chuyên gia điều phối tour du lịch cao cấp tại Việt Nam.';
-const geminiFallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.7-flash';
+const geminiFallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
 const geminiCacheTtlMs = Math.max(0, Number.parseInt(process.env.GEMINI_CACHE_TTL_MS || '300000', 10));
 const geminiRequestTimeoutMs = Math.max(30_000, Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '30000', 10));
 
@@ -759,21 +765,32 @@ async function generateWithGemini(prompt: string, userWhoInvoked = 'Hệ thống
     throw new Error('Thiếu GEMINI_API_KEY. Hãy đặt khóa trong tệp .env ở thư mục gốc rồi khởi động lại server.');
   }
 
-  const selectedModel = dynamicGeminiModel || 'gemini-3.8-flash';
+  const selectedModel = dynamicGeminiModel || 'gemini-3.5-flash';
   const models = [selectedModel, geminiFallbackModel].filter((model, index, values) => model && values.indexOf(model) === index);
   const startTime = Date.now();
 
   for (let index = 0; index < models.length; index += 1) {
     try {
+      const modelId = models[index];
+      // Gemini 3.x dùng thinkingLevel; Gemini 2.5 Flash dùng thinkingBudget (0 = tắt);
+      // 2.5 Pro và các model khác không cho tắt thinking nên không gửi tham số này.
+      const isGemini3 = /^gemini-3/.test(modelId);
+      const isGemini25Flash = /^gemini-2\.5-flash/.test(modelId);
+      const thinkingConfig = isGemini3
+        ? { thinkingLevel: 'LOW' as any }
+        : isGemini25Flash
+          ? { thinkingBudget: 0 }
+          : undefined;
+
       const result = await ai.models.generateContent({
-        model: models[index],
+        model: modelId,
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
-          responseModalities: ['TEXT'],
-          thinkingConfig: { thinkingBudget: 0 },
-          maxOutputTokens: dynamicGeminiMaxTokens || 4000,
-          temperature: dynamicGeminiTemperature || 0.55,
+          systemInstruction: dynamicGeminiSystemPrompt,
+          maxOutputTokens: dynamicGeminiMaxTokens,
+          temperature: dynamicGeminiTemperature,
+          ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       });
 
@@ -793,8 +810,10 @@ async function generateWithGemini(prompt: string, userWhoInvoked = 'Hệ thống
     } catch (error: any) {
       const status = Number(error?.status ?? error?.response?.status ?? 0);
       const message = String(error?.message || error?.status || error || '');
-      const retryable = status === 503 || status === 504 || status === 500;
+      // 400 cũng thử model dự phòng (thường do model/tham số không tương thích)
+      const retryable = status === 400 || status === 503 || status === 504 || status === 500;
       const isRateLimit = status === 429 || /RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(message);
+      console.error('[Gemini]', models[index], status || '', message.slice(0, 500));
 
       if (isRateLimit || !retryable || index === models.length - 1) {
         aiErrorLogs.unshift({
@@ -858,6 +877,19 @@ function createGeminiJob(operation: string, payload: unknown, userActor = 'Hệ 
   return job;
 }
 
+// Lấy text JSON từ phản hồi Gemini, báo lỗi rõ ràng nếu bị cắt cụt hoặc rỗng
+function extractJsonText(response: any): string {
+  const finishReason = response?.candidates?.[0]?.finishReason;
+  const text = typeof response?.text === 'string' ? response.text : '';
+  if (finishReason === 'MAX_TOKENS') {
+    throw new Error('Phản hồi AI bị cắt do vượt giới hạn token. Hãy tăng Max Output Tokens hoặc giảm số ngày.');
+  }
+  if (!text.trim()) {
+    throw new Error(`Gemini không trả nội dung (finishReason: ${finishReason ?? 'unknown'}).`);
+  }
+  return text;
+}
+
 async function executeGeminiOperation(operation: string, payload: unknown, userActor = 'Hệ thống'): Promise<any> {
   if (operation === 'generate-itinerary') {
     const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = payload as Record<string, any>;
@@ -870,10 +902,9 @@ Phong cách: ${travelStyle || 'Khám phá văn hóa & ẩm thực'}
 Đối tượng: ${groupType || 'Nhóm du khách'}
 Xuất phát: ${startLocation || 'Đà Nẵng'}
 Sở thích: ${preferences || 'Tránh nắng gắt buổi trưa'}
-Trả về tối đa ${normalizedDays * 3} hoạt động và mỗi ngày tối đa 3 hoạt động. Schema: {tripCode,title,routeSummary:{origin,destination,totalKm,vehicle,destinationsCount},budget:{total,used,unit,breakdown},days:[{dayIndex,dateLabel,fullDate,summary,activities:[{id,timeStart,timeEnd,title,location,status,type,details,cost,coordinates:{lat,lng}}]}],aiOperationalSuggestions:[{id,title,impact,description,savingEstimate,confidence}],potentialRisks:[{title,level,advice}]}.`;
+Lộ trình phải bắt đầu từ điểm xuất phát và đi đúng các điểm đến người dùng yêu cầu, không tự thay bằng địa điểm khác. Mỗi hoạt động BẮT BUỘC có coordinates {lat,lng} là tọa độ thực của địa điểm tại Việt Nam (số thập phân, không dùng chuỗi). Mỗi chuỗi mô tả tối đa 15 từ. Trả về tối đa ${normalizedDays * 3} hoạt động và mỗi ngày tối đa 3 hoạt động. Schema: {tripCode,title,routeSummary:{origin,destination,totalKm,vehicle,destinationsCount},budget:{total,used,unit,breakdown},days:[{dayIndex,dateLabel,fullDate,summary,activities:[{id,timeStart,timeEnd,title,location,status,type,details,cost,coordinates:{lat,lng}}]}],aiOperationalSuggestions:[{id,title,impact,description,savingEstimate,confidence}],potentialRisks:[{title,level,advice}]}.`;
     const response = await getOrCreateGeminiRequest(`generate-itinerary:${JSON.stringify(payload)}`, () => generateWithGemini(prompt, userActor));
-    const text = response.text || '{}';
-    return parseGeminiJson(text);
+    return parseGeminiJson(extractJsonText(response));
   }
 
   const { currentTrip, alertDetails, userGoal } = payload as Record<string, any>;
@@ -905,8 +936,7 @@ Cảnh báo: ${JSON.stringify(alertDetails || {})}
 Mục tiêu: ${userGoal || 'An toàn, đúng lịch trình, giảm chi phí'}
 Trả về {recommendations:[{id,actionTitle,timeSaved,reason,confidence,costSaved,scheduleChanges:[{oldTime,newTime,action}]}],dispatcherNotice}. Giữ tối đa 3 đề xuất, mỗi đề xuất ngắn gọn.`;
   const response = await getOrCreateGeminiRequest(`optimize-schedule:${JSON.stringify(payload)}`, () => generateWithGemini(prompt, userActor));
-  const text = response.text || '{}';
-  return parseGeminiJson(text);
+  return parseGeminiJson(extractJsonText(response));
 }
 
 // API Route: Generate personalized itinerary using Gemini
@@ -998,10 +1028,9 @@ app.get('/api/admin/config', requireAuth, (_req, res) => {
     success: true,
     config: activeSystemConfig,
     availableModels: [
-      { id: 'gemini-3.8-flash', label: 'gemini-3.8-flash (Tốc độ cao & mới nhất - Khuyến nghị)' },
-      { id: 'gemini-3.7-flash', label: 'gemini-3.7-flash (Ổn định cao)' },
-      { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash (Nhanh)' },
-      { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro (Tư duy sâu)' },
+      { id: 'gemini-3.5-flash', label: 'gemini-3.5-flash (Khuyến nghị)' },
+      { id: 'gemini-3.1-flash-lite', label: 'gemini-3.1-flash-lite (Nhẹ & nhanh)' },
+      { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash (Ổn định)' },
     ],
   });
 });
