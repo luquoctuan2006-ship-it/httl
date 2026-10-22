@@ -91,6 +91,7 @@ export interface TripMember {
 
 export interface TripData {
   id: string;
+  ownerId?: string; // uid của người tạo chuyến (do server gán, client không được đổi)
   code: string; // "VN-1024"
   title: string; // "Khám phá miền Trung 7 ngày"
   status: 'Đang vận hành' | 'Chuẩn bị' | 'Hoàn thành';
@@ -128,18 +129,12 @@ export interface TripData {
   telematics: {
     from: string; // "Sơn Trà"
     to: string; // "Bà Nà Hills"
-    durationMinutes: number; // 42
-    eta: string; // "10:24"
     vehicleType: string; // "Xe 29 chỗ"
-    licensePlate?: string; // "43B-028.99"
+    licensePlate?: string;
     driver: string; // "Trần Bình"
     driverPhone?: string; // "0905 123 456"
     driverMemberId?: string; // id thành viên (vai trò "Tài xế") đang phụ trách xe
     passengerCount: number; // 18
-    speedKmH?: number; // 54
-    gpsStatus: string; // "GPS ổn định"
-    trafficStatus: string; // "Lưu thông tốt"
-    lastUpdated: string; // "09:42"
   };
   waypoints: Waypoint[];
   alerts: OperationalAlert[];

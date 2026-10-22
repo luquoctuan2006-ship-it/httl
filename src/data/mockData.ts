@@ -34,14 +34,9 @@ export const initialTripData: TripData = {
   telematics: {
     from: 'Sơn Trà',
     to: 'Bà Nà Hills',
-    durationMinutes: 42,
-    eta: '10:24',
     vehicleType: 'Xe 29 chỗ',
     driver: 'Trần Bình',
     passengerCount: 18,
-    gpsStatus: 'GPS ổn định',
-    trafficStatus: 'Lưu thông tốt',
-    lastUpdated: '09:42',
   },
   waypoints: [
     {

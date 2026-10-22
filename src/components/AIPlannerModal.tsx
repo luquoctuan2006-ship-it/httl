@@ -219,15 +219,10 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
       telematics: {
         from: aiWaypoints[0]?.name || startName,
         to: aiWaypoints[1]?.name || endName,
-        durationMinutes: 35,
-        eta: '10:15',
         vehicleType: 'Xe 29 chỗ',
         driver: 'Chưa phân công',
         driverPhone: '',
         passengerCount: memberCount,
-        gpsStatus: 'GPS ổn định',
-        trafficStatus: 'Lưu thông tốt',
-        lastUpdated: '10:00',
       },
       waypoints: aiWaypoints,
       alerts: [

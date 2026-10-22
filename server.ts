@@ -83,23 +83,15 @@ if (existsSync(serviceAccountPath)) {
   console.warn('[AI Studio] Firebase service account not found — using in-memory store');
 }
 
-const activeTripRef = firestore ? firestore.collection('trips').doc('active') : null;
 const persistenceStore = await createTripPersistenceStore(
   path.resolve(__dirname, 'data/trip-persistence.json'),
 );
 const savedTrip = await persistenceStore.load();
-const memoryTrips = new Map<string, TripData>([
-  ['active', structuredClone(savedTrip || initialTripData) as TripData],
-  [(savedTrip?.id || initialTripData.id), structuredClone(savedTrip || initialTripData) as TripData],
-]);
-
-async function findTripRef(tripId: string) {
-  if (!firestore || !activeTripRef) return null;
-  if (tripId === 'active') return activeTripRef;
-
-  const activeSnapshot = await activeTripRef.get();
-  if (activeSnapshot.exists && activeSnapshot.data()?.id === tripId) return activeTripRef;
-  return firestore.collection('trips').doc(tripId);
+// Chế độ in-memory (không có Firebase): id chuyến -> dữ liệu chuyến.
+// Không còn khóa 'active' dùng chung; mỗi chuyến thuộc về một ownerId.
+const memoryTrips = new Map<string, TripData>();
+if (savedTrip?.id && savedTrip.id !== 'active') {
+  memoryTrips.set(savedTrip.id, structuredClone(savedTrip) as TripData);
 }
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
@@ -162,284 +154,225 @@ function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFuncti
   return next();
 }
 
-app.get('/api/trips/active', requireAuth, async (_req, res) => {
-  if (!firestore || !activeTripRef) {
-    const active = normalizeTripData(memoryTrips.get('active') || initialTripData);
-    memoryTrips.set('active', active);
-    return res.json({ success: true, trip: active });
+// ===== Chuyến đi: mỗi chuyến thuộc về một user (ownerId) =====
+const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function isAdminUser(user?: DecodedIdToken) {
+  return user?.role === 'admin';
+}
+
+// Chỉ chủ chuyến hoặc admin mới được xem/sửa.
+// Chuyến cũ chưa có ownerId chỉ admin thấy (xem scripts/assign-trip-owner.ts để gán chủ).
+function canAccessTrip(trip: Partial<TripData> | null | undefined, user?: DecodedIdToken) {
+  if (!trip || !user) return false;
+  return isAdminUser(user) || (!!trip.ownerId && trip.ownerId === user.uid);
+}
+
+function isConflictError(error: any) {
+  return error?.code === 6 || error?.code === 'already-exists';
+}
+
+async function getTripById(tripId: string): Promise<TripData | null> {
+  if (!firestore) {
+    const trip = memoryTrips.get(tripId);
+    return trip ? normalizeTripData(trip) : null;
+  }
+  const snap = await firestore.collection('trips').doc(tripId).get();
+  return snap.exists ? normalizeTripData(snap.data()) : null;
+}
+
+async function listTripsForUser(user: DecodedIdToken): Promise<TripData[]> {
+  const isValid = (t: TripData) => typeof t.id === 'string' && Array.isArray(t.days);
+
+  if (!firestore) {
+    return Array.from(memoryTrips.values())
+      .filter((t) => canAccessTrip(t, user))
+      .map((t) => normalizeTripData(t))
+      .filter(isValid)
+      .reverse(); // chuyến vừa cập nhật nằm đầu danh sách
   }
 
+  const col = firestore.collection('trips');
+  const snapshot = isAdminUser(user)
+    ? await col.get()
+    : await col.where('ownerId', '==', user.uid).get();
+
+  return snapshot.docs
+    .filter((d) => d.id !== 'active') // doc dùng chung cũ, bỏ qua
+    .sort((a, b) => b.updateTime.toMillis() - a.updateTime.toMillis())
+    .map((d) => normalizeTripData(d.data()))
+    .filter(isValid);
+}
+
+async function createTripDoc(trip: TripData): Promise<void> {
+  if (!firestore) {
+    if (memoryTrips.has(trip.id)) {
+      throw Object.assign(new Error('Trip already exists'), { code: 'already-exists' });
+    }
+    memoryTrips.set(trip.id, trip);
+    await persistenceStore.save(trip);
+    return;
+  }
+  await firestore.collection('trips').doc(trip.id).create({
+    ...trip,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+async function saveTripDoc(trip: TripData): Promise<void> {
+  if (!firestore) {
+    memoryTrips.delete(trip.id);
+    memoryTrips.set(trip.id, trip);
+    await persistenceStore.save(trip);
+    return;
+  }
+  await firestore.collection('trips').doc(trip.id).set({
+    ...trip,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+async function patchTripDoc(tripId: string, fields: Partial<TripData>): Promise<void> {
+  if (!firestore) {
+    const current = memoryTrips.get(tripId);
+    if (!current) throw new Error('Trip not found');
+    const updated = { ...current, ...fields } as TripData;
+    memoryTrips.delete(tripId);
+    memoryTrips.set(tripId, updated);
+    await persistenceStore.save(updated);
+    return;
+  }
+  await firestore.collection('trips').doc(tripId).update({
+    ...fields,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+// Tạo mới hoặc cập nhật chuyến; ownerId do server quyết định, không tin dữ liệu client gửi.
+async function upsertTripForUser(input: TripData, user: DecodedIdToken): Promise<'ok' | 'forbidden'> {
+  const existing = await getTripById(input.id);
+  if (existing && !canAccessTrip(existing, user)) return 'forbidden';
+  const ownerId = existing ? existing.ownerId : user.uid;
+  await saveTripDoc({ ...input, ownerId });
+  return 'ok';
+}
+
+// Chuyến mẫu riêng cho từng user (id khác nhau để không đụng nhau)
+function seedTripFor(user: DecodedIdToken): TripData {
+  const safeUid = String(user.uid).replace(/[^A-Za-z0-9_-]/g, '');
+  return {
+    ...normalizeTripData(structuredClone(initialTripData)),
+    id: `${initialTripData.id}-${safeUid}`.slice(0, 128),
+    ownerId: user.uid,
+  };
+}
+
+async function loadUserTrips(user: DecodedIdToken): Promise<TripData[]> {
+  let trips = await listTripsForUser(user);
+  if (trips.length === 0) {
+    try {
+      await createTripDoc(seedTripFor(user));
+    } catch (error) {
+      if (!isConflictError(error)) throw error;
+    }
+    trips = await listTripsForUser(user);
+  }
+  return trips;
+}
+
+app.get('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const snapshot = await activeTripRef.get();
-    if (!snapshot.exists) {
-      const seededTrip = normalizeTripData(initialTripData);
-      await activeTripRef.create({
-        ...seededTrip,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return res.json({ success: true, trip: seededTrip, seeded: true });
-    }
-
-    const rawTrip = snapshot.data() as TripData | undefined;
-    const correctedTrip = normalizeTripData(rawTrip);
-
-    if (correctedTrip && JSON.stringify(rawTrip) !== JSON.stringify(correctedTrip)) {
-      await activeTripRef.set({
-        ...correctedTrip,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    return res.json({ success: true, trip: correctedTrip });
+    const trips = await loadUserTrips(req.authUser!);
+    return res.json({ success: true, activeTrip: trips[0], trips });
   } catch (error) {
-    console.error('Error loading active trip from Firestore:', error);
-    return res.status(503).json({ success: false, error: 'Không thể tải dữ liệu từ Firestore' });
-  }
-});
-
-app.get('/api/trips', requireAuth, async (_req, res) => {
-  if (!firestore || !activeTripRef) {
-    const activeTrip = normalizeTripData(memoryTrips.get('active') || initialTripData);
-    memoryTrips.set('active', activeTrip);
-    const tripsById = new Map<string, TripData>([[activeTrip.id, activeTrip]]);
-    for (const [key, candidate] of memoryTrips.entries()) {
-      if (key === 'active') continue;
-      if (candidate && typeof candidate.id === 'string' && Array.isArray(candidate.days)) {
-        tripsById.set(candidate.id, normalizeTripData(candidate));
-      }
-    }
-    return res.json({ success: true, activeTrip, trips: Array.from(tripsById.values()) });
-  }
-
-  try {
-    let activeSnapshot = await activeTripRef.get();
-    if (!activeSnapshot.exists) {
-      const seededTrip = normalizeTripData(initialTripData);
-      await activeTripRef.create({
-        ...seededTrip,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      activeSnapshot = await activeTripRef.get();
-    }
-
-    const activeTrip = normalizeTripData(activeSnapshot.data());
-    const snapshot = await firestore.collection('trips').get();
-    const tripsById = new Map<string, TripData>([[activeTrip.id, activeTrip]]);
-    for (const document of snapshot.docs) {
-      if (document.id === 'active') continue;
-      const candidate = normalizeTripData(document.data());
-      if (candidate && typeof candidate.id === 'string' && Array.isArray(candidate.days)) {
-        tripsById.set(candidate.id, candidate);
-      }
-    }
-
-    return res.json({ success: true, activeTrip, trips: Array.from(tripsById.values()) });
-  } catch (error) {
-    console.error('Error loading trips from Firestore:', error);
+    console.error('Error loading trips:', error);
     return res.status(503).json({ success: false, error: 'Không thể tải danh sách chuyến đi' });
   }
 });
 
-app.post('/api/trips', requireAuth, async (req, res) => {
+// Giữ route cũ cho tương thích: "active" nay là chuyến cập nhật gần nhất CỦA CHÍNH USER ĐÓ
+const getActiveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const trips = await loadUserTrips(req.authUser!);
+    return res.json({ success: true, trip: trips[0] });
+  } catch (error) {
+    console.error('Error loading active trip:', error);
+    return res.status(503).json({ success: false, error: 'Không thể tải chuyến đi' });
+  }
+};
+app.get('/api/trips/active', requireAuth, getActiveTripHandler);
+app.get('/api/trip/active', requireAuth, getActiveTripHandler);
+
+const saveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
   const trip = normalizeTripData(req.body);
-  if (!trip || typeof trip.id !== 'string' || trip.id === 'active' || !Array.isArray(trip.days)) {
+  const routeId = req.params.tripId;
+  if (routeId && routeId !== 'active') trip.id = routeId;
+
+  if (!trip || typeof trip.id !== 'string' || trip.id === 'active' || !TRIP_ID_PATTERN.test(trip.id) || !Array.isArray(trip.days)) {
     return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
   }
 
-  if (!firestore) {
-    if (memoryTrips.has(trip.id)) {
-      return res.status(409).json({ success: false, error: 'Mã chuyến đi đã tồn tại, vui lòng tạo lại' });
+  try {
+    const result = await upsertTripForUser(trip, req.authUser!);
+    if (result === 'forbidden') {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
     }
-    memoryTrips.set(trip.id, trip);
-    memoryTrips.set('active', trip);
-    await persistenceStore.save(trip);
-    return res.status(201).json({ success: true, trip });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving trip:', error);
+    return res.status(503).json({ success: false, error: 'Không thể lưu chuyến đi' });
+  }
+};
+app.put('/api/trips/active', requireAuth, saveTripHandler);
+app.put('/api/trip/active', requireAuth, saveTripHandler);
+app.put('/api/trips/:tripId', requireAuth, saveTripHandler);
+
+app.post('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const body = normalizeTripData(req.body);
+  if (!body || typeof body.id !== 'string' || body.id === 'active' || !TRIP_ID_PATTERN.test(body.id) || !Array.isArray(body.days)) {
+    return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
   }
 
+  const trip: TripData = { ...body, ownerId: req.authUser!.uid };
   try {
-    await firestore.collection('trips').doc(trip.id).create({
-      ...trip,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    // Đồng bộ như chế độ in-memory: chuyến vừa tạo trở thành chuyến đang hoạt động
-    await activeTripRef!.set({
-      ...trip,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await createTripDoc(trip);
     return res.status(201).json({ success: true, trip });
   } catch (error: any) {
-    if (error?.code === 6 || error?.code === 'already-exists') {
+    if (isConflictError(error)) {
       return res.status(409).json({ success: false, error: 'Mã chuyến đi đã tồn tại, vui lòng tạo lại' });
     }
-    console.error('Error creating trip in Firestore:', error);
+    console.error('Error creating trip:', error);
     return res.status(503).json({ success: false, error: 'Không thể lưu chuyến đi mới' });
   }
 });
 
-app.put('/api/trips/active', requireAuth, async (req, res) => {
-  const trip = normalizeTripData(req.body);
-  if (!trip || typeof trip.id !== 'string' || !Array.isArray(trip.days)) {
-    return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
-  }
-
-  if (!firestore || !activeTripRef) {
-    memoryTrips.set('active', trip);
-    memoryTrips.set(trip.id, trip);
-    await persistenceStore.save(trip);
-    return res.json({ success: true });
-  }
-
+app.get('/api/trips/:tripId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    await activeTripRef.set({
-      ...trip,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    return res.json({ success: true });
-  } catch (error) {
-    console.error('Error saving active trip to Firestore:', error);
-    return res.status(503).json({ success: false, error: 'Không thể lưu dữ liệu vào Firestore' });
-  }
-});
-
-// Alias for singular /api/trip/active
-app.get('/api/trip/active', requireAuth, async (_req, res) => {
-  if (!firestore || !activeTripRef) {
-    const active = normalizeTripData(memoryTrips.get('active') || initialTripData);
-    memoryTrips.set('active', active);
-    return res.json({ success: true, trip: active });
-  }
-  try {
-    const snapshot = await activeTripRef.get();
-    const rawTrip = snapshot.data() as TripData | undefined;
-    return res.json({ success: true, trip: normalizeTripData(rawTrip || initialTripData) });
-  } catch (error) {
-    return res.status(503).json({ success: false, error: 'Lỗi nạp chuyến đi' });
-  }
-});
-
-app.put('/api/trip/active', requireAuth, async (req, res) => {
-  const trip = normalizeTripData(req.body);
-  if (!trip || typeof trip.id !== 'string' || !Array.isArray(trip.days)) {
-    return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
-  }
-  if (!firestore || !activeTripRef) {
-    memoryTrips.set('active', trip);
-    memoryTrips.set(trip.id, trip);
-    return res.json({ success: true });
-  }
-  try {
-    await activeTripRef.set({
-      ...trip,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(503).json({ success: false, error: 'Lỗi lưu chuyến đi' });
-  }
-});
-
-app.get('/api/trips/:tripId', requireAuth, async (req, res) => {
-  const { tripId } = req.params;
-  if (tripId === 'active') {
-    if (!firestore || !activeTripRef) {
-      const active = normalizeTripData(memoryTrips.get('active') || initialTripData);
-      return res.json({ success: true, trip: active });
+    const trip = await getTripById(req.params.tripId);
+    if (!trip || !canAccessTrip(trip, req.authUser)) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
     }
-    const snap = await activeTripRef.get();
-    if (!snap.exists) return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    return res.json({ success: true, trip: normalizeTripData(snap.data()) });
-  }
-
-  if (!firestore) {
-    const trip = memoryTrips.get(tripId);
-    if (!trip) return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    return res.json({ success: true, trip: normalizeTripData(trip) });
-  }
-
-  try {
-    const snap = await firestore.collection('trips').doc(tripId).get();
-    if (!snap.exists) return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    return res.json({ success: true, trip: normalizeTripData(snap.data()) });
+    return res.json({ success: true, trip });
   } catch {
     return res.status(503).json({ success: false, error: 'Không thể tải chuyến đi' });
   }
 });
 
-app.put('/api/trips/:tripId', requireAuth, async (req, res) => {
-  const { tripId } = req.params;
-  const trip = normalizeTripData(req.body);
-  if (!trip || typeof trip.id !== 'string' || !Array.isArray(trip.days)) {
-    return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
-  }
-
-  if (!firestore) {
-    memoryTrips.set(tripId, trip);
-    if (tripId === 'active' || memoryTrips.get('active')?.id === tripId) {
-      memoryTrips.set('active', trip);
-    }
-    return res.json({ success: true });
-  }
-
-  try {
-    const docRef = tripId === 'active' ? activeTripRef! : firestore.collection('trips').doc(tripId);
-    await docRef.set({
-      ...trip,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    return res.json({ success: true });
-  } catch (error) {
-    console.error('Error updating trip:', error);
-    return res.status(503).json({ success: false, error: 'Không thể lưu chuyến đi' });
-  }
-});
-
-app.patch('/api/trips/:tripId/members/:memberId/attendance', requireAuth, async (req, res) => {
+app.patch('/api/trips/:tripId/members/:memberId/attendance', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { attendanceStatus } = req.body;
   if (!['Có mặt', 'Vắng mặt'].includes(attendanceStatus)) {
     return res.status(400).json({ success: false, error: 'Trạng thái điểm danh không hợp lệ' });
   }
 
-  if (!firestore) {
-    const activeTrip = memoryTrips.get('active');
-    const trip = (req.params.tripId === 'active' || activeTrip?.id === req.params.tripId)
-      ? activeTrip
-      : memoryTrips.get(req.params.tripId);
-    if (!trip) {
-      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    }
-    const members = Array.isArray(trip.members) ? trip.members : [];
-    const memberIndex = members.findIndex((member) => member.id === req.params.memberId);
-    if (memberIndex < 0) {
-      return res.status(404).json({ success: false, error: 'Không tìm thấy thành viên' });
-    }
-    const updatedMembers = members.map((member, index) => (
-      index === memberIndex ? { ...member, attendanceStatus } : member
-    ));
-    const presentCount = updatedMembers.filter((member) => member.attendanceStatus === 'Có mặt').length;
-    const membersStatus = `${presentCount}/${updatedMembers.length} đã điểm danh`;
-    const updatedTrip: TripData = { ...trip, members: updatedMembers, membersStatus };
-    memoryTrips.set(trip.id, updatedTrip);
-    if (activeTrip?.id === trip.id) {
-      memoryTrips.set('active', updatedTrip);
-    }
-    return res.json({
-      success: true,
-      member: updatedMembers[memberIndex],
-      membersStatus,
-    });
-  }
-
   try {
-    const tripRef = await findTripRef(req.params.tripId);
-    if (!tripRef) {
-      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    }
-    const snapshot = await tripRef.get();
-    if (!snapshot.exists) {
+    const user = req.authUser!;
+    const trip = req.params.tripId === 'active'
+      ? (await loadUserTrips(user))[0]
+      : await getTripById(req.params.tripId);
+    if (!trip || !canAccessTrip(trip, user)) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
     }
 
-    const trip = snapshot.data() as TripData;
     const members = Array.isArray(trip.members) ? trip.members : [];
     const memberIndex = members.findIndex((member) => member.id === req.params.memberId);
     if (memberIndex < 0) {
@@ -452,11 +385,7 @@ app.patch('/api/trips/:tripId/members/:memberId/attendance', requireAuth, async 
     const presentCount = updatedMembers.filter((member) => member.attendanceStatus === 'Có mặt').length;
     const membersStatus = `${presentCount}/${updatedMembers.length} đã điểm danh`;
 
-    await tripRef.update({
-      members: updatedMembers,
-      membersStatus,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await patchTripDoc(trip.id, { members: updatedMembers, membersStatus });
 
     return res.json({
       success: true,

@@ -13,7 +13,6 @@ import {
   RefreshCw,
   Edit3,
   X,
-  Radio,
   Wind,
   Droplets,
   Gauge,
@@ -78,18 +77,13 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   const [isEditTelematicsOpen, setIsEditTelematicsOpen] = useState(false);
 
   // Telematics Form State
-  const [telDriver, setTelDriver] = useState(trip.telematics.driver || 'Trần Bình');
-  const [telDriverPhone, setTelDriverPhone] = useState(trip.telematics.driverPhone || '0905 123 456');
-  const [telVehicleType, setTelVehicleType] = useState(trip.telematics.vehicleType || 'Xe 29 chỗ Universe');
-  const [telPlate, setTelPlate] = useState(trip.telematics.licensePlate || '43B-028.99');
-  const [telFrom, setTelFrom] = useState(trip.telematics.from || 'Sơn Trà');
-  const [telTo, setTelTo] = useState(trip.telematics.to || 'Bà Nà Hills');
-  const [telDuration, setTelDuration] = useState<number>(trip.telematics.durationMinutes || 42);
-  const [telEta, setTelEta] = useState(trip.telematics.eta || '10:24');
-  const [telPassengers, setTelPassengers] = useState<number>(trip.telematics.passengerCount || 18);
-  const [telSpeed, setTelSpeed] = useState<number>(trip.telematics.speedKmH || 54);
-  const [telGpsStatus, setTelGpsStatus] = useState(trip.telematics.gpsStatus || 'GPS ổn định');
-  const [telTrafficStatus, setTelTrafficStatus] = useState(trip.telematics.trafficStatus || 'Lưu thông tốt');
+  const [telDriver, setTelDriver] = useState(trip.telematics.driver || '');
+  const [telDriverPhone, setTelDriverPhone] = useState(trip.telematics.driverPhone || '');
+  const [telVehicleType, setTelVehicleType] = useState(trip.telematics.vehicleType || '');
+  const [telPlate, setTelPlate] = useState(trip.telematics.licensePlate || '');
+  const [telFrom, setTelFrom] = useState(trip.telematics.from || '');
+  const [telTo, setTelTo] = useState(trip.telematics.to || '');
+  const [telPassengers, setTelPassengers] = useState<number>(trip.telematics.passengerCount || 1);
 
   // Waypoints lấy trực tiếp từ chuyến đi hiện tại (không còn viết cứng)
   const waypoints = React.useMemo(
@@ -262,9 +256,9 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       const busMarker = L.marker([busPos.lat, busPos.lng], { icon: busIcon }).addTo(map);
       busMarker.bindPopup(`
         <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
-          <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(trip.telematics.vehicleType)} (${escapeHtml(trip.telematics.licensePlate || '43B-028.99')})</strong><br/>
-          <span style="color: #0D9488; font-weight: 700;">Tài xế: ${escapeHtml(trip.telematics.driver)} • ${trip.telematics.speedKmH || 54} km/h</span><br/>
-          <span style="color: #64748B;">Lộ trình: ${escapeHtml(trip.telematics.from)} → ${escapeHtml(trip.telematics.to)} (ETA ${escapeHtml(trip.telematics.eta)})</span>
+          <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(trip.telematics.vehicleType)}${trip.telematics.licensePlate ? ` (${escapeHtml(trip.telematics.licensePlate)})` : ''}</strong><br/>
+          <span style="color: #0D9488; font-weight: 700;">Tài xế: ${escapeHtml(trip.telematics.driver)}</span><br/>
+          <span style="color: #64748B;">Chặng: ${escapeHtml(trip.telematics.from)} → ${escapeHtml(trip.telematics.to)}</span>
         </div>
       `);
       busMarkerRef.current = busMarker;
@@ -357,7 +351,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     busMarkerRef.current?.openPopup();
   };
 
-  // Mở form sửa viễn thông với dữ liệu mới nhất của chuyến đi hiện tại
+  // Mở form sửa thông tin xe với dữ liệu mới nhất của chuyến đi hiện tại
   const openTelematicsEditor = () => {
     const t = trip.telematics;
     setTelDriver(t.driver || '');
@@ -366,12 +360,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     setTelPlate(t.licensePlate || '');
     setTelFrom(t.from || '');
     setTelTo(t.to || '');
-    setTelDuration(t.durationMinutes || 0);
-    setTelEta(t.eta || '');
     setTelPassengers(t.passengerCount || 1);
-    setTelSpeed(t.speedKmH ?? 0);
-    setTelGpsStatus(t.gpsStatus || 'GPS ổn định');
-    setTelTrafficStatus(t.trafficStatus || 'Lưu thông tốt');
     setIsEditTelematicsOpen(true);
   };
 
@@ -389,13 +378,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       licensePlate: telPlate.trim(),
       from: telFrom.trim(),
       to: telTo.trim(),
-      durationMinutes: telDuration,
-      eta: telEta.trim(),
       passengerCount: telPassengers,
-      speedKmH: telSpeed,
-      gpsStatus: telGpsStatus,
-      trafficStatus: telTrafficStatus,
-      lastUpdated: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
     const updatedTrip: TripData = {
@@ -404,7 +387,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     };
 
     if (onUpdateTrip) {
-      onUpdateTrip(updatedTrip, 'Đã cập nhật thông tin viễn thông xe lên Firestore!');
+      onUpdateTrip(updatedTrip, 'Đã cập nhật thông tin xe!');
     }
 
     setIsEditTelematicsOpen(false);
@@ -423,13 +406,9 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
               <h2 className="text-base font-extrabold text-slate-900 leading-tight">
                 Bản đồ tuyến đường số tương tác (Leaflet &amp; OpenStreetMap)
               </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                <Radio className="w-2.5 h-2.5 animate-pulse" />
-                Live GPS
-              </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Cập nhật vị trí lúc {trip.telematics.lastUpdated} • {trip.telematics.gpsStatus} • Tốc độ {trip.telematics.speedKmH || 54} km/h
+              {trip.originFull} → {trip.destinationFull} • {waypoints.length} điểm dừng
             </p>
           </div>
         </div>
@@ -486,7 +465,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs transition"
           >
             <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-            <span>Sửa viễn thông xe</span>
+            <span>Sửa thông tin xe</span>
           </button>
         </div>
       </div>
@@ -549,22 +528,15 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                 <span className="text-xs font-black text-white leading-tight">
                   {trip.telematics.from} → {trip.telematics.to}
                 </span>
-                <span className="text-[10px] bg-teal-900/80 text-teal-300 font-mono px-1.5 py-0.5 rounded border border-teal-700 font-bold">
-                  {trip.telematics.licensePlate || '43B-028.99'}
-                </span>
+                {trip.telematics.licensePlate && (
+                  <span className="text-[10px] bg-teal-900/80 text-teal-300 font-mono px-1.5 py-0.5 rounded border border-teal-700 font-bold">
+                    {trip.telematics.licensePlate}
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-slate-300 mt-0.5">
                 Tài xế {trip.telematics.driver}{trip.telematics.driverPhone ? ` (${trip.telematics.driverPhone})` : ''} • {trip.telematics.passengerCount} khách
               </div>
-            </div>
-          </div>
-
-          <div className="text-right border-l border-slate-800 pl-3 shrink-0">
-            <div className="text-sm font-black text-emerald-400 font-mono">
-              {trip.telematics.speedKmH || 54} km/h
-            </div>
-            <div className="text-[10px] text-slate-400 font-medium">
-              ETA {trip.telematics.eta}
             </div>
           </div>
         </div>
@@ -605,7 +577,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
             <div className="px-6 py-4 bg-teal-600 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Bus className="w-4 h-4" />
-                <h3 className="text-sm font-extrabold">Cập nhật Viễn thông &amp; Giám sát xe</h3>
+                <h3 className="text-sm font-extrabold">Cập nhật thông tin xe</h3>
               </div>
               <button
                 type="button"
@@ -684,67 +656,15 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Tốc độ (km/h)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={120}
-                    value={telSpeed}
-                    onChange={(e) => setTelSpeed(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Dự kiến ETA</label>
-                  <input
-                    type="text"
-                    value={telEta}
-                    onChange={(e) => setTelEta(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Khách trên xe</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={telPassengers}
-                    onChange={(e) => setTelPassengers(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Trạng thái GPS</label>
-                  <select
-                    value={telGpsStatus}
-                    onChange={(e) => setTelGpsStatus(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 outline-none"
-                  >
-                    <option value="GPS ổn định">GPS ổn định</option>
-                    <option value="Đang hiệu chỉnh">Đang hiệu chỉnh</option>
-                    <option value="Mất sóng hầm Hải Vân">Mất sóng hầm Hải Vân</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Giao thông</label>
-                  <select
-                    value={telTrafficStatus}
-                    onChange={(e) => setTelTrafficStatus(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 outline-none"
-                  >
-                    <option value="Lưu thông tốt">Lưu thông tốt</option>
-                    <option value="Mật độ cao">Mật độ cao</option>
-                    <option value="Ùn tắc nhẹ">Ùn tắc nhẹ</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Khách trên xe</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={telPassengers}
+                  onChange={(e) => setTelPassengers(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 outline-none"
+                />
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
@@ -759,7 +679,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                   type="submit"
                   className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-xs transition"
                 >
-                  Lưu &amp; Đồng bộ Firestore
+                  Lưu
                 </button>
               </div>
             </form>

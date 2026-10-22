@@ -55,12 +55,19 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidId(userId);
     }
 
-    // Trips collection
+    // Trips collection: mỗi chuyến thuộc về một user (ownerId)
+    function isTripOwner() {
+      return isSignedIn() && resource.data.get('ownerId', null) == request.auth.uid;
+    }
+
     match /trips/{tripId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(tripId) && isValidTrip(incoming());
-      allow update: if isSignedIn() && isValidId(tripId) && isValidTrip(incoming());
-      allow delete: if isAdmin() && isValidId(tripId);
+      allow read: if isSignedIn() && (isAdmin() || isTripOwner());
+      allow create: if isSignedIn() && isValidId(tripId) && isValidTrip(incoming())
+                    && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(tripId) && isValidTrip(incoming())
+                    && (isAdmin() || isTripOwner())
+                    && incoming().get('ownerId', null) == resource.data.get('ownerId', null);
+      allow delete: if isSignedIn() && isValidId(tripId) && (isAdmin() || isTripOwner());
     }
   }
 }
