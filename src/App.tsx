@@ -1186,7 +1186,7 @@ function AdminDashboard({
           {currentTab === 'users' && <AdminUsersManagementView />}
           {currentTab === 'planning' && <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />}
           {currentTab === 'rules' && <AdminDispatchRulesView />}
-          {currentTab === 'ai' && <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} />}
+          {currentTab === 'ai' && <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} />}
           {currentTab === 'monitoring' && <AdminScheduleMonitoringView trip={trip} trips={trips} onUpdateTrip={handleUpdateTrip} />}
           {currentTab === 'system' && <AdminSystemManagementView trip={trip} />}
           {currentTab === 'locations' && <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />}
