@@ -70,8 +70,8 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
 }) => {
   const [timeframe, setTimeframe] = useState<'day' | 'week' | 'month'>('week');
   const [activeModel, setActiveModel] = useState<string>('gemini-3.8-flash');
-  const [userCount, setUserCount] = useState({ total: 24, active: 22, locked: 2 });
-  const [aiMetrics, setAiMetrics] = useState({ totalCalls: 48, successRate: 97.9, failedCalls: 1 });
+  const [userCount, setUserCount] = useState({ total: 6, active: 5, locked: 1 });
+  const [aiMetrics, setAiMetrics] = useState({ totalCalls: 0, successRate: 100, failedCalls: 0 });
 
   // Load stats from server if available
   useEffect(() => {
@@ -99,10 +99,12 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
     authenticatedFetch('/api/admin/ai-logs')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.requests && isMounted) {
-          const totalCalls = Math.max(data.requests.length + 30, 48);
-          const failedCalls = (data.errors?.length || 0) + 1;
-          const successRate = Number((((totalCalls - failedCalls) / totalCalls) * 100).toFixed(1));
+        if (data && isMounted) {
+          const requests = Array.isArray(data.requests) ? data.requests : [];
+          const errors = Array.isArray(data.errors) ? data.errors : [];
+          const totalCalls = requests.length;
+          const failedCalls = errors.length;
+          const successRate = totalCalls > 0 ? Number((((totalCalls - failedCalls) / totalCalls) * 100).toFixed(1)) : 100;
           setAiMetrics({ totalCalls, successRate, failedCalls });
         }
       })
@@ -113,40 +115,80 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
     };
   }, []);
 
-  const totalTrips = Math.max(trips.length, 3);
-  const allActivities = useMemo(() => trip.days.flatMap((d) => d.activities), [trip.days]);
-  const totalSchedulesCreated = trip.days.length * totalTrips;
+  const combinedTrips = useMemo(() => {
+    const map = new Map<string, TripData>();
+    if (trip && trip.id) map.set(trip.id, trip);
+    if (Array.isArray(trips)) {
+      trips.forEach((t) => {
+        if (t && t.id && !map.has(t.id)) {
+          map.set(t.id, t);
+        }
+      });
+    }
+    return Array.from(map.values());
+  }, [trip, trips]);
 
-  // Chart data based on timeframe
+  const totalTrips = combinedTrips.length;
+  const totalActivitiesCount = useMemo(() => {
+    return combinedTrips.reduce((acc, t) => acc + (t.days?.flatMap((d) => d.activities || []).length || 0), 0);
+  }, [combinedTrips]);
+  const totalSchedulesCreated = useMemo(() => {
+    return combinedTrips.reduce((acc, t) => acc + (t.days?.length || 0), 0);
+  }, [combinedTrips]);
+
+  // Chart data based on timeframe dynamically computed from real counts
   const chartBars = useMemo(() => {
+    const totalAi = aiMetrics.totalCalls;
+    const totalUsers = userCount.total;
+
     if (timeframe === 'day') {
-      return [
-        { label: '06h', ai: 4, users: 12, height: '35%' },
-        { label: '09h', ai: 14, users: 28, height: '75%' },
-        { label: '12h', ai: 9, users: 22, height: '55%' },
-        { label: '15h', ai: 18, users: 34, height: '90%' },
-        { label: '18h', ai: 12, users: 26, height: '65%' },
-        { label: '21h', ai: 6, users: 15, height: '40%' },
-      ];
+      const labels = ['06h', '09h', '12h', '15h', '18h', '21h'];
+      const maxVal = Math.max(totalAi, totalUsers, 1);
+      const weights = [0.1, 0.3, 0.2, 0.25, 0.1, 0.05];
+      return labels.map((label, idx) => {
+        const aiCount = Math.round(totalAi * weights[idx]);
+        const uCount = Math.round(totalUsers * weights[idx]);
+        const hVal = Math.min(100, Math.max(8, Math.round(((aiCount + uCount) / maxVal) * 85)));
+        return {
+          label,
+          ai: aiCount,
+          users: uCount,
+          height: `${hVal}%`,
+        };
+      });
     }
     if (timeframe === 'month') {
-      return [
-        { label: 'Tuần 1', ai: 65, users: 140, height: '60%' },
-        { label: 'Tuần 2', ai: 92, users: 185, height: '80%' },
-        { label: 'Tuần 3', ai: 110, users: 210, height: '95%' },
-        { label: 'Tuần 4', ai: 85, users: 175, height: '75%' },
-      ];
+      const labels = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'];
+      const maxVal = Math.max(totalAi, totalUsers, 1);
+      const weights = [0.2, 0.35, 0.3, 0.15];
+      return labels.map((label, idx) => {
+        const aiCount = Math.round(totalAi * weights[idx]);
+        const uCount = Math.round(totalUsers * weights[idx]);
+        const hVal = Math.min(100, Math.max(8, Math.round(((aiCount + uCount) / maxVal) * 85)));
+        return {
+          label,
+          ai: aiCount,
+          users: uCount,
+          height: `${hVal}%`,
+        };
+      });
     }
-    return [
-      { label: 'T2', ai: 12, users: 24, height: '55%' },
-      { label: 'T3', ai: 16, users: 32, height: '70%' },
-      { label: 'T4', ai: 22, users: 45, height: '95%' },
-      { label: 'T5', ai: 18, users: 38, height: '80%' },
-      { label: 'T6', ai: 25, users: 50, height: '100%' },
-      { label: 'T7', ai: 20, users: 42, height: '85%' },
-      { label: 'CN', ai: 15, users: 30, height: '65%' },
-    ];
-  }, [timeframe]);
+    // Week
+    const labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    const maxVal = Math.max(totalAi, totalUsers, 1);
+    const weights = [0.12, 0.18, 0.25, 0.15, 0.15, 0.1, 0.05];
+    return labels.map((label, idx) => {
+      const aiCount = Math.round(totalAi * weights[idx]);
+      const uCount = Math.round(totalUsers * weights[idx]);
+      const hVal = Math.min(100, Math.max(8, Math.round(((aiCount + uCount) / maxVal) * 85)));
+      return {
+        label,
+        ai: aiCount,
+        users: uCount,
+        height: `${hVal}%`,
+      };
+    });
+  }, [timeframe, aiMetrics.totalCalls, userCount.total]);
 
   return (
     <div className="space-y-6">
@@ -231,7 +273,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
             <span className="text-xs font-bold text-emerald-400">{totalSchedulesCreated} ngày lịch trình</span>
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
-            <span>Hoạt động tổng: <strong className="text-teal-300">{allActivities.length + 36}</strong></span>
+            <span>Hoạt động tổng: <strong className="text-teal-300">{totalActivitiesCount}</strong></span>
             <span className="text-emerald-400 group-hover:translate-x-0.5 transition flex items-center gap-0.5">
               Giám sát <ChevronRight className="w-3 h-3" />
             </span>
@@ -273,7 +315,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-white">{trip.waypoints?.length || 5}</span>
+            <span className="text-3xl font-black text-white">{trip.waypoints?.length || 0}</span>
             <span className="text-xs font-bold text-amber-400">Điểm du lịch chuẩn</span>
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
@@ -479,70 +521,8 @@ interface ManagedUser {
 }
 
 export const AdminUsersManagementView: React.FC = () => {
-  const [users, setUsers] = useState<ManagedUser[]>([
-    {
-      id: 'usr-1',
-      name: 'Lữ Quốc Tuấn (Admin)',
-      email: 'luquoctuan2006@gmail.com',
-      phone: '0905 123 456',
-      role: 'Admin',
-      isLocked: false,
-      createdAt: '01/10/2026',
-      lastLogin: 'Hôm nay 10:24',
-    },
-    {
-      id: 'usr-2',
-      name: 'Minh Lê',
-      email: 'minh.le@voyager.vn',
-      phone: '0912 345 678',
-      role: 'Điều phối viên',
-      isLocked: false,
-      createdAt: '02/10/2026',
-      lastLogin: 'Hôm nay 09:15',
-    },
-    {
-      id: 'usr-3',
-      name: 'Trần Bình',
-      email: 'driver.binh@voyager.vn',
-      phone: '0905 888 999',
-      role: 'Tài xế',
-      isLocked: false,
-      createdAt: '03/10/2026',
-      lastLogin: 'Hôm qua 17:30',
-    },
-    {
-      id: 'usr-4',
-      name: 'Nguyễn Văn An',
-      email: 'an.nguyen@voyager.vn',
-      phone: '0934 567 890',
-      role: 'Hướng dẫn viên',
-      isLocked: false,
-      createdAt: '05/10/2026',
-      lastLogin: 'Hôm nay 08:00',
-    },
-    {
-      id: 'usr-5',
-      name: 'Hải Trần',
-      email: 'haitran@gmail.com',
-      phone: '0988 111 222',
-      role: 'Khách du lịch',
-      isLocked: false,
-      createdAt: '08/10/2026',
-      lastLogin: 'Hôm qua 20:10',
-    },
-    {
-      id: 'usr-6',
-      name: 'Đặng Quốc Khánh',
-      email: 'khanh.dang@gmail.com',
-      phone: '0977 333 444',
-      role: 'Khách du lịch',
-      isLocked: true,
-      createdAt: '10/10/2026',
-      lastLogin: '3 ngày trước',
-    },
-  ]);
-
-  const [isLoading, setIsLoading] = useState(false);
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked'>('all');
@@ -569,12 +549,12 @@ export const AdminUsersManagementView: React.FC = () => {
       const res = await authenticatedFetch('/api/admin/users');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.users) && data.users.length > 0) {
+        if (Array.isArray(data.users)) {
           setUsers(data.users);
         }
       }
     } catch {
-      // Dùng state ban đầu
+      // Giữ nguyên danh sách hiện tại nếu lỗi mạng
     } finally {
       setIsLoading(false);
     }
@@ -583,6 +563,15 @@ export const AdminUsersManagementView: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const userStats = useMemo(() => {
+    const total = users.length;
+    const active = users.filter((u) => !u.isLocked).length;
+    const locked = users.filter((u) => u.isLocked).length;
+    const ops = users.filter((u) => u.role !== 'Khách du lịch').length;
+    const tourists = users.filter((u) => u.role === 'Khách du lịch').length;
+    return { total, active, locked, ops, tourists };
+  }, [users]);
 
   // Filter logic
   const filteredUsers = useMemo(() => {
@@ -762,6 +751,38 @@ export const AdminUsersManagementView: React.FC = () => {
         </div>
       </div>
 
+      {/* Dynamic User Statistics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Tổng tài khoản</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-white">{userStats.total}</span>
+            <span className="text-xs text-slate-500">người dùng</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">Đang hoạt động</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-emerald-400">{userStats.active}</span>
+            <span className="text-xs text-slate-500">tài khoản mở</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block">Đã khóa / Tạm dừng</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-rose-400">{userStats.locked}</span>
+            <span className="text-xs text-slate-500">vi phạm</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">Đội ngũ điều phối & Tour</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-sky-300">{userStats.ops}</span>
+            <span className="text-xs text-slate-500">Admin / HDV / Tài xế</span>
+          </div>
+        </div>
+      </div>
+
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
         <div className="relative flex-1 max-w-md">
@@ -823,7 +844,12 @@ export const AdminUsersManagementView: React.FC = () => {
         </div>
 
         <div className="divide-y divide-slate-800/60">
-          {filteredUsers.length === 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center space-y-3">
+              <RefreshCw className="w-6 h-6 text-teal-400 animate-spin mx-auto" />
+              <p className="text-xs text-slate-400 font-semibold">Đang nạp danh sách tài khoản từ hệ thống...</p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">
               Không tìm thấy người dùng phù hợp với điều kiện tìm kiếm.
             </div>
@@ -1193,37 +1219,317 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
     return locations.filter((wp) => checkDataValidation(wp).length > 0).length;
   }, [locations]);
 
-  // Data for subtabs
-  const operatingHours = [
-    { place: 'Bà Nà Hills', open: '07:30', close: '21:00', duration: '4 - 5 giờ', note: 'Nên đến trước 09:00 để tránh đông cáp treo' },
-    { place: 'Đại Nội Huế', open: '08:00', close: '17:30', duration: '2.5 - 3 giờ', note: 'Mở cửa tất cả các ngày trong tuần' },
-    { place: 'Chùa Thiên Mụ', open: '06:30', close: '18:00', duration: '1 giờ', note: 'Trang phục lịch sự' },
-    { place: 'Bán đảo Sơn Trà', open: '06:00', close: '19:00', duration: '2 giờ', note: 'Hạn chế đi sau 18:00 khi trời tối sương mù' },
-    { place: 'Đèo Hải Vân', open: '24/24', close: '24/24', duration: '45 phút ngắm cảnh', note: 'Điểm dừng chân Đỉnh đèo Hải Vân Quan' },
-  ];
+  // Helper: Haversine road-distance calculator
+  const computeHaversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c * 1.35 * 10) / 10;
+  };
 
-  const distanceMatrix = [
-    { from: 'Trung tâm Đà Nẵng', to: 'Bà Nà Hills', distance: '32 km', estTime: '45 phút', road: 'Tuyến QL14B & Tuyến Bà Nà - Suối Mơ' },
-    { from: 'Đà Nẵng', to: 'Đèo Hải Vân', distance: '28 km', estTime: '40 phút', road: 'Tuyến ven biển Nguyễn Tất Thành' },
-    { from: 'Đỉnh Đèo Hải Vân', to: 'Vịnh Lăng Cô', distance: '16 km', estTime: '25 phút', road: 'Đoạn đổ đèo dốc uốn lượn' },
-    { from: 'Vịnh Lăng Cô', to: 'Đại Nội Huế', distance: '65 km', estTime: '75 phút', road: 'Quốc lộ 1A thông thoáng' },
-    { from: 'Đại Nội Huế', to: 'Chùa Thiên Mụ', distance: '5 km', estTime: '12 phút', road: 'Đường Lê Duẩn & Kim Long dọc Sông Hương' },
-  ];
+  // State: Vehicles & Fleet Management
+  interface VehicleItem {
+    id: string;
+    type: string;
+    speedAvg: string;
+    capacity: string;
+    consumption: string;
+    status: 'Sẵn sàng điều phối' | 'Đang chạy tour' | 'Bảo dưỡng định kỳ';
+  }
 
-  const vehicles = [
-    { type: 'Xe du lịch 29 chỗ', speedAvg: '45 km/h', capacity: '28 khách', consumption: '16L / 100km', status: 'Sẵn sàng điều phối' },
-    { type: 'Xe du lịch 16 chỗ (Transit)', speedAvg: '52 km/h', capacity: '15 khách', consumption: '11L / 100km', status: 'Sẵn sàng điều phối' },
-    { type: 'Xe du lịch 45 chỗ (Universe)', speedAvg: '40 km/h', capacity: '44 khách', consumption: '24L / 100km', status: 'Sẵn sàng điều phối' },
-    { type: 'Xe 7 chỗ cao cấp (Carnival)', speedAvg: '60 km/h', capacity: '6 khách', consumption: '9L / 100km', status: 'Bảo dưỡng định kỳ' },
-  ];
+  const [vehicles, setVehicles] = useState<VehicleItem[]>([]);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
+  const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
+  const [newVehicleForm, setNewVehicleForm] = useState({
+    type: '',
+    speedAvg: '45 km/h',
+    capacity: '16 khách',
+    consumption: '12L / 100km',
+    status: 'Sẵn sàng điều phối' as VehicleItem['status'],
+  });
 
-  const referenceCosts = [
-    { category: 'Vé tham quan', item: 'Cáp treo Bà Nà Hills (Kèm Buffet)', price: '1.250.000 ₫ / vé', note: 'Bao gồm vé vào cổng & cáp treo 2 chiều' },
-    { category: 'Vé tham quan', item: 'Vé tham quan Hoàng Cung Huế', price: '200.000 ₫ / vé', note: 'Áp dụng cho người lớn' },
-    { category: 'Vé tham quan', item: 'Vé du thuyền Sông Hương nghe ca Huế', price: '150.000 ₫ / người', note: 'Chuyến tối 19:30 - 20:30' },
-    { category: 'Ăn uống', item: 'Suất ăn trưa tiêu chuẩn Tour', price: '180.000 ₫ / suất', note: 'Thực đơn đặc sản miền Trung' },
-    { category: 'Lưu trú', item: 'Khách sạn 4 sao ven biển Đà Nẵng', price: '950.000 ₫ / đêm', note: 'Phòng Deluxe 2 người kèm ăn sáng' },
-  ];
+  // State: Reference Benchmark Costs
+  interface ReferenceCostItem {
+    id: string;
+    category: string;
+    item: string;
+    price: string;
+    note: string;
+  }
+
+  const [referenceCosts, setReferenceCosts] = useState<ReferenceCostItem[]>([]);
+  const [costCategoryFilter, setCostCategoryFilter] = useState<string>('all');
+  const [isLoadingCosts, setIsLoadingCosts] = useState(false);
+  const [isAddCostOpen, setIsAddCostOpen] = useState(false);
+  const [newCostForm, setNewCostForm] = useState({
+    category: 'Vé tham quan',
+    item: '',
+    price: '',
+    note: '',
+  });
+
+  // Interactive Point-to-Point Calculator
+  const [calcOrigin, setCalcOrigin] = useState<string>('');
+  const [calcDest, setCalcDest] = useState<string>('');
+
+  // Nạp Phương tiện & Định mức chi phí từ Server
+  const fetchVehicles = async () => {
+    try {
+      setIsLoadingVehicles(true);
+      const res = await authenticatedFetch('/api/admin/vehicles');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.vehicles)) {
+          setVehicles(data.vehicles);
+        }
+      }
+    } catch {
+      // Giữ nguyên danh sách
+    } finally {
+      setIsLoadingVehicles(false);
+    }
+  };
+
+  const fetchReferenceCosts = async () => {
+    try {
+      setIsLoadingCosts(true);
+      const res = await authenticatedFetch('/api/admin/reference-costs');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.costs)) {
+          setReferenceCosts(data.costs);
+        }
+      }
+    } catch {
+      // Giữ nguyên danh sách
+    } finally {
+      setIsLoadingCosts(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVehicles();
+    fetchReferenceCosts();
+  }, []);
+
+  // Handlers: Quản lý phương tiện
+  const handleCreateVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVehicleForm.type.trim()) return;
+    try {
+      const res = await authenticatedFetch('/api/admin/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVehicleForm),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.vehicles) setVehicles(data.vehicles);
+      }
+      showToast(`Đã thêm phương tiện "${newVehicleForm.type}" thành công`);
+      setIsAddVehicleOpen(false);
+      setNewVehicleForm({
+        type: '',
+        speedAvg: '45 km/h',
+        capacity: '16 khách',
+        consumption: '12L / 100km',
+        status: 'Sẵn sàng điều phối',
+      });
+    } catch {
+      showToast('Lỗi khi thêm phương tiện');
+    }
+  };
+
+  const handleToggleVehicleStatus = async (veh: VehicleItem) => {
+    const nextStatus: VehicleItem['status'] =
+      veh.status === 'Sẵn sàng điều phối'
+        ? 'Đang chạy tour'
+        : veh.status === 'Đang chạy tour'
+        ? 'Bảo dưỡng định kỳ'
+        : 'Sẵn sàng điều phối';
+
+    setVehicles((prev) => prev.map((v) => (v.id === veh.id ? { ...v, status: nextStatus } : v)));
+    try {
+      await authenticatedFetch(`/api/admin/vehicles/${veh.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      showToast(`Đã chuyển trạng thái xe sang "${nextStatus}"`);
+    } catch {
+      showToast(`Đã đổi trạng thái sang "${nextStatus}" (cục bộ)`);
+    }
+  };
+
+  const handleDeleteVehicle = async (id: string, name: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa phương tiện "${name}"?`)) return;
+    setVehicles((prev) => prev.filter((v) => v.id !== id));
+    try {
+      await authenticatedFetch(`/api/admin/vehicles/${id}`, { method: 'DELETE' });
+      showToast(`Đã xóa phương tiện "${name}"`);
+    } catch {
+      showToast(`Đã xóa phương tiện (cục bộ)`);
+    }
+  };
+
+  // Handlers: Quản lý định mức chi phí
+  const handleCreateCost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCostForm.item.trim() || !newCostForm.price.trim()) return;
+    try {
+      const res = await authenticatedFetch('/api/admin/reference-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCostForm),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.costs) setReferenceCosts(data.costs);
+      }
+      showToast(`Đã thêm định mức chi phí "${newCostForm.item}"`);
+      setIsAddCostOpen(false);
+      setNewCostForm({ category: 'Vé tham quan', item: '', price: '', note: '' });
+    } catch {
+      showToast('Lỗi khi thêm định mức chi phí');
+    }
+  };
+
+  const handleDeleteCost = async (id: string, name: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa định mức chi phí "${name}"?`)) return;
+    setReferenceCosts((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await authenticatedFetch(`/api/admin/reference-costs/${id}`, { method: 'DELETE' });
+      showToast(`Đã xóa định mức "${name}"`);
+    } catch {
+      showToast(`Đã xóa định mức (cục bộ)`);
+    }
+  };
+
+  // SUBTAB 2: Dynamic Operating Hours derived directly from locations (trip.waypoints)
+  const dynamicOperatingHours = useMemo(() => {
+    return locations.map((wp) => {
+      const hours = (wp.openHours && wp.openHours.trim()) || '07:30 - 18:00';
+      const parts = hours.includes('-') ? hours.split('-').map((s) => s.trim()) : [hours, ''];
+      const open = parts[0] || '08:00';
+      const close = parts[1] || '18:00';
+
+      let duration = '2 - 3 giờ';
+      if (wp.category === 'nature') duration = '3 - 4 giờ';
+      else if (wp.category === 'entertainment') duration = '4 - 5 giờ';
+      else if (wp.category === 'food') duration = '1 - 1.5 giờ';
+      else if (wp.category === 'stay') duration = '12 - 24 giờ';
+
+      return {
+        id: wp.id,
+        code: wp.code,
+        place: wp.name,
+        category: wp.category || 'culture',
+        open,
+        close,
+        openHours: hours,
+        duration,
+        note: wp.description || 'Lịch trình tham quan tiêu chuẩn Voyager',
+        ticketPrice: wp.ticketPrice || 'Miễn phí',
+        rawWaypoint: wp,
+      };
+    });
+  }, [locations]);
+
+  // SUBTAB 3: Dynamic Distance Matrix calculated from consecutive waypoints in locations
+  const dynamicDistanceMatrix = useMemo(() => {
+    if (locations.length < 2) return [];
+    const matrix: Array<{
+      from: string;
+      to: string;
+      distance: string;
+      estTime: string;
+      road: string;
+      km: number;
+    }> = [];
+
+    for (let i = 0; i < locations.length - 1; i++) {
+      const curr = locations[i];
+      const next = locations[i + 1];
+      const km = computeHaversineKm(curr.lat, curr.lng, next.lat, next.lng);
+      const minutes = Math.max(10, Math.round((km / 42) * 60));
+      const estTime = minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} phút`;
+
+      let road = `Tuyến kết nối Chặng ${i + 1} ➔ Chặng ${i + 2}`;
+      if (curr.name.includes('Bà Nà') || next.name.includes('Bà Nà')) {
+        road = 'Tuyến QL14B & Tuyến Bà Nà - Suối Mơ';
+      } else if (curr.name.includes('Hải Vân') || next.name.includes('Hải Vân')) {
+        road = 'Tuyến ven biển Nguyễn Tất Thành & Đèo Hải Vân';
+      } else if (curr.name.includes('Huế') || next.name.includes('Huế')) {
+        road = 'Quốc lộ 1A thông thoáng kết nối Cố đô Huế';
+      } else if (curr.name.includes('Hội An') || next.name.includes('Hội An')) {
+        road = 'Tuyến ven biển Võ Nguyên Giáp & Lạc Long Quân';
+      }
+
+      matrix.push({
+        from: curr.name,
+        to: next.name,
+        distance: `${km} km`,
+        estTime,
+        road,
+        km,
+      });
+    }
+    return matrix;
+  }, [locations]);
+
+  const totalCalculatedKm = useMemo(() => {
+    if (dynamicDistanceMatrix.length > 0) {
+      return Math.round(dynamicDistanceMatrix.reduce((acc, leg) => acc + leg.km, 0));
+    }
+    return trip.totalKm || 146;
+  }, [dynamicDistanceMatrix, trip.totalKm]);
+
+  const totalCalculatedHours = useMemo(() => {
+    const minutes = Math.round((totalCalculatedKm / 42) * 60);
+    return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} phút`;
+  }, [totalCalculatedKm]);
+
+  // Interactive Point-to-Point Calculator Result
+  const calculatedLeg = useMemo(() => {
+    if (!calcOrigin || !calcDest || calcOrigin === calcDest) return null;
+    const origWp = locations.find((l) => l.id === calcOrigin);
+    const destWp = locations.find((l) => l.id === calcDest);
+    if (!origWp || !destWp) return null;
+
+    const km = computeHaversineKm(origWp.lat, origWp.lng, destWp.lat, destWp.lng);
+    const minutes = Math.max(10, Math.round((km / 42) * 60));
+    const estTime = minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} phút`;
+    return {
+      from: origWp.name,
+      to: destWp.name,
+      distance: `${km} km`,
+      estTime,
+    };
+  }, [calcOrigin, calcDest, locations]);
+
+  // SUBTAB 5: Combined reference costs (Auto-aggregated ticket costs from locations + benchmark costs)
+  const allCombinedCosts = useMemo(() => {
+    const waypointTicketCosts: ReferenceCostItem[] = locations
+      .filter((wp) => wp.ticketPrice && wp.ticketPrice.trim() !== '')
+      .map((wp) => ({
+        id: `wp-cost-${wp.id}`,
+        category: 'Vé tham quan',
+        item: `Vé tham quan ${wp.name}`,
+        price: wp.ticketPrice || 'Miễn phí',
+        note: `Tự động trích xuất từ dữ liệu điểm ${wp.code}`,
+      }));
+
+    const merged = [...waypointTicketCosts, ...referenceCosts];
+    if (costCategoryFilter === 'all') return merged;
+    return merged.filter((c) => c.category === costCategoryFilter);
+  }, [locations, referenceCosts, costCategoryFilter]);
 
   return (
     <div className="space-y-6">
@@ -1462,100 +1768,342 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
         </div>
       )}
 
-      {/* SUBTAB 2: GIỜ HOẠT ĐỘNG */}
+      {/* SUBTAB 2: GIỜ HOẠT ĐỘNG & ĐỊNH MỨC THAM QUAN (DYNAMIC DỰA TRÊN ĐỊA ĐIỂM) */}
       {activeSubTab === 'hours' && (
-        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
-          <div className="grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-            <span className="col-span-4">Điểm tham quan</span>
-            <span className="col-span-3">Giờ mở / Đóng cửa</span>
-            <span className="col-span-2">Thời lượng khuyến nghị</span>
-            <span className="col-span-3">Ghi chú điều phối</span>
+        <div className="space-y-4">
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Tổng điểm tham quan</span>
+              <span className="text-xl font-black text-white">{locations.length} điểm</span>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 block">Mở cửa sớm (≤ 07:30)</span>
+              <span className="text-xl font-black text-teal-300">
+                {dynamicOperatingHours.filter((h) => h.open <= '07:30').length} điểm
+              </span>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">Mở tối muộn / 24h</span>
+              <span className="text-xl font-black text-amber-300">
+                {dynamicOperatingHours.filter((h) => h.close >= '20:00' || h.openHours.includes('24')).length} điểm
+              </span>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">Miễn phí vé</span>
+              <span className="text-xl font-black text-sky-300">
+                {dynamicOperatingHours.filter((h) => h.ticketPrice === 'Miễn phí' || h.ticketPrice.includes('0')).length} điểm
+              </span>
+            </div>
           </div>
-          <div className="divide-y divide-slate-800/60">
-            {operatingHours.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-3 items-center px-6 py-4 text-xs">
-                <span className="col-span-4 font-bold text-white text-sm">{item.place}</span>
-                <span className="col-span-3 text-teal-300 font-mono font-bold">{item.open} — {item.close}</span>
-                <span className="col-span-2 text-amber-300 font-bold">{item.duration}</span>
-                <span className="col-span-3 text-slate-400">{item.note}</span>
-              </div>
-            ))}
+
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
+            <div className="grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/60">
+              <span className="col-span-4">Điểm tham quan & Danh mục</span>
+              <span className="col-span-3">Giờ mở / Đóng cửa</span>
+              <span className="col-span-2">Thời lượng khuyến nghị</span>
+              <span className="col-span-2">Ghi chú điều phối</span>
+              <span className="col-span-1 text-right">Thao tác</span>
+            </div>
+            <div className="divide-y divide-slate-800/60">
+              {dynamicOperatingHours.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Chưa có địa điểm nào trong cơ sở dữ liệu. Vui lòng thêm điểm ở Tab 1.
+                </div>
+              ) : (
+                dynamicOperatingHours.map((item) => (
+                  <div key={item.id} className="grid grid-cols-12 gap-3 items-center px-6 py-4 text-xs hover:bg-slate-800/30 transition">
+                    <div className="col-span-4 flex items-center gap-2.5">
+                      <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                        {item.code}
+                      </span>
+                      <div>
+                        <strong className="font-bold text-white text-sm block">{item.place}</strong>
+                        <span className="text-[10px] text-teal-400 uppercase font-bold tracking-wider">
+                          {item.category === 'nature' ? '🌿 Thiên nhiên' : item.category === 'culture' ? '🏛️ Văn hóa' : item.category === 'entertainment' ? '🎡 Vui chơi' : item.category === 'food' ? '🍜 Ăn uống' : '🏨 Lưu trú'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="col-span-3 text-teal-300 font-mono font-bold">
+                      {item.openHours}
+                    </span>
+                    <span className="col-span-2 text-amber-300 font-bold">{item.duration}</span>
+                    <span className="col-span-2 text-slate-400 truncate" title={item.note}>{item.note}</span>
+                    <div className="col-span-1 flex justify-end">
+                      <button
+                        onClick={() => setEditingWaypoint(item.rawWaypoint)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 transition"
+                        title="Chỉnh sửa giờ & thông tin"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* SUBTAB 3: KHOẢNG CÁCH & TUYẾN ĐƯỜNG */}
+      {/* SUBTAB 3: KHOẢNG CÁCH & TUYẾN ĐƯỜNG LIÊN VÙNG */}
       {activeSubTab === 'distance' && (
-        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
-          <div className="grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-            <span className="col-span-4">Chặng xuất phát ➔ Điểm đến</span>
-            <span className="col-span-2">Cự ly chuẩn</span>
-            <span className="col-span-2">Thời gian ước tính</span>
-            <span className="col-span-4">Tuyến đường huyết mạch</span>
-          </div>
-          <div className="divide-y divide-slate-800/60">
-            {distanceMatrix.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-3 items-center px-6 py-4 text-xs">
-                <span className="col-span-4 font-bold text-white">
-                  {item.from} <span className="text-teal-400">➔</span> {item.to}
-                </span>
-                <span className="col-span-2 font-mono font-bold text-teal-300">{item.distance}</span>
-                <span className="col-span-2 font-bold text-purple-300">{item.estTime}</span>
-                <span className="col-span-4 text-slate-400">{item.road}</span>
+        <div className="space-y-4">
+          {/* Trip Route Overview Card */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0">
+                <Navigation className="w-6 h-6" />
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 4: PHƯƠNG TIỆN */}
-      {activeSubTab === 'vehicles' && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {vehicles.map((v, idx) => (
-            <div key={idx} className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-base">{v.type}</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-950 text-teal-300 border border-teal-800">
-                  {v.status}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="rounded-xl bg-slate-800/60 p-2.5">
-                  <span className="text-slate-400 block text-[10px]">Tốc độ TB</span>
-                  <strong className="text-teal-400">{v.speedAvg}</strong>
-                </div>
-                <div className="rounded-xl bg-slate-800/60 p-2.5">
-                  <span className="text-slate-400 block text-[10px]">Sức chứa</span>
-                  <strong className="text-white">{v.capacity}</strong>
-                </div>
-                <div className="rounded-xl bg-slate-800/60 p-2.5">
-                  <span className="text-slate-400 block text-[10px]">Tiêu hao</span>
-                  <strong className="text-amber-400">{v.consumption}</strong>
-                </div>
+              <div>
+                <h3 className="text-base font-black text-white">Tổng quan Tuyến đường Tour Hiện tại</h3>
+                <p className="text-xs text-slate-400">
+                  Cự ly và thời gian được tính toán chuẩn xác theo tọa độ GPS và hệ số uốn lượn đường sá Việt Nam (1.35x).
+                </p>
               </div>
             </div>
-          ))}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="rounded-xl bg-slate-800/80 px-4 py-2 text-center border border-slate-700">
+                <span className="text-[10px] text-slate-400 block font-bold">Tổng cự ly</span>
+                <span className="text-sm font-black text-teal-300">{totalCalculatedKm} km</span>
+              </div>
+              <div className="rounded-xl bg-slate-800/80 px-4 py-2 text-center border border-slate-700">
+                <span className="text-[10px] text-slate-400 block font-bold">Thời gian chạy xe</span>
+                <span className="text-sm font-black text-purple-300">{totalCalculatedHours}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Point-to-Point Distance Calculator */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2.5 flex items-center gap-2">
+              <Compass className="w-4 h-4 text-sky-400" />
+              Tra cứu Ma trận Cự ly & Thời gian Tức thì Giữa 2 Điểm
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+              <div className="sm:col-span-5">
+                <label className="text-[10px] text-slate-400 font-bold block mb-1">Điểm xuất phát (A)</label>
+                <select
+                  value={calcOrigin}
+                  onChange={(e) => setCalcOrigin(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                >
+                  <option value="">-- Chọn điểm xuất phát --</option>
+                  {locations.map((wp) => (
+                    <option key={wp.id} value={wp.id}>
+                      {wp.code} - {wp.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2 flex justify-center pt-3 sm:pt-4">
+                <ArrowRight className="w-5 h-5 text-teal-400" />
+              </div>
+
+              <div className="sm:col-span-5">
+                <label className="text-[10px] text-slate-400 font-bold block mb-1">Điểm đến (B)</label>
+                <select
+                  value={calcDest}
+                  onChange={(e) => setCalcDest(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                >
+                  <option value="">-- Chọn điểm đến --</option>
+                  {locations.map((wp) => (
+                    <option key={wp.id} value={wp.id}>
+                      {wp.code} - {wp.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {calculatedLeg && (
+              <div className="mt-3 p-3 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-between text-xs animate-fade-in">
+                <div className="text-slate-200">
+                  <strong className="text-white">{calculatedLeg.from}</strong> ➔ <strong className="text-white">{calculatedLeg.to}</strong>
+                </div>
+                <div className="flex items-center gap-4 font-bold">
+                  <span className="text-teal-300 font-mono">Cự ly: {calculatedLeg.distance}</span>
+                  <span className="text-purple-300 font-mono">Dự kiến: {calculatedLeg.estTime}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Consecutive Leg Table */}
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
+            <div className="grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/60">
+              <span className="col-span-4">Chặng xuất phát ➔ Điểm đến</span>
+              <span className="col-span-2">Cự ly chuẩn</span>
+              <span className="col-span-2">Thời gian ước tính</span>
+              <span className="col-span-4">Tuyến đường huyết mạch</span>
+            </div>
+            <div className="divide-y divide-slate-800/60">
+              {dynamicDistanceMatrix.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Cần ít nhất 2 địa điểm trong cơ sở dữ liệu để tự động sinh ma trận khoảng cách chặng.
+                </div>
+              ) : (
+                dynamicDistanceMatrix.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-3 items-center px-6 py-4 text-xs hover:bg-slate-800/30 transition">
+                    <span className="col-span-4 font-bold text-white">
+                      {item.from} <span className="text-teal-400 font-normal">➔</span> {item.to}
+                    </span>
+                    <span className="col-span-2 font-mono font-bold text-teal-300">{item.distance}</span>
+                    <span className="col-span-2 font-bold text-purple-300">{item.estTime}</span>
+                    <span className="col-span-4 text-slate-400">{item.road}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* SUBTAB 5: CHI PHÍ THAM KHẢO */}
-      {activeSubTab === 'costs' && (
-        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
-          <div className="grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-            <span className="col-span-2">Hạng mục</span>
-            <span className="col-span-4">Khoản mục chi tiêu</span>
-            <span className="col-span-3">Đơn giá tham khảo</span>
-            <span className="col-span-3">Ghi chú định mức</span>
+      {/* SUBTAB 4: PHƯƠNG TIỆN & ĐIỀU PHỐI (DYNAMIC TRUY XUẤT TỪ SERVER) */}
+      {activeSubTab === 'vehicles' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-1">
+            <span className="text-xs text-slate-400 font-semibold">
+              Quản lý định mức xe, tốc độ trung bình và lượng tiêu hao nhiên liệu phục vụ thuật toán AI
+            </span>
+            <button
+              onClick={() => setIsAddVehicleOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow transition active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm Phương Tiện Mới</span>
+            </button>
           </div>
-          <div className="divide-y divide-slate-800/60">
-            {referenceCosts.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-3 items-center px-6 py-4 text-xs">
-                <span className="col-span-2 font-bold text-teal-400">{item.category}</span>
-                <span className="col-span-4 font-bold text-white">{item.item}</span>
-                <span className="col-span-3 font-mono font-bold text-amber-300">{item.price}</span>
-                <span className="col-span-3 text-slate-400">{item.note}</span>
-              </div>
-            ))}
+
+          {isLoadingVehicles ? (
+            <div className="p-12 text-center">
+              <RefreshCw className="w-6 h-6 text-teal-400 animate-spin mx-auto" />
+              <p className="text-xs text-slate-400 mt-2">Đang tải danh sách đội xe điều phối...</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {vehicles.map((v) => (
+                <div key={v.id} className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-white text-base">{v.type}</h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleVehicleStatus(v)}
+                        title="Nhấp để chuyển trạng thái"
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition ${
+                          v.status === 'Sẵn sàng điều phối'
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-800 hover:bg-emerald-900/40'
+                            : v.status === 'Đang chạy tour'
+                            ? 'bg-sky-950 text-sky-300 border-sky-800 hover:bg-sky-900/40'
+                            : 'bg-amber-950 text-amber-300 border-amber-800 hover:bg-amber-900/40'
+                        }`}
+                      >
+                        {v.status}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteVehicle(v.id, v.type)}
+                        className="p-1 rounded-lg text-slate-500 hover:text-rose-400 transition"
+                        title="Xóa phương tiện"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-xl bg-slate-800/60 p-2.5">
+                      <span className="text-slate-400 block text-[10px]">Tốc độ TB</span>
+                      <strong className="text-teal-400">{v.speedAvg}</strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-800/60 p-2.5">
+                      <span className="text-slate-400 block text-[10px]">Sức chứa</span>
+                      <strong className="text-white">{v.capacity}</strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-800/60 p-2.5">
+                      <span className="text-slate-400 block text-[10px]">Tiêu hao</span>
+                      <strong className="text-amber-400">{v.consumption}</strong>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUBTAB 5: CHI PHÍ THAM KHẢO & ĐỊNH MỨC (DYNAMIC TỪ LOCATIONS + SERVER) */}
+      {activeSubTab === 'costs' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Category Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {['all', 'Vé tham quan', 'Ăn uống', 'Lưu trú', 'Phương tiện', 'Hướng dẫn viên', 'Dự phòng'].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setCostCategoryFilter(cat)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                    costCategoryFilter === cat
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {cat === 'all' ? 'Tất cả định mức' : cat}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setIsAddCostOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow transition active:scale-95 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm Định Mức Chi Phí</span>
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
+            <div className="grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/60">
+              <span className="col-span-2">Hạng mục</span>
+              <span className="col-span-4">Khoản mục chi tiêu</span>
+              <span className="col-span-3">Đơn giá tham khảo</span>
+              <span className="col-span-2">Ghi chú định mức</span>
+              <span className="col-span-1 text-right">Thao tác</span>
+            </div>
+            <div className="divide-y divide-slate-800/60">
+              {isLoadingCosts ? (
+                <div className="p-12 text-center">
+                  <RefreshCw className="w-6 h-6 text-teal-400 animate-spin mx-auto" />
+                  <p className="text-xs text-slate-400 mt-2">Đang tải định mức chi phí...</p>
+                </div>
+              ) : allCombinedCosts.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Không tìm thấy định mức chi phí phù hợp với bộ lọc.
+                </div>
+              ) : (
+                allCombinedCosts.map((item) => (
+                  <div key={item.id} className="grid grid-cols-12 gap-3 items-center px-6 py-4 text-xs hover:bg-slate-800/30 transition">
+                    <span className="col-span-2 font-bold text-teal-400">{item.category}</span>
+                    <span className="col-span-4 font-bold text-white">{item.item}</span>
+                    <span className="col-span-3 font-mono font-bold text-amber-300">{item.price}</span>
+                    <span className="col-span-2 text-slate-400 text-[11px] truncate" title={item.note}>{item.note}</span>
+                    <div className="col-span-1 flex justify-end">
+                      {item.id.startsWith('wp-cost-') ? (
+                        <span className="text-[10px] text-slate-500 font-mono italic">Auto-sync</span>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteCost(item.id, item.item)}
+                          className="p-1 rounded-lg text-slate-500 hover:text-rose-400 transition"
+                          title="Xóa định mức"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1827,6 +2375,197 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
           </div>
         </div>
       )}
+
+      {/* Modal: Thêm Phương Tiện Mới */}
+      {isAddVehicleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Car className="w-5 h-5 text-teal-400" />
+                <h3 className="font-black text-white text-base">Thêm Phương Tiện Mới</h3>
+              </div>
+              <button
+                onClick={() => setIsAddVehicleOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateVehicle} className="space-y-3.5 text-xs">
+              <div>
+                <label className="text-slate-300 font-bold block mb-1">Loại xe & Dòng xe *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Xe du lịch 35 chỗ (Thaco Town)"
+                  value={newVehicleForm.type}
+                  onChange={(e) => setNewVehicleForm({ ...newVehicleForm, type: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Tốc độ TB (km/h)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="45 km/h"
+                    value={newVehicleForm.speedAvg}
+                    onChange={(e) => setNewVehicleForm({ ...newVehicleForm, speedAvg: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Sức chứa tối đa</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="28 khách"
+                    value={newVehicleForm.capacity}
+                    onChange={(e) => setNewVehicleForm({ ...newVehicleForm, capacity: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Định mức nhiên liệu</label>
+                  <input
+                    type="text"
+                    placeholder="15L / 100km"
+                    value={newVehicleForm.consumption}
+                    onChange={(e) => setNewVehicleForm({ ...newVehicleForm, consumption: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Trạng thái ban đầu</label>
+                  <select
+                    value={newVehicleForm.status}
+                    onChange={(e: any) => setNewVehicleForm({ ...newVehicleForm, status: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white"
+                  >
+                    <option value="Sẵn sàng điều phối">Sẵn sàng điều phối</option>
+                    <option value="Đang chạy tour">Đang chạy tour</option>
+                    <option value="Bảo dưỡng định kỳ">Bảo dưỡng định kỳ</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddVehicleOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold shadow-lg shadow-teal-900/40 transition active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm Phương Tiện</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Thêm Định Mức Chi Phí Mới */}
+      {isAddCostOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-teal-400" />
+                <h3 className="font-black text-white text-base">Thêm Định Mức Chi Phí</h3>
+              </div>
+              <button
+                onClick={() => setIsAddCostOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCost} className="space-y-3.5 text-xs">
+              <div>
+                <label className="text-slate-300 font-bold block mb-1">Hạng mục chi tiêu</label>
+                <select
+                  value={newCostForm.category}
+                  onChange={(e) => setNewCostForm({ ...newCostForm, category: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                >
+                  <option value="Vé tham quan">Vé tham quan</option>
+                  <option value="Ăn uống">Ăn uống</option>
+                  <option value="Lưu trú">Lưu trú</option>
+                  <option value="Phương tiện">Phương tiện</option>
+                  <option value="Hướng dẫn viên">Hướng dẫn viên</option>
+                  <option value="Dự phòng">Dự phòng</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-bold block mb-1">Tên dịch vụ / Khoản mục *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Buffet trưa nhà hàng 4 sao"
+                  value={newCostForm.item}
+                  onChange={(e) => setNewCostForm({ ...newCostForm, item: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-bold block mb-1">Đơn giá tham khảo *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: 250.000 ₫ / suất"
+                  value={newCostForm.price}
+                  onChange={(e) => setNewCostForm({ ...newCostForm, price: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-bold block mb-1">Ghi chú định mức</label>
+                <input
+                  type="text"
+                  placeholder="Áp dụng cho đoàn từ 10 khách trở lên..."
+                  value={newCostForm.note}
+                  onChange={(e) => setNewCostForm({ ...newCostForm, note: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCostOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold shadow-lg shadow-teal-900/40 transition active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Lưu Định Mức</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1840,7 +2579,17 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
 // - Nút test kết nối AI thời gian thực (độ trễ ms).
 // - Nhật ký Request / Error log thực tế.
 // ============================================================================
-export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> = ({ onOpenAIPlanner }) => {
+export interface AdminAIManagementProps {
+  onOpenAIPlanner?: () => void;
+  trip?: TripData;
+  isAIApplied?: boolean;
+}
+
+export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
+  onOpenAIPlanner,
+  trip,
+  isAIApplied = false,
+}) => {
   const [modelChoice, setModelChoice] = useState('gemini-3.8-flash');
   const [temperature, setTemperature] = useState('0.55');
   const [maxTokens, setMaxTokens] = useState('4000');
@@ -1864,6 +2613,27 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
     { id: 'err-1', time: '05/10 14:20', code: 'TIMEOUT_408', detail: 'Quá thời gian phản hồi mạng khi tải hình ảnh vệ tinh', resolved: true },
     { id: 'err-2', time: '02/10 09:12', code: 'JSON_SYNTAX_FALLBACK', detail: 'Mô hình trả thiếu ngoặc nhọn, fallback parser đã tự sửa', resolved: true },
   ]);
+
+  // Dynamic metrics from real AI requests
+  const totalRequests = aiRequests.length;
+  const successfulRequests = useMemo(
+    () => aiRequests.filter((r) => r.status === 'Hoàn thành' || !r.status || r.status === 'success'),
+    [aiRequests]
+  );
+  const avgReliability = useMemo(() => {
+    if (totalRequests === 0) return '100%';
+    const rate = Math.round((successfulRequests.length / totalRequests) * 100);
+    return `${rate}%`;
+  }, [totalRequests, successfulRequests.length]);
+
+  const avgLatencyStr = useMemo(() => {
+    if (totalRequests === 0) return '0.0s';
+    const sum = aiRequests.reduce((acc, r) => {
+      const val = parseFloat(String(r.latency || '0').replace('s', ''));
+      return acc + (isNaN(val) ? 0 : val);
+    }, 0);
+    return `${(sum / totalRequests).toFixed(2)}s`;
+  }, [aiRequests, totalRequests]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -1891,10 +2661,10 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
       const resLogs = await authenticatedFetch('/api/admin/ai-logs');
       if (resLogs.ok) {
         const dataLogs = await resLogs.json();
-        if (Array.isArray(dataLogs.requests) && dataLogs.requests.length > 0) {
+        if (Array.isArray(dataLogs.requests)) {
           setAiRequests(dataLogs.requests);
         }
-        if (Array.isArray(dataLogs.errors) && dataLogs.errors.length > 0) {
+        if (Array.isArray(dataLogs.errors)) {
           setAiErrors(dataLogs.errors);
         }
       }
@@ -2147,42 +2917,98 @@ export const AdminAIManagementView: React.FC<{ onOpenAIPlanner?: () => void }> =
 
         {/* Khối Theo dõi Kết quả Lập lịch & Hiệu quả (7 cols) */}
         <div className="lg:col-span-7 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-2">
             <h3 className="font-black text-white text-base flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               Đánh giá Hiệu quả Lập lịch AI Thực tế
             </h3>
-            <span className="text-xs text-slate-400">Độ tin cậy trung bình: 96.4%</span>
+            <span className="text-xs text-slate-400">
+              Độ tin cậy TB: <strong className="text-teal-300 font-mono">{avgReliability}</strong> • Độ trễ TB: <strong className="text-purple-300 font-mono">{avgLatencyStr}</strong>
+            </span>
           </div>
 
-          <div className="space-y-3">
-            {[
-              { title: 'Tối ưu né tránh mưa đèo Hải Vân (Tour VN-1024)', confidence: '94%', costSaved: '640.000 ₫', timeSaved: '45 phút', applied: true },
-              { title: 'Khởi tạo Tour Miền Trung 7 ngày từ văn bản tự nhiên', confidence: '98%', costSaved: '2.400.000 ₫', timeSaved: '3.5 giờ', applied: true },
-              { title: 'Đổi thứ tự tham quan Đại Nội ➔ Thiên Mụ tránh nắng trưa', confidence: '91%', costSaved: '150.000 ₫', timeSaved: '20 phút', applied: true },
-              { title: 'Dung hòa lịch trình nhóm 8 người (50% nghỉ dưỡng, 50% khám phá)', confidence: '95%', costSaved: '800.000 ₫', timeSaved: '1.5 giờ', applied: true },
-            ].map((item, idx) => (
-              <div key={idx} className="rounded-xl bg-slate-800/60 p-4 border border-slate-700/60 text-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <strong className="text-white text-sm">{item.title}</strong>
-                  <span className="px-2 py-0.5 rounded-full font-bold bg-teal-950 text-teal-300 border border-teal-800">
-                    Độ tin cậy: {item.confidence}
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-lg bg-slate-800 p-2 text-slate-300">
-                    Chi phí tiết kiệm: <strong className="text-amber-400">{item.costSaved}</strong>
-                  </div>
-                  <div className="rounded-lg bg-slate-800 p-2 text-slate-300">
-                    Thời gian rút ngắn: <strong className="text-teal-400">{item.timeSaved}</strong>
-                  </div>
-                  <div className="rounded-lg bg-slate-800 p-2 text-slate-300">
-                    Trạng thái: <strong className={item.applied ? 'text-emerald-400' : 'text-slate-400'}>{item.applied ? 'Đã áp dụng' : 'Bản nháp'}</strong>
-                  </div>
-                </div>
+          {aiRequests.length === 0 ? (
+            <div className="py-8 px-4 text-center rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
+              <Sparkles className="w-8 h-8 text-teal-400 mx-auto opacity-70" />
+              <p className="text-slate-200 text-sm font-bold">Chưa có nhật ký chạy AI nào từ máy chủ</p>
+              <p className="text-slate-400 text-xs max-w-md mx-auto">
+                Hệ thống sẽ tự động trích xuất các lượt chạy AI thực tế (tạo tour, tối ưu hành trình, ping kết nối) ngay khi có tác vụ phát sinh.
+              </p>
+              <div className="flex items-center justify-center gap-2 pt-1">
+                <button
+                  onClick={handleTestAICall}
+                  disabled={isTesting}
+                  className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition"
+                >
+                  {isTesting ? 'Đang ping...' : 'Kiểm tra Ping AI ngay'}
+                </button>
+                {onOpenAIPlanner && (
+                  <button
+                    onClick={onOpenAIPlanner}
+                    className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition"
+                  >
+                    Tạo tour mới với AI
+                  </button>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {aiRequests.map((req, idx) => {
+                const latencyNum = parseFloat(String(req.latency || '1.0').replace('s', ''));
+                const isSuccess = req.status === 'Hoàn thành' || !req.status || req.status === 'success';
+                const confidence = isSuccess
+                  ? latencyNum <= 1.5
+                    ? '98%'
+                    : latencyNum <= 3.0
+                    ? '95%'
+                    : '92%'
+                  : '0%';
+                const applied = req.applied !== undefined
+                  ? req.applied
+                  : isSuccess && (isAIApplied || Boolean(trip?.title));
+
+                return (
+                  <div key={req.id || idx} className="rounded-xl bg-slate-800/60 p-4 border border-slate-700/60 text-xs space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-teal-400 font-bold shrink-0">{req.id}</span>
+                        <strong className="text-white text-sm truncate" title={req.prompt}>
+                          {req.prompt || `Yêu cầu xử lý ${req.id}`}
+                        </strong>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] shrink-0 border ${
+                        isSuccess
+                          ? 'bg-teal-950 text-teal-300 border-teal-800'
+                          : 'bg-rose-950 text-rose-300 border-rose-800'
+                      }`}>
+                        Độ tin cậy: {confidence}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-slate-800 p-2 text-slate-300">
+                        Độ trễ phản hồi: <strong className="text-teal-400 font-mono">{req.latency || 'N/A'}</strong>
+                      </div>
+                      <div className="rounded-lg bg-slate-800 p-2 text-slate-300 truncate">
+                        Mô hình: <strong className="text-purple-300 font-mono">{req.model || modelChoice}</strong>
+                      </div>
+                      <div className="rounded-lg bg-slate-800 p-2 text-slate-300">
+                        Tình trạng: <strong className={applied ? 'text-emerald-400' : 'text-slate-400'}>
+                          {applied ? 'Đã áp dụng vào tour' : 'Sẵn sàng điều phối'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                      <span>Người thực hiện: <strong className="text-slate-300">{req.user || 'Hệ thống'}</strong></span>
+                      <span className="font-mono text-[10px] text-slate-500">{req.time}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -2282,68 +3108,119 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Danh sách các chuyến đang hoạt động
-  const activeTripsList = useMemo(() => {
-    const list = [
-      {
-        code: trip.code || 'VN-1024',
-        name: trip.title || 'Khám phá Miền Trung 7 ngày',
-        route: 'Đà Nẵng ➔ Huế',
-        day: `Ngày ${trip.currentDay} / ${trip.totalDays}`,
-        vehicle: trip.vehicle || 'Xe 29 chỗ (43B-028.99)',
-        driver: trip.telematics?.driver || 'Trần Bình',
-        guide: 'Nguyễn Văn An',
-        status: 'Đang di chuyển',
-        issuesCount: trip.alerts?.length || 1,
-        fullTrip: trip,
-      },
-      {
-        code: 'VN-2048',
-        name: 'Nghỉ dưỡng biển Hội An - Sơn Trà 4 ngày',
-        route: 'Sân bay ĐN ➔ Hội An',
-        day: 'Ngày 1 / 4',
-        vehicle: 'Xe 16 chỗ (43B-019.22)',
-        driver: 'Lê Văn Hoàng',
-        guide: 'Phạm Thị Thảo',
-        status: 'Đã tập trung',
-        issuesCount: 0,
-        fullTrip: null,
-      },
-      {
-        code: 'VN-3092',
-        name: 'Di sản Cố Đô Huế - Quảng Trị 3 ngày',
-        route: 'Huế ➔ Phong Nha',
-        day: 'Ngày 2 / 3',
-        vehicle: 'Xe 45 chỗ (75B-008.66)',
-        driver: 'Nguyễn Hữu Tâm',
-        guide: 'Đặng Tuấn Anh',
-        status: 'Đang tham quan',
-        issuesCount: 1,
-        fullTrip: null,
-      },
-    ];
-    return list;
-  }, [trip]);
+  // Danh sách chuyến đi thực tế được hợp nhất từ props
+  const combinedTrips = useMemo(() => {
+    const map = new Map<string, TripData>();
+    if (trip && trip.id) map.set(trip.id, trip);
+    if (Array.isArray(trips)) {
+      trips.forEach((t) => {
+        if (t && t.id && !map.has(t.id)) {
+          map.set(t.id, t);
+        }
+      });
+    }
+    return Array.from(map.values());
+  }, [trip, trips]);
 
-  // Kiểm tra lịch trình có lỗi hoặc thời gian bất khả thi
-  const scheduleIssues = [
-    {
-      id: 'iss-1',
-      tripCode: 'VN-1024',
-      type: 'Thời tiết & Đường dốc',
-      severity: 'Cảnh báo',
-      description: 'Mưa to cục bộ dự kiến lúc 15:00 tại đèo Hải Vân. AI đã đề xuất phương án đi hầm Hải Vân để đảm bảo an toàn.',
-      status: 'Đã có giải pháp AI',
-    },
-    {
-      id: 'iss-2',
-      tripCode: 'VN-3092',
-      type: 'Giờ mở cửa không khớp',
-      severity: 'Lỗi lịch trình',
-      description: 'Thời gian dự kiến đến Đại Nội lúc 18:30 (sau giờ đóng cửa 17:30). Cần điều chỉnh chặng tham quan sớm hơn 1.5 giờ.',
-      status: 'Cần can thiệp',
-    },
-  ];
+  // Danh sách các chuyến đang hoạt động từ dữ liệu thật
+  const activeTripsList = useMemo(() => {
+    return combinedTrips.map((t) => {
+      const driver = t.telematics?.driver || t.members?.find((m) => m.role.toLowerCase().includes('tài xế'))?.name || 'Trần Bình';
+      const guide = t.members?.find((m) => m.role.toLowerCase().includes('hướng dẫn viên') || m.role.toLowerCase().includes('hdv'))?.name || 'Nguyễn Văn An';
+      
+      const allActs = t.days?.flatMap((d) => d.activities || []) || [];
+      const startLoc = allActs[0]?.location || t.waypoints?.[0]?.name || 'Điểm khởi hành';
+      const endLoc = allActs[allActs.length - 1]?.location || t.waypoints?.[t.waypoints.length - 1]?.name || 'Điểm kết thúc';
+      const route = startLoc !== endLoc ? `${startLoc} ➔ ${endLoc}` : startLoc;
+
+      const issuesCount = (t.alerts?.length || 0) + (t.days?.filter((d) => d.hasWarning).length || 0);
+
+      return {
+        id: t.id,
+        code: t.code || `VN-${t.id.slice(-4).toUpperCase()}`,
+        name: t.title || 'Tour du lịch',
+        route,
+        day: `Ngày ${t.currentDay || 1} / ${t.totalDays || t.days?.length || 1}`,
+        vehicle: t.vehicle || 'Xe 29 chỗ (43B-028.99)',
+        driver,
+        guide,
+        status: t.status || 'Đang vận hành',
+        issuesCount,
+        fullTrip: t,
+      };
+    });
+  }, [combinedTrips]);
+
+  // Tự động quét và phát hiện sự cố lịch trình & xung đột thời gian từ dữ liệu thật
+  const scheduleIssues = useMemo(() => {
+    const issues: Array<{
+      id: string;
+      tripCode: string;
+      type: string;
+      severity: string;
+      description: string;
+      status: string;
+    }> = [];
+
+    combinedTrips.forEach((t) => {
+      const code = t.code || `VN-${t.id.slice(-4).toUpperCase()}`;
+
+      // 1. Quét cảnh báo thực tế từ t.alerts
+      if (Array.isArray(t.alerts)) {
+        t.alerts.forEach((alert) => {
+          issues.push({
+            id: `alert-${t.id}-${alert.id}`,
+            tripCode: code,
+            type: alert.category === 'weather' ? 'Thời tiết & Địa hình' : alert.category === 'traffic' ? 'Giao thông' : 'Vận hành',
+            severity: alert.severity === 'error' ? 'Khẩn cấp' : 'Cảnh báo',
+            description: alert.title ? `${alert.title}: ${alert.description || ''}` : alert.description,
+            status: alert.severity === 'error' ? 'Cần can thiệp' : 'Đã có giải pháp AI',
+          });
+        });
+      }
+
+      // 2. Quét các ngày có cảnh báo hoặc ghi chú điều phối
+      t.days?.forEach((day) => {
+        if (day.hasWarning && day.dispatcherNote) {
+          issues.push({
+            id: `warn-${t.id}-d${day.dayIndex}`,
+            tripCode: code,
+            type: 'Điều chỉnh lịch trình',
+            severity: 'Cảnh báo',
+            description: `Ngày ${day.dayIndex} (${day.fullDate}): ${day.dispatcherNote}`,
+            status: 'Cần xác nhận',
+          });
+        }
+
+        // 3. Quét xung đột thời gian thực tế: nếu hoạt động sau bắt đầu trước khi hoạt động trước kết thúc
+        const acts = day.activities || [];
+        for (let i = 0; i < acts.length - 1; i++) {
+          const act1 = acts[i];
+          const act2 = acts[i + 1];
+          if (act1?.timeEnd && act2?.timeStart) {
+            const [h1, m1] = act1.timeEnd.split(':').map(Number);
+            const [h2, m2] = act2.timeStart.split(':').map(Number);
+            if (!isNaN(h1) && !isNaN(h2)) {
+              const minutes1 = h1 * 60 + (m1 || 0);
+              const minutes2 = h2 * 60 + (m2 || 0);
+              if (minutes2 < minutes1) {
+                issues.push({
+                  id: `overlap-${t.id}-${act1.id}-${act2.id}`,
+                  tripCode: code,
+                  type: 'Xung đột thời gian',
+                  severity: 'Lỗi lịch trình',
+                  description: `Ngày ${day.dayIndex}: "${act1.title}" (kết thúc ${act1.timeEnd}) bị trùng giờ với "${act2.title}" (bắt đầu ${act2.timeStart}).`,
+                  status: 'Cần can thiệp',
+                });
+              }
+            }
+          }
+        }
+      });
+    });
+
+    return issues;
+  }, [combinedTrips]);
 
   const handleFlagSchedule = (tripCode: string) => {
     showToast(`Đã gửi thông báo cảnh báo lịch trình ${tripCode} đến Điều phối viên!`);
@@ -2418,7 +3295,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
 
               <div className="md:col-span-2 flex items-center justify-end gap-2 w-full md:w-auto">
                 <button
-                  onClick={() => setSelectedTripDetails(t.fullTrip || trip)}
+                  onClick={() => setSelectedTripDetails(t.fullTrip)}
                   className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-slate-700 transition"
                 >
                   Xem Lịch Trình
@@ -2447,34 +3324,42 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
         </div>
 
         <div className="space-y-3">
-          {scheduleIssues.map((iss) => (
-            <div
-              key={iss.id}
-              className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3"
-            >
-              <div className="space-y-1 max-w-2xl">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
-                    {iss.type}
-                  </span>
-                  <span className="font-mono text-teal-400 font-bold">{iss.tripCode}</span>
-                </div>
-                <p className="text-slate-300 leading-relaxed">{iss.description}</p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-800 text-teal-300 border border-slate-700">
-                  {iss.status}
-                </span>
-                <button
-                  onClick={() => showToast(`Đã can thiệp điều phối lại cho mã tour ${iss.tripCode}!`)}
-                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition"
-                >
-                  Hỗ Trợ Ngay
-                </button>
-              </div>
+          {scheduleIssues.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs rounded-xl bg-slate-800/40 border border-slate-700/50 flex flex-col items-center justify-center gap-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+              <strong className="text-white text-sm">Không phát hiện sự cố hay xung đột lịch trình</strong>
+              <span>Tất cả {combinedTrips.length} tour đang vận hành an toàn và đúng các mốc thời gian quy định.</span>
             </div>
-          ))}
+          ) : (
+            scheduleIssues.map((iss) => (
+              <div
+                key={iss.id}
+                className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3"
+              >
+                <div className="space-y-1 max-w-2xl">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                      {iss.type}
+                    </span>
+                    <span className="font-mono text-teal-400 font-bold">{iss.tripCode}</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed">{iss.description}</p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-800 text-teal-300 border border-slate-700">
+                    {iss.status}
+                  </span>
+                  <button
+                    onClick={() => showToast(`Đã can thiệp điều phối lại cho mã tour ${iss.tripCode}!`)}
+                    className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition"
+                  >
+                    Hỗ Trợ Ngay
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -2835,19 +3720,17 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
   const [sessionTimeout, setSessionTimeout] = useState('60 phút');
   const [backupAutoSchedule, setBackupAutoSchedule] = useState('Hằng ngày lúc 00:00');
   const [isSaved, setIsSaved] = useState(false);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-  const [auditLogs, setAuditLogs] = useState<any[]>([
-    { id: 'log-1', time: '10:24 Hôm nay', user: 'Lữ Quốc Tuấn (Admin)', action: 'Cập nhật phân quyền RBAC cho Nguyễn Văn An (Hướng dẫn viên)', status: 'Thành công' },
-    { id: 'log-2', time: '09:15 Hôm nay', user: 'Minh Lê (Điều phối)', action: 'Chạy tối ưu hóa lịch trình ngày 3 qua Gemini AI Core', status: 'Thành công' },
-    { id: 'log-3', time: 'Hôm qua 17:30', user: 'Lữ Quốc Tuấn (Admin)', action: 'Xuất bản sao lưu JSON toàn bộ hệ thống (voyager-backup.json)', status: 'Thành công' },
-  ]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
   const fetchAuditLogs = async () => {
+    setIsLoadingLogs(true);
     try {
       const res = await authenticatedFetch('/api/admin/audit-logs');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.logs) && data.logs.length > 0) {
+        if (Array.isArray(data.logs)) {
           setAuditLogs(data.logs);
         }
       }
@@ -2864,6 +3747,7 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
         }
       }
     } catch {}
+    setIsLoadingLogs(false);
   };
 
   useEffect(() => {
@@ -2889,7 +3773,7 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
   };
 
   // Export JSON Backup
-  const handleExportBackup = () => {
+  const handleExportBackup = async () => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(trip, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
@@ -2897,10 +3781,48 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+
+    // Ghi nhận Audit Log lên server
+    try {
+      await authenticatedFetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auditAction: `Xuất bản sao lưu JSON toàn bộ hệ thống (${trip.code || 'master'}.json)`,
+        }),
+      });
+      fetchAuditLogs();
+    } catch {}
   };
 
   return (
     <div className="space-y-6">
+      {/* Banner thông báo chế độ bảo trì */}
+      {maintenanceMode && (
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs shadow-lg animate-pulse">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <div>
+              <strong className="block text-sm font-black text-amber-200">Hệ thống đang ở Chế độ Bảo trì Toàn cục</strong>
+              <span>Khách du lịch và người dùng thông thường bị tạm khóa thao tác chỉnh sửa lịch trình trực tiếp.</span>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setMaintenanceMode(false);
+              authenticatedFetch('/api/admin/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ maintenanceMode: false }),
+              }).then(fetchAuditLogs);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition shrink-0"
+          >
+            Tắt bảo trì ngay
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl">
         <div>
@@ -3001,25 +3923,50 @@ export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }
               <FileText className="w-4 h-4 text-sky-400" />
               2. Nhật ký Hoạt động (Audit Log)
             </h3>
-            <button onClick={fetchAuditLogs} className="text-xs text-slate-400 hover:text-white flex items-center gap-1">
-              <RefreshCw className="w-3 h-3" /> Làm mới
+            <button
+              onClick={fetchAuditLogs}
+              disabled={isLoadingLogs}
+              className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition"
+            >
+              <RefreshCw className={`w-3 h-3 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+              <span>{isLoadingLogs ? 'Đang tải...' : 'Làm mới'}</span>
             </button>
           </div>
 
-          <div className="divide-y divide-slate-800/60 text-xs max-h-[380px] overflow-y-auto">
-            {auditLogs.map((log) => (
-              <div key={log.id} className="py-3 space-y-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <strong className="text-white">{log.user}</strong>
+          {auditLogs.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs">
+              Chưa có nhật ký hoạt động nào.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800/60 text-xs max-h-[380px] overflow-y-auto">
+              {auditLogs.map((log) => {
+                const statusColor =
+                  log.status === 'Cảnh báo'
+                    ? 'text-amber-400 bg-amber-950/60 border-amber-800'
+                    : log.status === 'Thất bại'
+                    ? 'text-rose-400 bg-rose-950/60 border-rose-800'
+                    : 'text-emerald-400 bg-emerald-950/60 border-emerald-800';
+
+                return (
+                  <div key={log.id} className="py-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        <strong className="text-white">{log.user}</strong>
+                        {log.status && (
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded border font-mono ${statusColor}`}>
+                            {log.status}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono">{log.time}</span>
+                    </div>
+                    <p className="text-slate-300 pl-3.5 leading-relaxed">{log.action}</p>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono">{log.time}</span>
-                </div>
-                <p className="text-slate-300 pl-3.5 leading-relaxed">{log.action}</p>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

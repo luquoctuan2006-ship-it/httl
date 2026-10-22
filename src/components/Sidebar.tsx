@@ -128,6 +128,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       </div>
 
+      {/* Quick AI Planner Button */}
+      <div className="px-3 pb-3">
+        <button
+          onClick={onOpenAIPlanner}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs transition active:scale-98 shadow-md ${
+            isAdmin
+              ? 'bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 text-white shadow-teal-950/50'
+              : 'bg-gradient-to-r from-sky-500 to-teal-400 hover:from-sky-400 hover:to-teal-300 text-white shadow-sky-950/40'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Tạo tour mới (AI)</span>
+        </button>
+      </div>
+
       {/* User Dispatcher Profile */}
       <div className="p-3 border-t border-slate-800/80 bg-slate-900/40">
         <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/40 border border-slate-700/50 transition">

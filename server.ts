@@ -473,6 +473,40 @@ const geminiCacheTtlMs = Math.max(0, Number.parseInt(process.env.GEMINI_CACHE_TT
 const geminiRequestTimeoutMs = Math.max(30_000, Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '30000', 10));
 
 // Admin System Configuration & Audit State
+export interface VehicleRecord {
+  id: string;
+  type: string;
+  speedAvg: string;
+  capacity: string;
+  consumption: string;
+  status: 'Sẵn sàng điều phối' | 'Đang chạy tour' | 'Bảo dưỡng định kỳ';
+}
+
+export interface ReferenceCostRecord {
+  id: string;
+  category: string;
+  item: string;
+  price: string;
+  note: string;
+}
+
+let activeVehicles: VehicleRecord[] = [
+  { id: 'veh-1', type: 'Xe du lịch 29 chỗ', speedAvg: '45 km/h', capacity: '28 khách', consumption: '16L / 100km', status: 'Sẵn sàng điều phối' },
+  { id: 'veh-2', type: 'Xe du lịch 16 chỗ (Transit)', speedAvg: '52 km/h', capacity: '15 khách', consumption: '11L / 100km', status: 'Sẵn sàng điều phối' },
+  { id: 'veh-3', type: 'Xe du lịch 45 chỗ (Universe)', speedAvg: '40 km/h', capacity: '44 khách', consumption: '24L / 100km', status: 'Sẵn sàng điều phối' },
+  { id: 'veh-4', type: 'Xe 7 chỗ cao cấp (Carnival)', speedAvg: '60 km/h', capacity: '6 khách', consumption: '9L / 100km', status: 'Bảo dưỡng định kỳ' },
+];
+
+let activeReferenceCosts: ReferenceCostRecord[] = [
+  { id: 'cost-1', category: 'Vé tham quan', item: 'Cáp treo Bà Nà Hills (Kèm Buffet)', price: '1.250.000 ₫ / vé', note: 'Bao gồm vé vào cổng & cáp treo 2 chiều' },
+  { id: 'cost-2', category: 'Vé tham quan', item: 'Vé tham quan Hoàng Cung Huế', price: '200.000 ₫ / vé', note: 'Áp dụng cho người lớn' },
+  { id: 'cost-3', category: 'Vé tham quan', item: 'Vé du thuyền Sông Hương nghe ca Huế', price: '150.000 ₫ / người', note: 'Chuyến tối 19:30 - 20:30' },
+  { id: 'cost-4', category: 'Ăn uống', item: 'Suất ăn trưa tiêu chuẩn Tour', price: '180.000 ₫ / suất', note: 'Thực đơn đặc sản miền Trung' },
+  { id: 'cost-5', category: 'Lưu trú', item: 'Khách sạn 4 sao ven biển Đà Nẵng', price: '950.000 ₫ / đêm', note: 'Phòng Deluxe 2 người kèm ăn sáng' },
+  { id: 'cost-6', category: 'Phương tiện', item: 'Thuê xe 29 chỗ phục vụ trọn ngày', price: '2.500.000 ₫ / ngày', note: 'Đã gồm lái xe & xăng dầu tuyến miền Trung' },
+  { id: 'cost-7', category: 'Hướng dẫn viên', item: 'Công tác phí HDV nội địa tiếng Việt', price: '600.000 ₫ / ngày', note: 'Tiêu chuẩn HDV có thẻ hành nghề quốc gia' },
+];
+
 interface SystemConfig {
   aiModel: string;
   temperature: number;
@@ -494,6 +528,8 @@ interface SystemConfig {
     conflictChecks: Record<string, boolean>;
     optimizationPriorities: Record<string, boolean>;
   };
+  vehicles: VehicleRecord[];
+  referenceCosts: ReferenceCostRecord[];
 }
 
 let activeSystemConfig: SystemConfig = {
@@ -527,6 +563,8 @@ let activeSystemConfig: SystemConfig = {
       elderlyPacing: false,
     },
   },
+  vehicles: activeVehicles,
+  referenceCosts: activeReferenceCosts,
 };
 
 interface AuditLogEntry {
@@ -789,7 +827,7 @@ function getOrCreateGeminiRequest(cacheKey: string, request: () => Promise<any>)
   return newRequest;
 }
 
-function createGeminiJob(operation: string, payload: unknown): GeminiJob {
+function createGeminiJob(operation: string, payload: unknown, userActor = 'Hệ thống'): GeminiJob {
   const now = Date.now();
   const job: GeminiJob = {
     id: createJobId(),
@@ -806,7 +844,7 @@ function createGeminiJob(operation: string, payload: unknown): GeminiJob {
   });
   void (async () => {
     try {
-      job.result = await executeGeminiOperation(operation, payload);
+      job.result = await executeGeminiOperation(operation, payload, userActor);
       job.status = 'completed';
       job.progress = 'Đã hoàn tất';
     } catch (error) {
@@ -820,7 +858,7 @@ function createGeminiJob(operation: string, payload: unknown): GeminiJob {
   return job;
 }
 
-async function executeGeminiOperation(operation: string, payload: unknown): Promise<any> {
+async function executeGeminiOperation(operation: string, payload: unknown, userActor = 'Hệ thống'): Promise<any> {
   if (operation === 'generate-itinerary') {
     const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = payload as Record<string, any>;
     const normalizedDays = Number.parseInt(days, 10);
@@ -833,7 +871,7 @@ Phong cách: ${travelStyle || 'Khám phá văn hóa & ẩm thực'}
 Xuất phát: ${startLocation || 'Đà Nẵng'}
 Sở thích: ${preferences || 'Tránh nắng gắt buổi trưa'}
 Trả về tối đa ${normalizedDays * 3} hoạt động và mỗi ngày tối đa 3 hoạt động. Schema: {tripCode,title,routeSummary:{origin,destination,totalKm,vehicle,destinationsCount},budget:{total,used,unit,breakdown},days:[{dayIndex,dateLabel,fullDate,summary,activities:[{id,timeStart,timeEnd,title,location,status,type,details,cost,coordinates:{lat,lng}}]}],aiOperationalSuggestions:[{id,title,impact,description,savingEstimate,confidence}],potentialRisks:[{title,level,advice}]}.`;
-    const response = await getOrCreateGeminiRequest(`generate-itinerary:${JSON.stringify(payload)}`, () => generateWithGemini(prompt));
+    const response = await getOrCreateGeminiRequest(`generate-itinerary:${JSON.stringify(payload)}`, () => generateWithGemini(prompt, userActor));
     const text = response.text || '{}';
     return parseGeminiJson(text);
   }
@@ -866,7 +904,7 @@ Thông tin chuyến đi: ${JSON.stringify(compactTrip)}
 Cảnh báo: ${JSON.stringify(alertDetails || {})}
 Mục tiêu: ${userGoal || 'An toàn, đúng lịch trình, giảm chi phí'}
 Trả về {recommendations:[{id,actionTitle,timeSaved,reason,confidence,costSaved,scheduleChanges:[{oldTime,newTime,action}]}],dispatcherNotice}. Giữ tối đa 3 đề xuất, mỗi đề xuất ngắn gọn.`;
-  const response = await getOrCreateGeminiRequest(`optimize-schedule:${JSON.stringify(payload)}`, () => generateWithGemini(prompt));
+  const response = await getOrCreateGeminiRequest(`optimize-schedule:${JSON.stringify(payload)}`, () => generateWithGemini(prompt, userActor));
   const text = response.text || '{}';
   return parseGeminiJson(text);
 }
@@ -904,7 +942,8 @@ app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (re
     return res.json({ success: true, data: cachedResult, cached: true });
   }
 
-  const job = createGeminiJob('generate-itinerary', req.body);
+  const userActor = req.authUser?.email || 'Người dùng';
+  const job = createGeminiJob('generate-itinerary', req.body, userActor);
   return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 
@@ -925,7 +964,8 @@ app.post('/api/gemini/optimize-schedule', requireAuth, aiRateLimiter, async (req
     return res.json({ success: true, data: cachedResult, cached: true });
   }
 
-  const job = createGeminiJob('optimize-schedule', req.body);
+  const userActor = req.authUser?.email || 'Người dùng';
+  const job = createGeminiJob('optimize-schedule', req.body, userActor);
   return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 
@@ -1004,9 +1044,23 @@ app.post('/api/admin/config', requireAuth, (req: AuthenticatedRequest, res) => {
   if (rules && typeof rules === 'object') {
     activeSystemConfig.rules = { ...activeSystemConfig.rules, ...rules };
   }
+  if (Array.isArray(req.body.vehicles)) {
+    activeVehicles = req.body.vehicles;
+    activeSystemConfig.vehicles = activeVehicles;
+  }
+  if (Array.isArray(req.body.referenceCosts)) {
+    activeReferenceCosts = req.body.referenceCosts;
+    activeSystemConfig.referenceCosts = activeReferenceCosts;
+  }
 
   const actor = req.authUser?.email || 'Admin';
-  recordAuditLog(actor, `Cập nhật cấu hình hệ thống: Model AI -> ${dynamicGeminiModel}, Temp -> ${dynamicGeminiTemperature}`);
+  if (req.body.auditAction) {
+    recordAuditLog(actor, String(req.body.auditAction));
+  } else if (req.body.maintenanceMode !== undefined || req.body.sessionTimeout || req.body.backupAutoSchedule) {
+    recordAuditLog(actor, `Cập nhật cấu hình hệ thống: Bảo trì=${activeSystemConfig.maintenanceMode ? 'BẬT' : 'TẮT'}, Timeout=${activeSystemConfig.sessionTimeout}, Lịch sao lưu=${activeSystemConfig.backupAutoSchedule}`);
+  } else {
+    recordAuditLog(actor, `Cập nhật cấu hình hệ thống: Model AI -> ${dynamicGeminiModel}, Temp -> ${dynamicGeminiTemperature}`);
+  }
 
   return res.json({
     success: true,
@@ -1072,8 +1126,180 @@ app.post('/api/admin/test-ai', requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
-// Get Managed Users
-app.get('/api/admin/users', requireAuth, (_req, res) => {
+// ==================== VEHICLES MANAGEMENT ====================
+app.get('/api/admin/vehicles', requireAuth, (_req, res) => {
+  return res.json({
+    success: true,
+    vehicles: activeVehicles,
+  });
+});
+
+app.post('/api/admin/vehicles', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { type, speedAvg, capacity, consumption, status } = req.body;
+  if (!type) {
+    return res.status(400).json({ success: false, error: 'Thiếu loại phương tiện' });
+  }
+
+  const newVeh: VehicleRecord = {
+    id: `veh-${Date.now()}`,
+    type: String(type).trim(),
+    speedAvg: String(speedAvg || '45 km/h').trim(),
+    capacity: String(capacity || '16 khách').trim(),
+    consumption: String(consumption || '12L / 100km').trim(),
+    status: status || 'Sẵn sàng điều phối',
+  };
+
+  activeVehicles.unshift(newVeh);
+  activeSystemConfig.vehicles = activeVehicles;
+  recordAuditLog(req.authUser?.email || 'Admin', `Thêm phương tiện mới: ${newVeh.type} (${newVeh.capacity})`);
+
+  return res.json({
+    success: true,
+    vehicle: newVeh,
+    vehicles: activeVehicles,
+  });
+});
+
+app.patch('/api/admin/vehicles/:vehicleId', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { vehicleId } = req.params;
+  const veh = activeVehicles.find((v) => v.id === vehicleId);
+  if (!veh) {
+    return res.status(404).json({ success: false, error: 'Không tìm thấy phương tiện' });
+  }
+
+  const { type, speedAvg, capacity, consumption, status } = req.body;
+  if (type) veh.type = String(type).trim();
+  if (speedAvg) veh.speedAvg = String(speedAvg).trim();
+  if (capacity) veh.capacity = String(capacity).trim();
+  if (consumption) veh.consumption = String(consumption).trim();
+  if (status) veh.status = status;
+
+  activeSystemConfig.vehicles = activeVehicles;
+  recordAuditLog(req.authUser?.email || 'Admin', `Cập nhật thông số phương tiện: ${veh.type} - Trạng thái: ${veh.status}`);
+
+  return res.json({
+    success: true,
+    vehicle: veh,
+    vehicles: activeVehicles,
+  });
+});
+
+app.delete('/api/admin/vehicles/:vehicleId', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { vehicleId } = req.params;
+  const index = activeVehicles.findIndex((v) => v.id === vehicleId);
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: 'Không tìm thấy phương tiện' });
+  }
+
+  const removed = activeVehicles.splice(index, 1)[0];
+  activeSystemConfig.vehicles = activeVehicles;
+  recordAuditLog(req.authUser?.email || 'Admin', `Xóa phương tiện: ${removed.type}`);
+
+  return res.json({
+    success: true,
+    vehicles: activeVehicles,
+  });
+});
+
+// ==================== REFERENCE COSTS MANAGEMENT ====================
+app.get('/api/admin/reference-costs', requireAuth, (_req, res) => {
+  return res.json({
+    success: true,
+    costs: activeReferenceCosts,
+  });
+});
+
+app.post('/api/admin/reference-costs', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { category, item, price, note } = req.body;
+  if (!item || !price) {
+    return res.status(400).json({ success: false, error: 'Thiếu tên hạng mục hoặc đơn giá' });
+  }
+
+  const newCost: ReferenceCostRecord = {
+    id: `cost-${Date.now()}`,
+    category: String(category || 'Vé tham quan').trim(),
+    item: String(item).trim(),
+    price: String(price).trim(),
+    note: String(note || '').trim(),
+  };
+
+  activeReferenceCosts.unshift(newCost);
+  activeSystemConfig.referenceCosts = activeReferenceCosts;
+  recordAuditLog(req.authUser?.email || 'Admin', `Thêm định mức chi phí mới: [${newCost.category}] ${newCost.item} - ${newCost.price}`);
+
+  return res.json({
+    success: true,
+    cost: newCost,
+    costs: activeReferenceCosts,
+  });
+});
+
+app.patch('/api/admin/reference-costs/:costId', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { costId } = req.params;
+  const cost = activeReferenceCosts.find((c) => c.id === costId);
+  if (!cost) {
+    return res.status(404).json({ success: false, error: 'Không tìm thấy định mức chi phí' });
+  }
+
+  const { category, item, price, note } = req.body;
+  if (category) cost.category = String(category).trim();
+  if (item) cost.item = String(item).trim();
+  if (price) cost.price = String(price).trim();
+  if (note !== undefined) cost.note = String(note).trim();
+
+  activeSystemConfig.referenceCosts = activeReferenceCosts;
+  recordAuditLog(req.authUser?.email || 'Admin', `Cập nhật định mức chi phí: ${cost.item} -> ${cost.price}`);
+
+  return res.json({
+    success: true,
+    cost,
+    costs: activeReferenceCosts,
+  });
+});
+
+app.delete('/api/admin/reference-costs/:costId', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { costId } = req.params;
+  const index = activeReferenceCosts.findIndex((c) => c.id === costId);
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: 'Không tìm thấy định mức chi phí' });
+  }
+
+  const removed = activeReferenceCosts.splice(index, 1)[0];
+  activeSystemConfig.referenceCosts = activeReferenceCosts;
+  recordAuditLog(req.authUser?.email || 'Admin', `Xóa định mức chi phí: ${removed.item}`);
+
+  return res.json({
+    success: true,
+    costs: activeReferenceCosts,
+  });
+});
+
+// ==================== USERS & RBAC MANAGEMENT ====================
+// Get Managed Users (with dynamic session user sync)
+app.get('/api/admin/users', requireAuth, (req: AuthenticatedRequest, res) => {
+  const callerEmail = req.authUser?.email || 'luquoctuan2006@gmail.com';
+  const existingIdx = memoryUsers.findIndex((u) => u.email.toLowerCase() === callerEmail.toLowerCase());
+  if (existingIdx >= 0) {
+    memoryUsers[existingIdx].lastLogin = 'Vừa xong (Trực tuyến)';
+    if (req.authUser?.role === 'admin' && memoryUsers[existingIdx].role !== 'Admin') {
+      memoryUsers[existingIdx].role = 'Admin';
+    }
+  } else {
+    // Tự động đồng bộ tài khoản đang đăng nhập hiện tại vào danh sách quản trị
+    const namePart = callerEmail.split('@')[0];
+    const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    memoryUsers.unshift({
+      id: `usr-${Date.now()}`,
+      name: `${formattedName} (${req.authUser?.role === 'admin' ? 'Admin' : 'Người dùng'})`,
+      email: callerEmail,
+      phone: '0905 123 456',
+      role: req.authUser?.role === 'admin' ? 'Admin' : 'Khách du lịch',
+      isLocked: false,
+      createdAt: `${new Date().getDate().toString().padStart(2, '0')}/${(new Date().getMonth() + 1).toString().padStart(2, '0')}/${new Date().getFullYear()}`,
+      lastLogin: 'Vừa xong (Trực tuyến)',
+    });
+  }
+
   return res.json({
     success: true,
     users: memoryUsers,
