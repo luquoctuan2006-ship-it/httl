@@ -1161,32 +1161,16 @@ function AdminDashboard({
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-        <Header
-          trip={trip}
-          role={authUser.role}
-          onOpenCreateTripModal={() => setIsAIPlannerOpen(true)}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onSelectActivity={(act, dayIdx) => {
-            setSelectedActivity(act);
-            setCurrentDayIndex(dayIdx);
-            setCurrentTab('schedule');
-          }}
-          onSelectLocation={() => setCurrentTab('map')}
-          onSelectMember={() => setCurrentTab('members')}
-          onToggleAttendance={handleToggleMemberAttendance}
-          firebaseStatus={firebaseStatus}
-        />
-
-        <main className="flex-1 p-5 md:p-6 space-y-5 max-w-[1680px] w-full mx-auto">
-          <div
-            role="status"
-            className={`text-xs font-semibold ${firebaseStatus === 'error' ? 'text-rose-400' : 'text-emerald-400'}`}
-          >
-            {firebaseStatus === 'loading' && 'Đang kết nối Firestore...'}
-            {firebaseStatus === 'connected' && 'Đã kết nối Firestore'}
-            {firebaseStatus === 'error' && 'Không thể đồng bộ Firestore'}
-          </div>
+        <main className="flex-1 p-5 md:p-6 space-y-6 max-w-[1680px] w-full mx-auto">
+          {firebaseStatus === 'error' && (
+            <div
+              role="status"
+              className="px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-2"
+            >
+              <span>⚠️</span>
+              <span>Không thể đồng bộ cơ sở dữ liệu Firestore Cloud</span>
+            </div>
+          )}
 
           {currentTab === 'dashboard' && isAdminMode && (
             <AdminDashboardView
