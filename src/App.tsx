@@ -1181,7 +1181,7 @@ function AdminDashboard({
         <main className="flex-1 p-5 md:p-6 space-y-5 max-w-[1680px] w-full mx-auto">
           <div
             role="status"
-            className={`text-xs font-semibold ${firebaseStatus === 'error' ? 'text-rose-600' : 'text-emerald-700'}`}
+            className={`text-xs font-semibold ${firebaseStatus === 'error' ? 'text-rose-400' : 'text-emerald-400'}`}
           >
             {firebaseStatus === 'loading' && 'Đang kết nối Firestore...'}
             {firebaseStatus === 'connected' && 'Đã kết nối Firestore'}
@@ -1269,14 +1269,14 @@ function AdminDashboard({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-black text-slate-900">Chi tiết Lịch trình Toàn bộ Hành trình</h2>
-                  <p className="text-xs text-slate-500 font-medium">
+                  <h2 className="text-xl font-black text-white">Chi tiết Lịch trình Toàn bộ Hành trình</h2>
+                  <p className="text-xs text-slate-400 font-medium">
                     Xem và chỉnh sửa toàn bộ các chặng từ Ngày 1 đến Ngày {trip.totalDays}
                   </p>
                 </div>
                 <button
                   onClick={() => setIsAddActivityOpen(true)}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-teal-900/30 transition"
                 >
                   + Thêm hoạt động mới
                 </button>
@@ -1305,8 +1305,8 @@ function AdminDashboard({
           {currentTab === 'map' && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-xl font-black text-slate-900">Bản đồ Tuyến đường Toàn cảnh & Telematics</h2>
-                <p className="text-xs text-slate-500 font-medium">
+                <h2 className="text-xl font-black text-white">Bản đồ Tuyến đường Toàn cảnh & Telematics</h2>
+                <p className="text-xs text-slate-400 font-medium">
                   Giám sát hành trình xe 29 chỗ trực tiếp trên cung đường Đà Nẵng - Huế
                 </p>
               </div>
