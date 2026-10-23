@@ -1,9 +1,27 @@
 import { firebaseAuth } from './firebase';
 
-let mockToken = 'mock-token:mock-admin:admin:admin@voyager.vn';
+const SESSION_TOKEN_KEY = 'voyager_session_token';
+
+let mockToken = typeof localStorage !== 'undefined'
+  ? localStorage.getItem(SESSION_TOKEN_KEY) || 'mock-token:mock-admin:admin:admin@voyager.vn'
+  : 'mock-token:mock-admin:admin:admin@voyager.vn';
 
 export function setMockAuthToken(token: string) {
   mockToken = token;
+  if (typeof localStorage !== 'undefined') {
+    if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+    }
+  }
+}
+
+export function clearMockAuthToken() {
+  mockToken = '';
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(SESSION_TOKEN_KEY);
+  }
 }
 
 export async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {

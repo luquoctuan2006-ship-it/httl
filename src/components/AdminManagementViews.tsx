@@ -514,7 +514,7 @@ interface ManagedUser {
   name: string;
   email: string;
   phone: string;
-  role: 'Admin' | 'Quản lý điều hành' | 'Điều phối viên' | 'Hướng dẫn viên' | 'Tài xế' | 'Khách du lịch';
+  role: 'Admin' | 'Khách du lịch';
   isLocked: boolean;
   createdAt: string;
   lastLogin: string;
@@ -568,9 +568,9 @@ export const AdminUsersManagementView: React.FC = () => {
     const total = users.length;
     const active = users.filter((u) => !u.isLocked).length;
     const locked = users.filter((u) => u.isLocked).length;
-    const ops = users.filter((u) => u.role !== 'Khách du lịch').length;
-    const tourists = users.filter((u) => u.role === 'Khách du lịch').length;
-    return { total, active, locked, ops, tourists };
+    const admins = users.filter((u) => u.role === 'Admin').length;
+    const tourists = users.filter((u) => u.role !== 'Admin').length;
+    return { total, active, locked, admins, tourists };
   }, [users]);
 
   // Filter logic
@@ -752,33 +752,26 @@ export const AdminUsersManagementView: React.FC = () => {
       </div>
 
       {/* Dynamic User Statistics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Tổng tài khoản</span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-2xl font-black text-white">{userStats.total}</span>
-            <span className="text-xs text-slate-500">người dùng</span>
+            <span className="text-xs text-slate-500">người dùng ({userStats.active} hoạt động)</span>
           </div>
         </div>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">Đang hoạt động</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">Quản trị viên (Admin)</span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-400">{userStats.active}</span>
-            <span className="text-xs text-slate-500">tài khoản mở</span>
+            <span className="text-2xl font-black text-amber-400">{userStats.admins}</span>
+            <span className="text-xs text-slate-500">toàn quyền hệ thống</span>
           </div>
         </div>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block">Đã khóa / Tạm dừng</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 block">Khách du lịch (User)</span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-rose-400">{userStats.locked}</span>
-            <span className="text-xs text-slate-500">vi phạm</span>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">Đội ngũ điều phối & Tour</span>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-sky-300">{userStats.ops}</span>
-            <span className="text-xs text-slate-500">Admin / HDV / Tài xế</span>
+            <span className="text-2xl font-black text-teal-300">{userStats.tourists}</span>
+            <span className="text-xs text-slate-500">tài khoản người dùng</span>
           </div>
         </div>
       </div>
@@ -817,7 +810,7 @@ export const AdminUsersManagementView: React.FC = () => {
           </select>
 
           {/* Role Filters */}
-          {['all', 'Admin', 'Điều phối viên', 'Hướng dẫn viên', 'Tài xế', 'Khách du lịch'].map((r) => (
+          {['all', 'Admin', 'Khách du lịch'].map((r) => (
             <button
               key={r}
               onClick={() => setRoleFilter(r)}
@@ -889,17 +882,13 @@ export const AdminUsersManagementView: React.FC = () => {
                 {/* Role Dropdown */}
                 <div className="md:col-span-3">
                   <select
-                    value={user.role}
+                    value={user.role === 'Admin' ? 'Admin' : 'Khách du lịch'}
                     onChange={(e: any) => handleChangeRole(user.id, e.target.value)}
                     disabled={user.email === 'luquoctuan2006@gmail.com'}
-                    className="w-full max-w-[200px] bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-semibold focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+                    className="w-full max-w-[170px] bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
                   >
-                    <option value="Admin">Admin (Quản trị tối cao)</option>
-                    <option value="Quản lý điều hành">Quản lý điều hành</option>
-                    <option value="Điều phối viên">Điều phối viên</option>
-                    <option value="Hướng dẫn viên">Hướng dẫn viên</option>
-                    <option value="Tài xế">Tài xế</option>
-                    <option value="Khách du lịch">Khách du lịch</option>
+                    <option value="Admin">Admin (Quản trị)</option>
+                    <option value="Khách du lịch">Khách du lịch (User)</option>
                   </select>
                 </div>
 
@@ -1013,12 +1002,8 @@ export const AdminUsersManagementView: React.FC = () => {
                   onChange={(e: any) => setNewUserForm({ ...newUserForm, role: e.target.value })}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                 >
-                  <option value="Khách du lịch">Khách du lịch (Người dùng phổ thông)</option>
-                  <option value="Hướng dẫn viên">Hướng dẫn viên (Theo dõi đoàn)</option>
-                  <option value="Tài xế">Tài xế (Cập nhật lộ trình xe)</option>
-                  <option value="Điều phối viên">Điều phối viên (Quản lý tour)</option>
-                  <option value="Quản lý điều hành">Quản lý điều hành</option>
-                  <option value="Admin">Admin (Quản trị hệ thống)</option>
+                  <option value="Khách du lịch">Khách du lịch (User)</option>
+                  <option value="Admin">Admin (Quản trị viên)</option>
                 </select>
               </div>
 

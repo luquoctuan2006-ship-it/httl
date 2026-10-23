@@ -173,7 +173,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col w-full max-w-full min-w-0">
       {/* Top Header of Detail Schedule */}
       <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* Title */}
@@ -417,7 +417,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
         </div>
       ) : (
         /* Timeline horizontal cards row */
-        <div className="p-4 sm:p-5 overflow-x-auto scrollbar-thin">
+        <div className="p-4 sm:p-5 overflow-x-auto scrollbar-thin max-w-full min-w-0">
           {filteredActivities.length === 0 ? (
             <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-xs text-slate-500">
               {normalizedQuery ? (
@@ -461,7 +461,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
               )}
             </div>
           ) : (
-            <div className="flex gap-4 min-w-[980px] pb-1">
+            <div className="flex gap-4 min-w-[720px] lg:min-w-[860px] pb-2">
               {filteredActivities.map((activity) => {
                 const isOngoing = activity.status === 'Đang diễn ra';
                 return (
