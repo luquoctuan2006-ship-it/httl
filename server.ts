@@ -58,9 +58,11 @@ const aiRateLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     success: false,
-    error: 'Đã vượt quá giới hạn yêu cầu AI cho project. Vui lòng đợi 5 phút rồi thử lại.',
+    error: 'Bạn đã vượt quá giới hạn yêu cầu AI. Vui lòng đợi 5 phút rồi thử lại.',
   },
-  keyGenerator: () => 'shared-project',
+  // Giới hạn theo từng tài khoản để một user không làm nghẽn các user khác.
+  // Middleware này luôn chạy sau requireAuth nên req.authUser đã có.
+  keyGenerator: (req) => `uid:${(req as AuthenticatedRequest).authUser?.uid ?? 'anonymous'}`,
 });
 
 const serviceAccountPath = path.resolve(
@@ -705,6 +707,7 @@ type GeminiJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 type GeminiJob = {
   id: string;
+  ownerUid: string;
   status: GeminiJobStatus;
   progress: string;
   createdAt: number;
@@ -835,10 +838,11 @@ function buildFallbackScheduleOptimization(payload: any) {
   return buildRuleBasedScheduleOptimization(payload);
 }
 
-function createGeminiJob(operation: string, payload: unknown, userActor = 'Hệ thống'): GeminiJob {
+function createGeminiJob(operation: string, payload: unknown, ownerUid: string, userActor = 'Hệ thống'): GeminiJob {
   const now = Date.now();
   const job: GeminiJob = {
     id: createJobId(),
+    ownerUid,
     status: 'queued',
     progress: 'Đang chuẩn bị yêu cầu',
     createdAt: now,
@@ -948,8 +952,8 @@ Lộ trình phải bắt đầu từ điểm xuất phát và đi đúng các đ
   return runScheduleOptimization(payload, userActor);
 }
 
-// API Route: Generate personalized itinerary using Gemini (Chỉ Admin điều phối mới có quyền)
-app.post('/api/gemini/generate-itinerary', requireAuth, requireAdmin, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
+// API Route: Generate personalized itinerary using Gemini (User đã đăng nhập sử dụng; Admin giám sát qua log)
+app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
   if (!ai) {
     return res.status(503).json({
       success: false,
@@ -982,12 +986,12 @@ app.post('/api/gemini/generate-itinerary', requireAuth, requireAdmin, aiRateLimi
   }
 
   const userActor = req.authUser?.email || 'Người dùng';
-  const job = createGeminiJob('generate-itinerary', req.body, userActor);
+  const job = createGeminiJob('generate-itinerary', req.body, req.authUser!.uid, userActor);
   return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 
-// API Route: Optimize active schedule based on real-time factors (Chỉ Admin điều phối mới có quyền)
-app.post('/api/gemini/optimize-schedule', requireAuth, requireAdmin, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
+// API Route: Optimize active schedule based on real-time factors (User đã đăng nhập sử dụng; Admin giám sát qua log)
+app.post('/api/gemini/optimize-schedule', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
   const userActor = req.authUser?.email || 'Người dùng';
   let payload: Awaited<ReturnType<typeof buildOptimizePayload>>;
   try {
@@ -1017,16 +1021,17 @@ app.post('/api/gemini/optimize-schedule', requireAuth, requireAdmin, aiRateLimit
     }
   }
 
-  const job = createGeminiJob('optimize-schedule', payload, userActor);
+  const job = createGeminiJob('optimize-schedule', payload, req.authUser!.uid, userActor);
   return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 
-app.get('/api/gemini/jobs/:jobId', requireAuth, (req, res) => {
+app.get('/api/gemini/jobs/:jobId', requireAuth, (req: AuthenticatedRequest, res) => {
   const job = geminiJobs.get(req.params.jobId);
-  if (!job) {
+  if (!job || (job.ownerUid !== req.authUser!.uid && !isAdminUser(req.authUser))) {
     return res.status(404).json({ success: false, error: 'Không tìm thấy job AI' });
   }
-  return res.json({ success: true, job });
+  const { ownerUid: _ownerUid, ...publicJob } = job;
+  return res.json({ success: true, job: publicJob });
 });
 
 // ==========================================

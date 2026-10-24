@@ -188,11 +188,6 @@ function AuthScreen() {
               className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
               placeholder="email@example.com"
             />
-            {mode === 'register' && (
-              <p className="mt-1 text-[11px] text-slate-400">
-                * Mẹo: Email có đuôi <code className="text-teal-400 font-mono">@voyager.vn</code> hoặc chứa <code className="text-teal-400 font-mono">admin</code> sẽ nhận quyền <strong>Admin</strong>. Email khác nhận quyền <strong>User</strong>.
-              </p>
-            )}
           </div>
 
           <div>
@@ -547,23 +542,9 @@ export default function App() {
     }
   };
 
-  // Handler: Kiểm tra quyền Admin khi mở modal AI Planner
-  const handleOpenAIPlanner = () => {
-    if (!isAdminMode) {
-      showToast('Chỉ tài khoản Admin điều phối mới có quyền gọi Gemini AI tạo tour để bảo toàn hạn ngạch.', 'info');
-      return;
-    }
-    setIsAIPlannerOpen(true);
-  };
-
-  // Handler: Kiểm tra quyền Admin khi mở modal AI Optimize
-  const handleOpenAIOptimize = () => {
-    if (!isAdminMode) {
-      showToast('Chỉ tài khoản Admin điều phối mới có quyền gọi Gemini AI tối ưu lịch trình.', 'info');
-      return;
-    }
-    setIsAIOptimizeOpen(true);
-  };
+  // User là người trực tiếp dùng AI để tạo/tối ưu tour; Admin chỉ quản lý & giám sát (log, cấu hình, hạn mức).
+  const handleOpenAIPlanner = () => setIsAIPlannerOpen(true);
+  const handleOpenAIOptimize = () => setIsAIOptimizeOpen(true);
 
   // Handler: Apply AI / Rule-based Optimization
   // Tuân thủ: Ghép thay đổi CHỈ theo activityId duy nhất; chỉ xóa cảnh báo thực sự được xử lý.
