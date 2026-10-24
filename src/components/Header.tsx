@@ -10,7 +10,9 @@ import {
   Clock,
   Check,
   X,
-  Database
+  Database,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { TripData, Activity, TripMember } from '../types/travel';
 
@@ -20,6 +22,8 @@ interface HeaderProps {
   trip: TripData;
   role: AppRole;
   onOpenCreateTripModal: () => void;
+  onOpenEditTripModal?: () => void;
+  onDeleteCurrentTrip?: () => void;
   onSearchChange: (query: string) => void;
   searchQuery: string;
   onSelectActivity?: (activity: Activity, dayIndex: number) => void;
@@ -33,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   trip,
   role,
   onOpenCreateTripModal,
+  onOpenEditTripModal,
+  onDeleteCurrentTrip,
   onSearchChange,
   searchQuery,
   onSelectActivity,
@@ -156,10 +162,43 @@ export const Header: React.FC<HeaderProps> = ({
             <span className={isAdminMode ? 'text-teal-300 font-bold font-mono' : 'text-teal-700 font-bold'}>{trip.code}</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className={`text-2xl font-black tracking-tight ${isAdminMode ? 'text-white' : 'text-slate-900'}`}>
               {trip.title}
             </h1>
+
+            {/* Quick Actions: Sửa & Xóa chuyến đi */}
+            <div className="flex items-center gap-1">
+              {onOpenEditTripModal && (
+                <button
+                  type="button"
+                  onClick={onOpenEditTripModal}
+                  title="Chỉnh sửa thông tin chuyến đi (tên, mã tour, thời gian, ngân sách)"
+                  className={`p-1.5 rounded-xl border transition ${
+                    isAdminMode
+                      ? 'text-slate-400 hover:text-teal-300 hover:bg-slate-800 border-slate-700'
+                      : 'text-slate-500 hover:text-teal-700 hover:bg-teal-50 border-slate-200'
+                  }`}
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {onDeleteCurrentTrip && (
+                <button
+                  type="button"
+                  onClick={onDeleteCurrentTrip}
+                  title="Xóa chuyến đi hiện tại"
+                  className={`p-1.5 rounded-xl border transition ${
+                    isAdminMode
+                      ? 'text-slate-400 hover:text-rose-400 hover:bg-slate-800 border-slate-700'
+                      : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50 border-slate-200'
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
                 isAdminMode

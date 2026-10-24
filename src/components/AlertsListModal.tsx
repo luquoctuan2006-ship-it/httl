@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertTriangle, CloudRain, Clock, Truck, CheckCircle, ShieldAlert } from 'lucide-react';
+import { X, AlertTriangle, CloudRain, Clock, Truck, CheckCircle, ShieldAlert, RefreshCw } from 'lucide-react';
 import { OperationalAlert } from '../types/travel';
 
 interface AlertsListModalProps {
@@ -8,6 +8,8 @@ interface AlertsListModalProps {
   alerts: OperationalAlert[];
   onDismissAlert: (id: string) => void;
   onTriggerAI: () => void;
+  onScanAlerts?: () => Promise<void>;
+  isScanningAlerts?: boolean;
 }
 
 export const AlertsListModal: React.FC<AlertsListModalProps> = ({
@@ -16,6 +18,8 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
   alerts,
   onDismissAlert,
   onTriggerAI,
+  onScanAlerts,
+  isScanningAlerts = false,
 }) => {
   if (!isOpen) return null;
 
@@ -82,13 +86,26 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-          <button
-            onClick={onTriggerAI}
-            className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
-          >
-            <span>Kích hoạt Gemini AI tái lập trình tuyến</span>
-          </button>
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            {onScanAlerts && (
+              <button
+                type="button"
+                onClick={onScanAlerts}
+                disabled={isScanningAlerts}
+                className="px-3 py-1.5 text-xs font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isScanningAlerts ? 'animate-spin' : ''}`} />
+                <span>Quét lại cảnh báo</span>
+              </button>
+            )}
+            <button
+              onClick={onTriggerAI}
+              className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
+            >
+              <span>Kích hoạt Gemini AI tái lập trình tuyến</span>
+            </button>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-2 text-xs font-bold bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition"

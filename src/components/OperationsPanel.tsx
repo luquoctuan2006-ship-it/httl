@@ -7,7 +7,9 @@ import {
   ArrowRight,
   Shuffle,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  RotateCcw,
+  RefreshCw,
 } from 'lucide-react';
 import { TripData } from '../types/travel';
 
@@ -16,6 +18,10 @@ interface OperationsPanelProps {
   onOpenAlertsModal: () => void;
   onOpenApplyAIPlan: () => void;
   isAIApplied: boolean;
+  onUndo?: () => void;
+  canUndo?: boolean;
+  onScanAlerts?: () => Promise<void>;
+  isScanningAlerts?: boolean;
 }
 
 export const OperationsPanel: React.FC<OperationsPanelProps> = ({
@@ -23,6 +29,10 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
   onOpenAlertsModal,
   onOpenApplyAIPlan,
   isAIApplied,
+  onUndo,
+  canUndo,
+  onScanAlerts,
+  isScanningAlerts = false,
 }) => {
   return (
     <div className="flex flex-col gap-4">
@@ -37,9 +47,22 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
                 Cảnh báo vận hành
               </h3>
             </div>
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200">
-              {trip.alerts.length} mới
-            </span>
+            <div className="flex items-center gap-2">
+              {onScanAlerts && (
+                <button
+                  type="button"
+                  onClick={onScanAlerts}
+                  disabled={isScanningAlerts}
+                  title="Quét lại cảnh báo thời tiết & xung đột lịch trình"
+                  className="p-1 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isScanningAlerts ? 'animate-spin text-teal-600' : ''}`} />
+                </button>
+              )}
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200">
+                {trip.alerts.length} mới
+              </span>
+            </div>
           </div>
 
           {/* Alert Items */}
@@ -180,6 +203,15 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
               <span>Xem & áp dụng phương án</span>
             )}
           </button>
+          {isAIApplied && onUndo && (
+            <button
+              onClick={onUndo}
+              className="w-full mt-2 py-2 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Hoàn tác điều phối</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

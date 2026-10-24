@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { TripData, TripMember, Waypoint } from '../types/travel';
 import { authenticatedFetch, safeJsonResponse } from '../api';
+import { detectScheduleAndWeatherAlerts } from '../utils/alertDetector';
 
 interface AIPlannerModalProps {
   isOpen: boolean;
@@ -313,6 +314,12 @@ export const AIPlannerModal: React.FC<AIPlannerModalProps> = ({
             },
           ],
     };
+
+    // Tự động phân tích và sinh cảnh báo thực tế dựa trên các hoạt động và thời tiết của chuyến đi vừa tạo
+    const autoAlerts = detectScheduleAndWeatherAlerts(updatedTrip);
+    if (autoAlerts.length > 0) {
+      updatedTrip.alerts = autoAlerts;
+    }
 
     setIsSaving(true);
     setErrorMsg(null);

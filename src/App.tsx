@@ -25,6 +25,8 @@ import { AlertsListModal } from './components/AlertsListModal';
 import { ActivityDetailModal } from './components/ActivityDetailModal';
 import { ProjectArchitectureModal } from './components/ProjectArchitectureModal';
 import { TripsListView } from './components/TripsListView';
+import { EditTripModal } from './components/EditTripModal';
+import { detectScheduleAndWeatherAlerts } from './utils/alertDetector';
 import { MembersView } from './components/MembersView';
 import { BudgetView } from './components/BudgetView';
 import {
@@ -40,6 +42,8 @@ import { initialTripData } from './data/mockData';
 import { normalizeTripData } from './data/normalizeTripData';
 import { TripData, Activity, TripMember } from './types/travel';
 import { authenticatedFetch, clearMockAuthToken, safeJsonResponse, setMockAuthToken } from './api';
+import { applyScheduleChangesStrict, filterAlertsByRecommendation } from './utils/applyOptimization';
+import { RotateCcw } from 'lucide-react';
 import {
   db,
   firebaseAuth,
@@ -521,13 +525,27 @@ export default function App() {
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
   const [isProjectDocsOpen, setIsProjectDocsOpen] = useState<boolean>(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
-  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    text: string;
+    type: 'success' | 'error' | 'info';
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
+  const [lastOptimizedTripSnapshot, setLastOptimizedTripSnapshot] = useState<TripData | null>(null);
+  const [isEditTripModalOpen, setIsEditTripModalOpen] = useState<boolean>(false);
+  const [tripToEdit, setTripToEdit] = useState<TripData | null>(null);
+  const [isScanningAlerts, setIsScanningAlerts] = useState<boolean>(false);
 
-  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToastMessage({ text, type });
+  const showToast = (
+    text: string,
+    type: 'success' | 'error' | 'info' = 'success',
+    actionLabel?: string,
+    onAction?: () => void,
+  ) => {
+    setToastMessage({ text, type, actionLabel, onAction });
     window.setTimeout(() => {
       setToastMessage((current) => (current?.text === text ? null : current));
-    }, 3200);
+    }, 4500);
   };
 
   const saveTripToFirestore = async (updatedTrip: TripData, successMessage?: string) => {
@@ -556,13 +574,130 @@ export default function App() {
     }
   };
 
-  // Handler: Apply AI Optimization (Swap itinerary & resolve rain/delay risks)
+  // Handler: Hoàn tác phương án tối ưu (Undo Optimization)
+  const handleUndoOptimization = async () => {
+    if (!lastOptimizedTripSnapshot) {
+      showToast('Không có phương án nào để hoàn tác', 'info');
+      return;
+    }
+    const previous = structuredClone(lastOptimizedTripSnapshot);
+    setLastOptimizedTripSnapshot(null);
+    setIsAIApplied(false);
+    setTrip(previous);
+    await saveTripToFirestore(previous, 'Đã hoàn tác phương án tối ưu thành công!');
+  };
+
+  // Handler: Mở modal chỉnh sửa thông tin chuyến đi
+  const handleOpenEditTripModal = (tripTarget?: TripData) => {
+    setTripToEdit(tripTarget || trip);
+    setIsEditTripModalOpen(true);
+  };
+
+  // Handler: Lưu thông tin chuyến đi sau khi chỉnh sửa
+  const handleSaveEditedTrip = async (updatedFields: Partial<TripData>) => {
+    const target = tripToEdit || trip;
+    const merged: TripData = {
+      ...target,
+      ...updatedFields,
+    };
+    await saveTripToFirestore(merged, 'Đã cập nhật thông tin chuyến đi thành công!');
+    if (target.id === trip.id) {
+      setTrip(merged);
+    }
+    setTrips((prev) => prev.map((t) => (t.id === target.id ? merged : t)));
+    setIsEditTripModalOpen(false);
+  };
+
+  // Handler: Xóa chuyến đi
+  const handleDeleteTrip = async (tripId: string) => {
+    try {
+      const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(tripId)}`, {
+        method: 'DELETE',
+      });
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Lỗi khi xóa chuyến đi');
+      }
+
+      const nextTrips = trips.filter((t) => t.id !== tripId);
+      setTrips(nextTrips);
+
+      if (trip.id === tripId) {
+        if (nextTrips.length > 0) {
+          setTrip(nextTrips[0]);
+        } else if (result.activeTrip) {
+          setTrip(result.activeTrip);
+        } else {
+          // Khởi tạo chuyến mới nếu xóa hết
+          const safeUid = authUser?.id || 'user';
+          const freshTrip: TripData = {
+            ...initialTripData,
+            id: `trip-${Date.now()}-${safeUid}`,
+            ownerId: safeUid,
+            title: 'Chuyến đi mới chưa đặt tên',
+            code: `VN-${Math.floor(1000 + Math.random() * 9000)}`,
+            days: initialTripData.days,
+          };
+          setTrip(freshTrip);
+          setTrips([freshTrip]);
+        }
+      }
+
+      showToast(result.message || 'Đã xóa chuyến đi thành công', 'success');
+    } catch (error: any) {
+      console.error('Delete trip error:', error);
+      showToast(error.message || 'Không thể xóa chuyến đi', 'error');
+    }
+  };
+
+  // Handler: Tự động quét và cập nhật cảnh báo vận hành thời gian thực
+  const handleScanRealtimeAlerts = async () => {
+    setIsScanningAlerts(true);
+    try {
+      const detected = detectScheduleAndWeatherAlerts(trip);
+      const updated: TripData = {
+        ...trip,
+        alerts: detected,
+      };
+      await saveTripToFirestore(updated);
+      showToast(`Đã quét tự động: phát hiện ${detected.length} cảnh báo vận hành thực tế!`, 'success');
+    } catch (error: any) {
+      console.error('Scan alerts error:', error);
+      showToast('Lỗi khi quét cảnh báo', 'error');
+    } finally {
+      setIsScanningAlerts(false);
+    }
+  };
+
+  // Handler: Kiểm tra quyền Admin khi mở modal AI Planner
+  const handleOpenAIPlanner = () => {
+    if (!isAdminMode) {
+      showToast('Chỉ tài khoản Admin điều phối mới có quyền gọi Gemini AI tạo tour để bảo toàn hạn ngạch.', 'info');
+      return;
+    }
+    setIsAIPlannerOpen(true);
+  };
+
+  // Handler: Kiểm tra quyền Admin khi mở modal AI Optimize
+  const handleOpenAIOptimize = () => {
+    if (!isAdminMode) {
+      showToast('Chỉ tài khoản Admin điều phối mới có quyền gọi Gemini AI tối ưu lịch trình.', 'info');
+      return;
+    }
+    setIsAIOptimizeOpen(true);
+  };
+
+  // Handler: Apply AI / Rule-based Optimization
+  // Tuân thủ: Ghép thay đổi CHỈ theo activityId duy nhất; chỉ xóa cảnh báo thực sự được xử lý.
   const handleApplyAIOptimization = async (
     actionTitle?: string,
     actionReason?: string,
     costSaved?: string,
     recommendationData?: any
   ) => {
+    // 1. Lưu bản chụp trạng thái chuyến đi trước khi tối ưu để có thể hoàn tác (Undo)
+    setLastOptimizedTripSnapshot(structuredClone(trip));
+
     const targetDayIndex =
       recommendationData?.targetDayIndex ??
       trip.days.find((d) => d.hasWarning || d.pendingCount > 0)?.dayIndex ??
@@ -572,78 +707,19 @@ export default function App() {
       ? recommendationData.scheduleChanges
       : [];
 
+    let allChangedActivities: Activity[] = [];
+
     const updatedDays = trip.days.map((day) => {
       if (day.dayIndex === targetDayIndex) {
-        let activities = [...day.activities];
-
-        if (scheduleChanges.length > 0) {
-          // Áp dụng từng thay đổi lịch trình cụ thể vào hoạt động
-          activities = activities.map((act) => {
-            const chg = scheduleChanges.find(
-              (c: any) =>
-                (c.activityId && c.activityId === act.id) ||
-                (c.activityTitle && act.title.toLowerCase().includes(c.activityTitle.toLowerCase())) ||
-                (c.oldTime && act.timeStart.includes(c.oldTime.slice(0, 5)))
-            );
-            if (chg) {
-              let newStart = act.timeStart;
-              let newEnd = act.timeEnd;
-              if (chg.newTime) {
-                const parts = chg.newTime.split(/—|-/).map((s: string) => s.trim());
-                if (parts[0] && parts[0].includes(':')) newStart = parts[0].slice(0, 5);
-                if (parts[1] && parts[1].includes(':')) newEnd = parts[1].slice(0, 5);
-              }
-              return {
-                ...act,
-                timeStart: newStart,
-                timeEnd: newEnd,
-                status: 'Đã xác nhận' as const,
-                details: `${chg.action || 'Đã điều phối lại'} • ${act.details}`,
-              };
-            }
-            if (act.status === 'Cần xử lý') {
-              return {
-                ...act,
-                status: 'Đã xác nhận' as const,
-                details: actionReason ? `${actionReason} • ${act.details}` : act.details,
-              };
-            }
-            return act;
-          });
-        } else {
-          // Nếu không có scheduleChanges chi tiết, cập nhật hoạt động cần xử lý sang đã xác nhận
-          let updatedOne = false;
-          activities = activities.map((act) => {
-            if (!updatedOne && (act.status === 'Cần xử lý' || act.status === 'Đang diễn ra')) {
-              updatedOne = true;
-              return {
-                ...act,
-                status: 'Đã xác nhận' as const,
-                details: actionReason ? `${actionReason} • ${act.details}` : act.details,
-              };
-            }
-            return act;
-          });
-        }
-
-        // Sắp xếp các hoạt động theo mốc thời gian tăng dần
-        activities.sort((a, b) => (a.timeStart || '').localeCompare(b.timeStart || ''));
-
-        const confirmedCount = activities.filter(
-          (a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất'
-        ).length;
-        const pendingCount = activities.filter(
-          (a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra'
-        ).length;
-
-        return {
-          ...day,
-          hasWarning: false,
-          confirmedCount,
-          pendingCount,
-          dispatcherNote: `Đã kích hoạt phương án Gemini AI: ${actionTitle || 'Lộ trình tối ưu thuận tiện nhất'}${actionReason ? ` • ${actionReason}` : ''}`,
-          activities,
-        };
+        // GHÉP THAY ĐỔI DUY NHẤT THEO activityId
+        const { updatedDay, changedActivities } = applyScheduleChangesStrict(
+          day,
+          scheduleChanges,
+          actionTitle,
+          actionReason,
+        );
+        allChangedActivities = changedActivities;
+        return updatedDay;
       }
       return day;
     });
@@ -652,19 +728,18 @@ export default function App() {
     const confirmed = allActs.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
-    // Lọc bỏ cảnh báo thời tiết / dông đèo Hải Vân đã được xử lý
-    const remainingAlerts = trip.alerts.filter((a) => {
-      const isWeatherRisk =
-        a.category === 'weather' ||
-        a.title.toLowerCase().includes('hải vân') ||
-        a.title.toLowerCase().includes('mưa');
-      return !isWeatherRisk;
-    });
+    // LỌC CẢNH BÁO: CHỈ XÓA CẢNH BÁO MÀ ĐỀ XUẤT THỰC SỰ XỬ LÝ (giữ nguyên cảnh báo khác)
+    const { remainingAlerts, resolvedAlerts } = filterAlertsByRecommendation(
+      trip.alerts,
+      recommendationData || { actionTitle, reason: actionReason, scheduleChanges },
+      allChangedActivities,
+      targetDayIndex,
+    );
 
     const savingsNumber =
       Number(costSaved?.replace(/\D/g, '')) ||
       Number(trip.aiSavingsEstimate?.replace(/\D/g, '')) ||
-      640000;
+      320000;
 
     const updatedTrip: TripData = {
       ...trip,
@@ -677,7 +752,14 @@ export default function App() {
     };
 
     setIsAIApplied(true);
-    await saveTripToFirestore(updatedTrip, 'Đã điều phối lại lịch trình thành công và lưu vào Firestore!');
+    await saveTripToFirestore(updatedTrip);
+
+    showToast(
+      `Đã áp dụng điều phối Ngày ${targetDayIndex} (đã xử lý ${resolvedAlerts.length} cảnh báo)!`,
+      'success',
+      'Hoàn tác',
+      () => void handleUndoOptimization(),
+    );
   };
 
   // Handler: Add Activity
@@ -1093,6 +1175,14 @@ export default function App() {
           handleUpdateTrip={handleUpdateTrip}
           handleDismissAlert={handleDismissAlert}
           handleUpdateTripBudget={handleUpdateTripBudget}
+          canUndo={!!lastOptimizedTripSnapshot}
+          onUndo={handleUndoOptimization}
+          onOpenEditTripModal={handleOpenEditTripModal}
+          onDeleteTrip={handleDeleteTrip}
+          onScanAlerts={handleScanRealtimeAlerts}
+          isScanningAlerts={isScanningAlerts}
+          onOpenAIPlanner={handleOpenAIPlanner}
+          onOpenAIOptimize={handleOpenAIOptimize}
         />
       ) : (
         <UserDashboard
@@ -1135,6 +1225,24 @@ export default function App() {
           handleApplyAIOptimization={handleApplyAIOptimization}
           handleAddActivity={handleAddActivity}
           handleUpdateTripBudget={handleUpdateTripBudget}
+          canUndo={!!lastOptimizedTripSnapshot}
+          onUndo={handleUndoOptimization}
+          onOpenEditTripModal={handleOpenEditTripModal}
+          onDeleteTrip={handleDeleteTrip}
+          onScanAlerts={handleScanRealtimeAlerts}
+          isScanningAlerts={isScanningAlerts}
+          onOpenAIPlanner={handleOpenAIPlanner}
+          onOpenAIOptimize={handleOpenAIOptimize}
+        />
+      )}
+
+      {/* Modal Chỉnh sửa thông tin chuyến đi (tên, ngày, ngân sách...) */}
+      {isEditTripModalOpen && tripToEdit && (
+        <EditTripModal
+          isOpen={isEditTripModalOpen}
+          onClose={() => setIsEditTripModalOpen(false)}
+          trip={tripToEdit}
+          onSave={handleSaveEditedTrip}
         />
       )}
 
@@ -1143,7 +1251,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold transition-all duration-300 backdrop-blur-md bg-slate-900/95 text-white border-slate-700 animate-in fade-in slide-in-from-bottom-2"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold transition-all duration-300 backdrop-blur-md bg-slate-900/95 text-white border-slate-700 animate-in fade-in slide-in-from-bottom-2"
         >
           <span
             className={`w-2.5 h-2.5 rounded-full shrink-0 ${
@@ -1152,7 +1260,19 @@ export default function App() {
                 : 'bg-emerald-400 animate-pulse'
             }`}
           />
-          <span>{toastMessage.text}</span>
+          <span className="flex-1">{toastMessage.text}</span>
+          {toastMessage.onAction && (
+            <button
+              onClick={() => {
+                toastMessage.onAction?.();
+                setToastMessage(null);
+              }}
+              className="ml-2 px-3 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>{toastMessage.actionLabel || 'Hoàn tác'}</span>
+            </button>
+          )}
         </div>
       )}
     </>
@@ -1203,6 +1323,14 @@ function AdminDashboard({
   handleUpdateTrip,
   handleDismissAlert,
   handleUpdateTripBudget,
+  canUndo,
+  onUndo,
+  onOpenEditTripModal,
+  onDeleteTrip,
+  onScanAlerts,
+  isScanningAlerts,
+  onOpenAIPlanner,
+  onOpenAIOptimize,
 }: {
   trip: TripData;
   trips: TripData[];
@@ -1247,6 +1375,14 @@ function AdminDashboard({
   handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
   handleDismissAlert: (id: string) => void;
   handleUpdateTripBudget: (updated: TripData) => Promise<void>;
+  canUndo?: boolean;
+  onUndo?: () => void;
+  onOpenEditTripModal?: (tripTarget?: TripData) => void;
+  onDeleteTrip?: (tripId: string) => void;
+  onScanAlerts?: () => Promise<void>;
+  isScanningAlerts?: boolean;
+  onOpenAIPlanner?: () => void;
+  onOpenAIOptimize?: () => void;
 }) {
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#0f172a,#111827_28%,#020817_100%)] text-slate-200 font-['Plus_Jakarta_Sans',sans-serif]">
@@ -1261,10 +1397,29 @@ function AdminDashboard({
         alertCount={trip.alerts.length}
         tripCount={trips.length}
         onOpenProjectDocs={() => setIsProjectDocsOpen(true)}
-        onOpenAIPlanner={() => setIsAIPlannerOpen(true)}
+        onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-y-auto">
+        <Header
+          trip={trip}
+          role="admin"
+          onOpenCreateTripModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+          onOpenEditTripModal={() => onOpenEditTripModal?.(trip)}
+          onDeleteCurrentTrip={() => onDeleteTrip?.(trip.id)}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onSelectActivity={(act, dayIdx) => {
+            setSelectedActivity(act);
+            setCurrentDayIndex(dayIdx);
+            setCurrentTab('schedule');
+          }}
+          onSelectLocation={() => setCurrentTab('locations')}
+          onSelectMember={() => setCurrentTab('members')}
+          onToggleAttendance={handleToggleMemberAttendance}
+          firebaseStatus={firebaseStatus}
+        />
+
         <main className="flex-1 p-5 md:p-6 space-y-6 max-w-[1680px] w-full mx-auto">
           {firebaseStatus === 'error' && (
             <div
@@ -1319,8 +1474,12 @@ function AdminDashboard({
                   <OperationsPanel
                     trip={trip}
                     onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
-                    onOpenApplyAIPlan={() => setIsAIOptimizeOpen(true)}
+                    onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                     isAIApplied={isAIApplied}
+                    onUndo={onUndo}
+                    canUndo={canUndo}
+                    onScanAlerts={onScanAlerts}
+                    isScanningAlerts={isScanningAlerts}
                   />
                 </div>
               </div>
@@ -1347,7 +1506,9 @@ function AdminDashboard({
               trips={trips}
               currentTrip={trip}
               onSelectTrip={onSelectTrip}
-              onOpenCreateModal={() => setIsAIPlannerOpen(true)}
+              onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+              onEditTrip={onOpenEditTripModal}
+              onDeleteTrip={onDeleteTrip}
               searchQuery={searchQuery}
               onClearSearch={() => setSearchQuery('')}
             />
@@ -1429,8 +1590,15 @@ function AdminDashboard({
         </main>
       </div>
 
-      <AIPlannerModal isOpen={isAIPlannerOpen} onClose={() => setIsAIPlannerOpen(false)} onApplyPlan={handleApplyGeneratedTrip} />
-      <AIOptimizeModal isOpen={isAIOptimizeOpen} onClose={() => setIsAIOptimizeOpen(false)} trip={trip} onApplyChanges={handleApplyAIOptimization} isApplied={isAIApplied} />
+      <AIOptimizeModal
+        isOpen={isAIOptimizeOpen}
+        onClose={() => setIsAIOptimizeOpen(false)}
+        trip={trip}
+        onApplyChanges={handleApplyAIOptimization}
+        isApplied={isAIApplied}
+        onUndo={onUndo}
+        canUndo={canUndo}
+      />
       <AddActivityModal
         isOpen={isAddActivityOpen}
         onClose={() => setIsAddActivityOpen(false)}
@@ -1446,8 +1614,14 @@ function AdminDashboard({
         onDismissAlert={handleDismissAlert}
         onTriggerAI={() => {
           setIsAlertsModalOpen(false);
-          setIsAIOptimizeOpen(true);
+          if (onOpenAIOptimize) {
+            onOpenAIOptimize();
+          } else {
+            setIsAIOptimizeOpen(true);
+          }
         }}
+        onScanAlerts={onScanAlerts}
+        isScanningAlerts={isScanningAlerts}
       />
       <ActivityDetailModal
         activity={selectedActivity}
@@ -1502,6 +1676,14 @@ function UserDashboard({
   handleApplyAIOptimization,
   handleAddActivity,
   handleUpdateTripBudget,
+  canUndo,
+  onUndo,
+  onOpenEditTripModal,
+  onDeleteTrip,
+  onScanAlerts,
+  isScanningAlerts,
+  onOpenAIPlanner,
+  onOpenAIOptimize,
 }: {
   trip: TripData;
   trips: TripData[];
@@ -1542,6 +1724,14 @@ function UserDashboard({
   handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string, recommendationData?: any) => void;
   handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
   handleUpdateTripBudget: (updated: TripData) => Promise<void>;
+  canUndo?: boolean;
+  onUndo?: () => void;
+  onOpenEditTripModal?: (tripTarget?: TripData) => void;
+  onDeleteTrip?: (tripId: string) => void;
+  onScanAlerts?: () => Promise<void>;
+  isScanningAlerts?: boolean;
+  onOpenAIPlanner?: () => void;
+  onOpenAIOptimize?: () => void;
 }) {
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,#ecfeff,#f0fdf4_20%,#f8fafc_55%,#edf6ff_100%)] text-slate-800">
@@ -1556,14 +1746,16 @@ function UserDashboard({
           alertCount={trip.alerts.length}
           tripCount={trips.length}
           onOpenProjectDocs={() => undefined}
-          onOpenAIPlanner={() => setIsAIPlannerOpen(true)}
+          onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
         />
 
         <div className="flex-1 flex flex-col h-screen min-w-0 overflow-y-auto">
           <Header
             trip={trip}
             role="user"
-            onOpenCreateTripModal={() => setIsAIPlannerOpen(true)}
+            onOpenCreateTripModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+            onOpenEditTripModal={() => onOpenEditTripModal?.(trip)}
+            onDeleteCurrentTrip={() => onDeleteTrip?.(trip.id)}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onSelectActivity={(act, dayIdx) => {
@@ -1645,11 +1837,21 @@ function UserDashboard({
 
                     <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                       <button
-                        onClick={() => setIsAIOptimizeOpen(true)}
+                        onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                         className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition shadow-lg shadow-teal-500/25 flex items-center gap-1.5 cursor-pointer"
                       >
                         <span>⚡ Tối ưu AI</span>
                       </button>
+                      {canUndo && onUndo && (
+                        <button
+                          onClick={onUndo}
+                          className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-400/40 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          title="Hoàn tác phương án tối ưu lịch trình vừa áp dụng"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Hoàn tác điều phối</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => setIsAddActivityOpen(true)}
                         className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
@@ -1657,7 +1859,7 @@ function UserDashboard({
                         <span>+ Thêm hoạt động</span>
                       </button>
                       <button
-                        onClick={() => setIsAIPlannerOpen(true)}
+                        onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
                         className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
                       >
                         <span>✨ Tạo tour mới</span>
@@ -1690,8 +1892,12 @@ function UserDashboard({
                     <OperationsPanel
                       trip={trip}
                       onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
-                      onOpenApplyAIPlan={() => setIsAIOptimizeOpen(true)}
+                      onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                       isAIApplied={isAIApplied}
+                      onUndo={onUndo}
+                      canUndo={canUndo}
+                      onScanAlerts={onScanAlerts}
+                      isScanningAlerts={isScanningAlerts}
                     />
                   </div>
                 </div>
@@ -1724,7 +1930,9 @@ function UserDashboard({
                 trips={trips}
                 currentTrip={trip}
                 onSelectTrip={onSelectTrip}
-                onOpenCreateModal={() => setIsAIPlannerOpen(true)}
+                onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                onEditTrip={onOpenEditTripModal}
+                onDeleteTrip={onDeleteTrip}
                 readOnly={false}
                 searchQuery={searchQuery}
                 onClearSearch={() => setSearchQuery('')}
@@ -1742,7 +1950,7 @@ function UserDashboard({
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
-                      onClick={() => setIsAIOptimizeOpen(true)}
+                      onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                       className="px-3.5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                       title="Phân tích và tối ưu lại lịch trình thông minh với Gemini AI"
                     >
@@ -1831,6 +2039,8 @@ function UserDashboard({
           trip={trip}
           onApplyChanges={handleApplyAIOptimization}
           isApplied={isAIApplied}
+          onUndo={onUndo}
+          canUndo={canUndo}
         />
         <AddActivityModal
           isOpen={isAddActivityOpen}
@@ -1847,8 +2057,14 @@ function UserDashboard({
           onDismissAlert={handleDismissAlert}
           onTriggerAI={() => {
             setIsAlertsModalOpen(false);
-            setIsAIOptimizeOpen(true);
+            if (onOpenAIOptimize) {
+              onOpenAIOptimize();
+            } else {
+              setIsAIOptimizeOpen(true);
+            }
           }}
+          onScanAlerts={onScanAlerts}
+          isScanningAlerts={isScanningAlerts}
         />
         <ActivityDetailModal
           activity={selectedActivity}

@@ -65,10 +65,21 @@ export interface RejectedRecommendation {
   violations: Violation[];
 }
 
+export interface ScheduleActivityInput extends Omit<Partial<Activity>, 'status' | 'type'> {
+  status?: string;
+  type?: string;
+}
+
+export interface ScheduleDayInput extends Omit<Partial<DaySchedule>, 'activities'> {
+  activities?: ScheduleActivityInput[];
+}
+
 export interface ScheduleTripInput {
-  days?: Partial<DaySchedule>[];
+  days?: ScheduleDayInput[];
   waypoints?: Partial<Waypoint>[];
 }
+
+
 
 export interface OptimizationOutcome {
   accepted: any[];
@@ -251,7 +262,7 @@ function isCoords(value: any): value is { lat: number; lng: number } {
     && Number.isFinite(value.lat) && Number.isFinite(value.lng);
 }
 
-function resolveCoordinates(activity: Partial<Activity>, waypoints: Partial<Waypoint>[]) {
+function resolveCoordinates(activity: ScheduleActivityInput, waypoints: Partial<Waypoint>[]) {
   if (isCoords(activity.coordinates)) return activity.coordinates;
   const haystack = `${activity.title ?? ''} ${activity.location ?? ''}`.toLowerCase();
   for (const waypoint of waypoints) {
@@ -263,7 +274,7 @@ function resolveCoordinates(activity: Partial<Activity>, waypoints: Partial<Wayp
   return null;
 }
 
-function toSlots(activities: Partial<Activity>[], waypoints: Partial<Waypoint>[]): Slot[] {
+function toSlots(activities: ScheduleActivityInput[], waypoints: Partial<Waypoint>[]): Slot[] {
   const slots: Slot[] = [];
   for (const activity of activities) {
     if (!activity || typeof activity.id !== 'string') continue;
@@ -400,7 +411,7 @@ function parseOpenHours(value: unknown): { start: number; end: number } | null {
   return { start: range.start, end: range.end };
 }
 
-function findWaypointFor(activity: Partial<Activity> | undefined, waypoints: Partial<Waypoint>[]) {
+function findWaypointFor(activity: ScheduleActivityInput | undefined, waypoints: Partial<Waypoint>[]) {
   if (!activity) return undefined;
   const haystack = `${activity.title ?? ''} ${activity.location ?? ''}`.toLowerCase();
   return waypoints.find((w) => typeof w.name === 'string' && w.name.trim().length >= 2 && haystack.includes(w.name.trim().toLowerCase()));
@@ -460,7 +471,7 @@ export function validateRecommendation(
     return fail(errors);
   }
 
-  const activities: Partial<Activity>[] = Array.isArray(day.activities) ? day.activities : [];
+  const activities: ScheduleActivityInput[] = Array.isArray(day.activities) ? day.activities : [];
   const beforeSlots = toSlots(activities, waypoints);
   const slotById = new Map(beforeSlots.map((slot) => [slot.id, slot]));
   const activityById = new Map(activities.filter((a) => a && typeof a.id === 'string').map((a) => [a.id as string, a]));

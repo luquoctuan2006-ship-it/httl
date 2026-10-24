@@ -14,7 +14,8 @@ import { createTripPersistenceStore } from './src/data/tripPersistence';
 import { createUsersPersistenceStore, initialDefaultUsers, ManagedUserRecord } from './src/data/userPersistence';
 import { TripData } from './src/types/travel';
 import { parseGeminiJson } from './src/utils/geminiJson';
-import { pickTripForOptimization, runOptimization } from './src/utils/scheduleOptimizer';
+import { buildRuleBasedScheduleOptimization, pickTripForOptimization, runOptimization } from './src/utils/scheduleOptimizer';
+import { detectScheduleAndWeatherAlerts } from './src/utils/alertDetector';
 
 dotenv.config();
 
@@ -109,12 +110,22 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
   const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : '';
   if (!token) return res.status(401).json({ success: false, error: 'Vui lòng đăng nhập' });
 
+  // Xác thực token giả lập trong môi trường dev/local:
+  // KHÔNG TIN TƯỞNG role do client gửi lên; chỉ cấp quyền admin nếu email nằm trong danh sách quản trị
   if (token.startsWith('mock-token:')) {
-    const [, uid = 'mock-user', role = 'admin', email = 'admin@voyager.vn'] = token.split(':');
+    const parts = token.split(':');
+    const uid = parts[1] || 'mock-user';
+    const email = (parts[3] || parts[2] || '').trim().toLowerCase();
+
+    const isRegisteredAdmin =
+      email === 'luquoctuan2006@gmail.com' ||
+      email === 'admin@voyager.vn' ||
+      memoryUsers.some((u) => u.email.toLowerCase() === email && u.role === 'Admin');
+
     req.authUser = {
       uid,
-      role: role === 'user' ? 'user' : 'admin',
-      email,
+      role: isRegisteredAdmin ? 'admin' : 'user',
+      email: email || 'user@voyager.vn',
     } as unknown as DecodedIdToken;
     return next();
   }
@@ -124,31 +135,40 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
       const parts = token.split('.');
       if (parts.length === 3) {
         const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-        const email = payload.email || 'user@voyager.vn';
-        const isAdmin =
+        const email = (payload.email || '').trim().toLowerCase();
+        const isRegisteredAdmin =
           payload.role === 'admin' ||
           email === 'luquoctuan2006@gmail.com' ||
-          email.toLowerCase().includes('admin');
+          email === 'admin@voyager.vn' ||
+          memoryUsers.some((u) => u.email.toLowerCase() === email && u.role === 'Admin');
+
         req.authUser = {
           uid: payload.user_id || payload.sub || 'firebase-user',
-          role: isAdmin ? 'admin' : 'user',
-          email,
+          role: isRegisteredAdmin ? 'admin' : 'user',
+          email: email || 'user@voyager.vn',
         } as unknown as DecodedIdToken;
         return next();
       }
     } catch {
-      // Ignore JWT parse error and fall through to fallback user
+      // Token không hợp lệ
     }
-    req.authUser = {
-      uid: 'fallback-user',
-      role: 'admin',
-      email: 'admin@voyager.vn',
-    } as unknown as DecodedIdToken;
-    return next();
+    // LOẠI BỎ HOÀN TOÀN fallback-user quyền admin tùy tiện
+    return res.status(401).json({ success: false, error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn' });
   }
 
   try {
-    req.authUser = await firebaseAuth.verifyIdToken(token, true);
+    const decoded = await firebaseAuth.verifyIdToken(token, true);
+    const email = (decoded.email || '').trim().toLowerCase();
+    const isAdmin =
+      decoded.role === 'admin' ||
+      email === 'luquoctuan2006@gmail.com' ||
+      email === 'admin@voyager.vn' ||
+      memoryUsers.some((u) => u.email.toLowerCase() === email && u.role === 'Admin');
+
+    req.authUser = {
+      ...decoded,
+      role: isAdmin ? 'admin' : 'user',
+    } as DecodedIdToken;
     return next();
   } catch {
     return res.status(401).json({ success: false, error: 'Token không hợp lệ hoặc đã hết hạn' });
@@ -157,7 +177,10 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
 
 function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (req.authUser?.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Bạn không có quyền thực hiện thao tác này' });
+    return res.status(403).json({
+      success: false,
+      error: 'Chỉ tài khoản Quản trị viên (Admin) điều phối mới có quyền thực hiện thao tác này.',
+    });
   }
   return next();
 }
@@ -254,6 +277,18 @@ async function patchTripDoc(tripId: string, fields: Partial<TripData>): Promise<
     ...fields,
     updatedAt: FieldValue.serverTimestamp(),
   });
+}
+
+async function deleteTripDoc(tripId: string): Promise<void> {
+  if (!firestore) {
+    memoryTrips.delete(tripId);
+    const firstRemaining = memoryTrips.values().next().value;
+    if (firstRemaining) {
+      await persistenceStore.save(firstRemaining);
+    }
+    return;
+  }
+  await firestore.collection('trips').doc(tripId).delete();
 }
 
 // Tạo mới hoặc cập nhật chuyến; ownerId do server quyết định, không tin dữ liệu client gửi.
@@ -363,6 +398,137 @@ app.get('/api/trips/:tripId', requireAuth, async (req: AuthenticatedRequest, res
     return res.json({ success: true, trip });
   } catch {
     return res.status(503).json({ success: false, error: 'Không thể tải chuyến đi' });
+  }
+});
+
+// Xóa chuyến đi: Chỉ chủ sở hữu (ownerId) hoặc Admin mới được xóa
+app.delete('/api/trips/:tripId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const tripId = req.params.tripId;
+  if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
+  }
+
+  try {
+    const existing = await getTripById(tripId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+    }
+
+    if (!canAccessTrip(existing, req.authUser)) {
+      return res.status(403).json({ success: false, error: 'Bạn không có quyền xóa chuyến đi này' });
+    }
+
+    await deleteTripDoc(tripId);
+    recordAuditLog(
+      req.authUser?.email || 'User',
+      `Xóa chuyến đi: ${existing.title} (${existing.code})`
+    );
+
+    const remainingTrips = await listTripsForUser(req.authUser!);
+    return res.json({
+      success: true,
+      message: `Đã xóa chuyến đi ${existing.title} thành công`,
+      deletedTripId: tripId,
+      remainingCount: remainingTrips.length,
+      activeTrip: remainingTrips[0] || null,
+      trips: remainingTrips,
+    });
+  } catch (error) {
+    console.error('Error deleting trip:', error);
+    return res.status(503).json({ success: false, error: 'Không thể xóa chuyến đi' });
+  }
+});
+
+// Chỉnh sửa thông tin cơ bản của chuyến đi (tên, mã tour, ngày diễn ra, ngân sách, phương tiện, tài xế)
+app.patch('/api/trips/:tripId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const tripId = req.params.tripId;
+  if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
+  }
+
+  try {
+    const existing = await getTripById(tripId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+    }
+
+    if (!canAccessTrip(existing, req.authUser)) {
+      return res.status(403).json({ success: false, error: 'Bạn không có quyền chỉnh sửa chuyến đi này' });
+    }
+
+    const {
+      title,
+      code,
+      dates,
+      originFull,
+      destinationFull,
+      budgetTotal,
+      budgetRemaining,
+      budgetUsedPercent,
+      vehicle,
+      status,
+      telematics,
+    } = req.body;
+
+    const fieldsToUpdate: Partial<TripData> = {};
+    if (typeof title === 'string' && title.trim()) fieldsToUpdate.title = title.trim();
+    if (typeof code === 'string' && code.trim()) fieldsToUpdate.code = code.trim().toUpperCase();
+    if (typeof dates === 'string' && dates.trim()) fieldsToUpdate.dates = dates.trim();
+    if (typeof originFull === 'string' && originFull.trim()) fieldsToUpdate.originFull = originFull.trim();
+    if (typeof destinationFull === 'string' && destinationFull.trim()) fieldsToUpdate.destinationFull = destinationFull.trim();
+    if (typeof budgetTotal === 'number' && budgetTotal > 0) fieldsToUpdate.budgetTotal = budgetTotal;
+    if (typeof budgetRemaining === 'number') fieldsToUpdate.budgetRemaining = budgetRemaining;
+    if (typeof budgetUsedPercent === 'number') fieldsToUpdate.budgetUsedPercent = budgetUsedPercent;
+    if (typeof vehicle === 'string' && vehicle.trim()) fieldsToUpdate.vehicle = vehicle.trim();
+    if (typeof status === 'string' && status.trim()) fieldsToUpdate.status = status as any;
+    if (telematics && typeof telematics === 'object') {
+      fieldsToUpdate.telematics = { ...existing.telematics, ...telematics };
+    }
+
+    await patchTripDoc(tripId, fieldsToUpdate);
+    const updated = await getTripById(tripId);
+
+    recordAuditLog(
+      req.authUser?.email || 'User',
+      `Cập nhật thông tin chuyến đi: ${updated?.title} (${updated?.code})`
+    );
+
+    return res.json({ success: true, trip: updated });
+  } catch (error) {
+    console.error('Error updating trip info:', error);
+    return res.status(503).json({ success: false, error: 'Không thể cập nhật chuyến đi' });
+  }
+});
+
+// Tự động quét và phát hiện cảnh báo vận hành & thời tiết thực tế cho chuyến đi
+app.post('/api/trips/:tripId/scan-alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const tripId = req.params.tripId;
+  try {
+    const existing = tripId === 'active'
+      ? (await loadUserTrips(req.authUser!))[0]
+      : await getTripById(tripId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+    }
+
+    if (!canAccessTrip(existing, req.authUser)) {
+      return res.status(403).json({ success: false, error: 'Không có quyền truy cập chuyến đi này' });
+    }
+
+    const detectedAlerts = detectScheduleAndWeatherAlerts(existing);
+    await patchTripDoc(existing.id, { alerts: detectedAlerts });
+    const updated = await getTripById(existing.id);
+
+    return res.json({
+      success: true,
+      alerts: detectedAlerts,
+      trip: updated,
+      message: `Đã phát hiện ${detectedAlerts.length} cảnh báo vận hành thời gian thực`,
+    });
+  } catch (error) {
+    console.error('Error scanning alerts:', error);
+    return res.status(503).json({ success: false, error: 'Không thể quét cảnh báo' });
   }
 });
 
@@ -712,94 +878,7 @@ function getOrCreateGeminiRequest(cacheKey: string, request: () => Promise<any>)
 }
 
 function buildFallbackScheduleOptimization(payload: any) {
-  const currentTrip = payload?.currentTrip || {};
-  const alertDetails = Array.isArray(payload?.alertDetails) ? payload.alertDetails : [];
-  const days = Array.isArray(currentTrip?.days) ? currentTrip.days : [];
-
-  const targetDay = days.find((d: any) => d.hasWarning || d.pendingCount > 0) || days[0] || { dayIndex: 3 };
-  const targetDayIndex = Number(targetDay.dayIndex) || 3;
-
-  const hasWeatherAlert = alertDetails.some(
-    (a: any) => a.category === 'weather' || /mưa|bão|sương mù|đèo|thời tiết/i.test(a.title || '')
-  );
-
-  if (hasWeatherAlert) {
-    return {
-      recommendations: [
-        {
-          id: 'rec-weather-pass',
-          actionTitle: 'Điều phối tránh dông đèo Hải Vân: Vượt đèo buổi sáng, đảo tham quan trong nhà vào buổi chiều',
-          reason: 'Trạm khí tượng dự báo mưa lớn 75% và sương mù dày tại Đèo Hải Vân từ 14:00 - 17:00. Dời lịch trình vượt đèo lên 08:30 sáng giúp xe 29 chỗ di chuyển an toàn tuyệt đối, tầm nhìn thoáng đãng và giảm 45 phút thời gian chậm trễ.',
-          timeSaved: 'Tiết kiệm 45 phút',
-          costSaved: '640.000 ₫',
-          confidence: '96%',
-          targetDayIndex,
-          scheduleChanges: [
-            {
-              activityId: 'act-10',
-              activityTitle: 'Khởi hành đi Lăng Cô qua Đèo Hải Vân',
-              oldTime: '14:30',
-              newTime: '08:30 — 10:30',
-              action: 'Dời lên buổi sáng trời quang đãng, tầm nhìn an toàn tuyệt đối',
-              status: 'Đã xác nhận',
-            },
-            {
-              activityId: 'act-9',
-              activityTitle: 'Tham quan trong nhà & Ăn trưa nghỉ ngơi',
-              oldTime: '09:45',
-              newTime: '13:30 — 16:30',
-              action: 'Chuyển sang buổi chiều râm mát, có mái che che mưa nắng',
-              status: 'Đã xác nhận',
-            },
-          ],
-        },
-        {
-          id: 'rec-early-depart',
-          actionTitle: 'Dự phòng lưu lượng Quốc Lộ 1A: Khởi hành sớm 20 phút',
-          reason: 'Cung đường cửa ngõ kết nối Đà Nẵng - Huế có mật độ phương tiện cao vào cuối buổi chiều. Khởi hành sớm 20 phút giúp đoàn nhận phòng đúng 17:00 và thưởng thức bữa tối thư thái.',
-          timeSaved: 'Tiết kiệm 20 phút',
-          costSaved: '280.000 ₫',
-          confidence: '92%',
-          targetDayIndex,
-          scheduleChanges: [
-            {
-              activityId: 'act-10',
-              activityTitle: 'Chặng di chuyển Lăng Cô',
-              oldTime: '14:30',
-              newTime: '14:10',
-              action: 'Khởi hành sớm 20 phút vượt giờ cao điểm',
-              status: 'Đã xác nhận',
-            },
-          ],
-        },
-      ],
-      dispatcherNotice: 'Lệnh điều phối an toàn: Đã kích hoạt giải pháp thời tiết đặc biệt cho cung đường miền Trung.',
-    };
-  }
-
-  return {
-    recommendations: [
-      {
-        id: 'rec-pacing',
-        actionTitle: 'Tối ưu hóa nhịp độ đoàn & Tránh nắng trưa miền Trung',
-        reason: 'Nhiệt độ ngoài trời miền Trung đạt đỉnh từ 11:30 - 13:30. Tối ưu lại thời gian các điểm di tích ngoài trời vào sáng sớm và hoàng hôn, tạo 90 phút nghỉ trưa mát mẻ cho toàn đoàn.',
-        timeSaved: 'Tiết kiệm 35 phút',
-        costSaved: '420.000 ₫',
-        confidence: '94%',
-        targetDayIndex,
-        scheduleChanges: [
-          {
-            activityTitle: 'Hoạt động buổi trưa',
-            oldTime: '11:30',
-            newTime: '11:15 — 13:45',
-            action: 'Mở rộng khung giờ ăn trưa & nghỉ ngơi điều hòa',
-            status: 'Đã xác nhận',
-          },
-        ],
-      },
-    ],
-    dispatcherNotice: 'Lệnh điều phối chuẩn: Tối ưu nhịp độ tour đảm bảo trải nghiệm tốt nhất.',
-  };
+  return buildRuleBasedScheduleOptimization(payload);
 }
 
 function createGeminiJob(operation: string, payload: unknown, userActor = 'Hệ thống'): GeminiJob {
@@ -915,8 +994,8 @@ Lộ trình phải bắt đầu từ điểm xuất phát và đi đúng các đ
   return runScheduleOptimization(payload, userActor);
 }
 
-// API Route: Generate personalized itinerary using Gemini
-app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
+// API Route: Generate personalized itinerary using Gemini (Chỉ Admin điều phối mới có quyền)
+app.post('/api/gemini/generate-itinerary', requireAuth, requireAdmin, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
   if (!ai) {
     return res.status(503).json({
       success: false,
@@ -953,8 +1032,8 @@ app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (re
   return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 
-// API Route: Optimize active schedule based on real-time factors
-app.post('/api/gemini/optimize-schedule', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
+// API Route: Optimize active schedule based on real-time factors (Chỉ Admin điều phối mới có quyền)
+app.post('/api/gemini/optimize-schedule', requireAuth, requireAdmin, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
   const userActor = req.authUser?.email || 'Người dùng';
   let payload: Awaited<ReturnType<typeof buildOptimizePayload>>;
   try {
@@ -997,12 +1076,12 @@ app.get('/api/gemini/jobs/:jobId', requireAuth, (req, res) => {
 });
 
 // Alias for itinerary endpoints mentioned in architecture
-app.post('/api/itinerary/generate', requireAuth, (req, res, next) => {
+app.post('/api/itinerary/generate', requireAuth, requireAdmin, (req, res, next) => {
   req.url = '/api/gemini/generate-itinerary';
   (app as any)._router.handle(req, res, next);
 });
 
-app.post('/api/itinerary/optimize-realtime', requireAuth, (req, res, next) => {
+app.post('/api/itinerary/optimize-realtime', requireAuth, requireAdmin, (req, res, next) => {
   req.url = '/api/gemini/optimize-schedule';
   (app as any)._router.handle(req, res, next);
 });
@@ -1012,7 +1091,7 @@ app.post('/api/itinerary/optimize-realtime', requireAuth, (req, res, next) => {
 // ==========================================
 
 // Get System & AI Configuration
-app.get('/api/admin/config', requireAuth, (_req, res) => {
+app.get('/api/admin/config', requireAuth, requireAdmin, (_req, res) => {
   return res.json({
     success: true,
     config: activeSystemConfig,
@@ -1025,7 +1104,7 @@ app.get('/api/admin/config', requireAuth, (_req, res) => {
 });
 
 // Update System & AI Configuration
-app.post('/api/admin/config', requireAuth, (req: AuthenticatedRequest, res) => {
+app.post('/api/admin/config', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { aiModel, temperature, maxTokens, systemPrompt, maintenanceMode, sessionTimeout, backupAutoSchedule, rules } = req.body;
 
   if (aiModel && typeof aiModel === 'string') {
@@ -1088,7 +1167,7 @@ app.post('/api/admin/config', requireAuth, (req: AuthenticatedRequest, res) => {
 });
 
 // Get AI Logs & Error Monitor
-app.get('/api/admin/ai-logs', requireAuth, (_req, res) => {
+app.get('/api/admin/ai-logs', requireAuth, requireAdmin, (_req, res) => {
   return res.json({
     success: true,
     requests: aiRequestLogs,
@@ -1100,25 +1179,25 @@ app.get('/api/admin/ai-logs', requireAuth, (_req, res) => {
 });
 
 // Get Audit Logs
-app.get('/api/admin/audit-logs', requireAuth, (_req, res) => {
+app.get('/api/admin/audit-logs', requireAuth, requireAdmin, (_req, res) => {
   return res.json({
     success: true,
     logs: auditLogs,
   });
 });
 
-app.get('/api/admin/system/config', requireAuth, (req, res, next) => {
+app.get('/api/admin/system/config', requireAuth, requireAdmin, (req, res, next) => {
   req.url = '/api/admin/config';
   (app as any)._router.handle(req, res, next);
 });
 
-app.post('/api/admin/system/config', requireAuth, (req, res, next) => {
+app.post('/api/admin/system/config', requireAuth, requireAdmin, (req, res, next) => {
   req.url = '/api/admin/config';
   (app as any)._router.handle(req, res, next);
 });
 
 // Test AI Connection & Latency
-app.post('/api/admin/test-ai', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.post('/api/admin/test-ai', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
   const actor = req.authUser?.email || 'Admin';
   const start = Date.now();
   try {
@@ -1145,14 +1224,14 @@ app.post('/api/admin/test-ai', requireAuth, async (req: AuthenticatedRequest, re
 });
 
 // ==================== VEHICLES MANAGEMENT ====================
-app.get('/api/admin/vehicles', requireAuth, (_req, res) => {
+app.get('/api/admin/vehicles', requireAuth, requireAdmin, (_req, res) => {
   return res.json({
     success: true,
     vehicles: activeVehicles,
   });
 });
 
-app.post('/api/admin/vehicles', requireAuth, (req: AuthenticatedRequest, res) => {
+app.post('/api/admin/vehicles', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { type, speedAvg, capacity, consumption, status } = req.body;
   if (!type) {
     return res.status(400).json({ success: false, error: 'Thiếu loại phương tiện' });
@@ -1178,7 +1257,7 @@ app.post('/api/admin/vehicles', requireAuth, (req: AuthenticatedRequest, res) =>
   });
 });
 
-app.patch('/api/admin/vehicles/:vehicleId', requireAuth, (req: AuthenticatedRequest, res) => {
+app.patch('/api/admin/vehicles/:vehicleId', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { vehicleId } = req.params;
   const veh = activeVehicles.find((v) => v.id === vehicleId);
   if (!veh) {
@@ -1202,7 +1281,7 @@ app.patch('/api/admin/vehicles/:vehicleId', requireAuth, (req: AuthenticatedRequ
   });
 });
 
-app.delete('/api/admin/vehicles/:vehicleId', requireAuth, (req: AuthenticatedRequest, res) => {
+app.delete('/api/admin/vehicles/:vehicleId', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { vehicleId } = req.params;
   const index = activeVehicles.findIndex((v) => v.id === vehicleId);
   if (index === -1) {
@@ -1220,14 +1299,14 @@ app.delete('/api/admin/vehicles/:vehicleId', requireAuth, (req: AuthenticatedReq
 });
 
 // ==================== REFERENCE COSTS MANAGEMENT ====================
-app.get('/api/admin/reference-costs', requireAuth, (_req, res) => {
+app.get('/api/admin/reference-costs', requireAuth, requireAdmin, (_req, res) => {
   return res.json({
     success: true,
     costs: activeReferenceCosts,
   });
 });
 
-app.post('/api/admin/reference-costs', requireAuth, (req: AuthenticatedRequest, res) => {
+app.post('/api/admin/reference-costs', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { category, item, price, note } = req.body;
   if (!item || !price) {
     return res.status(400).json({ success: false, error: 'Thiếu tên hạng mục hoặc đơn giá' });
@@ -1252,7 +1331,7 @@ app.post('/api/admin/reference-costs', requireAuth, (req: AuthenticatedRequest, 
   });
 });
 
-app.patch('/api/admin/reference-costs/:costId', requireAuth, (req: AuthenticatedRequest, res) => {
+app.patch('/api/admin/reference-costs/:costId', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { costId } = req.params;
   const cost = activeReferenceCosts.find((c) => c.id === costId);
   if (!cost) {
@@ -1275,7 +1354,7 @@ app.patch('/api/admin/reference-costs/:costId', requireAuth, (req: Authenticated
   });
 });
 
-app.delete('/api/admin/reference-costs/:costId', requireAuth, (req: AuthenticatedRequest, res) => {
+app.delete('/api/admin/reference-costs/:costId', requireAuth, requireAdmin, (req: AuthenticatedRequest, res) => {
   const { costId } = req.params;
   const index = activeReferenceCosts.findIndex((c) => c.id === costId);
   if (index === -1) {
@@ -1294,7 +1373,7 @@ app.delete('/api/admin/reference-costs/:costId', requireAuth, (req: Authenticate
 
 // ==================== USERS & RBAC MANAGEMENT ====================
 // Get Managed Users (with dynamic session user sync & persistence)
-app.get('/api/admin/users', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.get('/api/admin/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
   const callerEmail = (req.authUser?.email || 'luquoctuan2006@gmail.com').toLowerCase();
   const existingIdx = memoryUsers.findIndex((u) => u.email.toLowerCase() === callerEmail);
   let hasChange = false;
@@ -1333,7 +1412,7 @@ app.get('/api/admin/users', requireAuth, async (req: AuthenticatedRequest, res) 
 });
 
 // Add / Upsert Managed User
-app.post('/api/admin/users', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.post('/api/admin/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
   const { name, email, phone, role } = req.body;
   if (!name || !email) {
     return res.status(400).json({ success: false, error: 'Thiếu tên hoặc email' });
@@ -1382,7 +1461,7 @@ app.post('/api/admin/users', requireAuth, async (req: AuthenticatedRequest, res)
 });
 
 // Update User (Lock/Unlock, Role)
-app.patch('/api/admin/users/:userId', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.patch('/api/admin/users/:userId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
   const { userId } = req.params;
   const user = memoryUsers.find((u) => u.id === userId);
   if (!user) {
@@ -1416,7 +1495,7 @@ app.patch('/api/admin/users/:userId', requireAuth, async (req: AuthenticatedRequ
 });
 
 // Delete User
-app.delete('/api/admin/users/:userId', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
   const { userId } = req.params;
   const index = memoryUsers.findIndex((u) => u.id === userId);
   if (index === -1) {
