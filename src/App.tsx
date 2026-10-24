@@ -166,6 +166,25 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
                 await updateProfile(credential.user, { displayName: name.trim() });
               } catch {}
             }
+            // Ghi user mới vào danh sách quản lý của admin (trước đây bước này bị thiếu)
+            try {
+              const idToken = await credential.user.getIdToken();
+              await fetch('/api/admin/users', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                  name: name.trim() || cleanEmail.split('@')[0],
+                  email: cleanEmail,
+                  phone: '',
+                  role: 'Khách du lịch',
+                }),
+              });
+            } catch (syncErr) {
+              console.warn('Không đồng bộ được user vào danh sách quản lý:', syncErr);
+            }
             return;
           } catch (fbErr: any) {
             console.warn('Firebase register failed, falling back to seamless session:', fbErr?.code);

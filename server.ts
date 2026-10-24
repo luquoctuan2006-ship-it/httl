@@ -14,6 +14,7 @@ import { createTripPersistenceStore } from './src/data/tripPersistence';
 import { createUsersPersistenceStore, initialDefaultUsers, ManagedUserRecord } from './src/data/userPersistence';
 import { TripData } from './src/types/travel';
 import { parseGeminiJson } from './src/utils/geminiJson';
+import { pickTripForOptimization, runOptimization } from './src/utils/scheduleOptimizer';
 
 dotenv.config();
 
@@ -822,13 +823,6 @@ function createGeminiJob(operation: string, payload: unknown, userActor = 'Hệ 
       job.status = 'completed';
       job.progress = 'Đã hoàn tất';
     } catch (error) {
-      if (operation === 'optimize-schedule') {
-        console.warn('[Gemini] Chuyển sang công cụ điều phối dự phòng cho optimize-schedule:', error);
-        job.result = buildFallbackScheduleOptimization(payload);
-        job.status = 'completed';
-        job.progress = 'Đã hoàn tất (Quy tắc điều phối thông minh)';
-        return;
-      }
       job.status = 'failed';
       job.progress = 'Xảy ra lỗi';
       job.error = error instanceof Error ? error.message : 'Lỗi xử lý Gemini';
@@ -852,6 +846,55 @@ function extractJsonText(response: any): string {
   return text;
 }
 
+// ==========================================
+// TỐI ƯU LỊCH TRÌNH: dữ liệu thật + quy tắc Admin + kiểm tra khả thi
+// ==========================================
+
+// Ưu tiên dữ liệu chuyến đi lưu ở server (đầy đủ, client không giả mạo được);
+// chỉ khi không tìm thấy/không có quyền mới dùng dữ liệu client gửi lên.
+async function buildOptimizePayload(body: any, user?: DecodedIdToken) {
+  const clientTrip = body?.currentTrip && typeof body.currentTrip === 'object' ? body.currentTrip : null;
+  const tripId = typeof clientTrip?.id === 'string' ? clientTrip.id : '';
+
+  let storedTrip: TripData | null = null;
+  if (tripId && tripId !== 'active' && TRIP_ID_PATTERN.test(tripId)) {
+    try {
+      const found = await getTripById(tripId);
+      if (found && canAccessTrip(found, user)) storedTrip = found;
+    } catch (error) {
+      console.warn('[Optimize] Không đọc được chuyến đi từ server, dùng dữ liệu client:', error);
+    }
+  }
+
+  const source = storedTrip ?? clientTrip;
+  if (!source || !Array.isArray(source.days)) return null;
+
+  const alerts = storedTrip ? storedTrip.alerts : body?.alertDetails;
+  return {
+    tripSource: (storedTrip ? 'server' : 'client') as 'server' | 'client',
+    currentTrip: pickTripForOptimization(source),
+    alertDetails: (Array.isArray(alerts) ? alerts : []).slice(0, 10),
+    userGoal: typeof body?.userGoal === 'string' ? body.userGoal.slice(0, 300) : '',
+    // Quy tắc Admin hiện hành nằm trong payload nên đổi quy tắc sẽ đổi khóa cache.
+    rules: activeSystemConfig.rules,
+  };
+}
+
+// Mọi đề xuất (Gemini hoặc dự phòng) đều phải qua bộ kiểm tra khả thi trước khi trả về.
+function runScheduleOptimization(payload: any, userActor = 'Hệ thống') {
+  return runOptimization(payload, {
+    ask: async (prompt, dedupeKey) => {
+      const response = dedupeKey
+        ? await getOrCreateGeminiRequest(dedupeKey, () => generateWithGemini(prompt, userActor))
+        : await generateWithGemini(prompt, userActor);
+      return parseGeminiJson(extractJsonText(response));
+    },
+    fallback: buildFallbackScheduleOptimization,
+    defaultRules: activeSystemConfig.rules,
+    warn: (message, error) => console.warn(message, error),
+  });
+}
+
 async function executeGeminiOperation(operation: string, payload: unknown, userActor = 'Hệ thống'): Promise<any> {
   if (operation === 'generate-itinerary') {
     const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = payload as Record<string, any>;
@@ -869,69 +912,7 @@ Lộ trình phải bắt đầu từ điểm xuất phát và đi đúng các đ
     return parseGeminiJson(extractJsonText(response));
   }
 
-  const { currentTrip, alertDetails, userGoal } = payload as Record<string, any>;
-  const compactTrip = {
-    id: currentTrip?.id,
-    title: currentTrip?.title,
-    totalDays: currentTrip?.totalDays,
-    totalKm: currentTrip?.totalKm,
-    budgetTotal: currentTrip?.budgetTotal,
-    days: Array.isArray(currentTrip?.days)
-      ? currentTrip.days.slice(0, 7).map((day: any) => ({
-          dayIndex: day.dayIndex,
-          fullDate: day.fullDate,
-          summary: day.dispatcherNote,
-          activities: Array.isArray(day.activities)
-            ? day.activities.slice(0, 5).map((activity: any) => ({
-                id: activity.id,
-                timeStart: activity.timeStart,
-                timeEnd: activity.timeEnd,
-                title: activity.title,
-                location: activity.location,
-                status: activity.status,
-                type: activity.type,
-              }))
-            : [],
-        }))
-      : [],
-  };
-  const prompt = `Bạn là chuyên gia điều phối tour du lịch cao cấp tại Việt Nam. Dựa trên thông tin chuyến đi và cảnh báo thời gian thực (như thời tiết mưa dông đèo Hải Vân, nắng nóng trưa gay gắt, mật độ giao thông QL1A), hãy đưa ra phương án điều phối lại lịch trình tối ưu. Chỉ trả về JSON hợp lệ.
-Thông tin chuyến đi: ${JSON.stringify(compactTrip)}
-Cảnh báo vận hành: ${JSON.stringify(alertDetails || [])}
-Mục tiêu: ${userGoal || 'An toàn, đúng lịch trình, tránh mưa đèo dốc, giảm chi phí'}
-Trả về schema JSON:
-{
-  "recommendations": [
-    {
-      "id": "rec-1",
-      "actionTitle": "Tiêu đề phương án điều phối",
-      "reason": "Lý do và lợi ích an toàn cho đoàn",
-      "timeSaved": "Ước tính thời gian tiết kiệm (VD: Tiết kiệm 45 phút)",
-      "costSaved": "Ước tính chi phí tiết kiệm (VD: 640.000 ₫)",
-      "confidence": "96%",
-      "targetDayIndex": 3,
-      "scheduleChanges": [
-        {
-          "activityId": "id hoạt động",
-          "activityTitle": "Tên hoạt động",
-          "oldTime": "14:30",
-          "newTime": "08:30 — 10:30",
-          "action": "Dời lên sáng sớm trời quang đãng",
-          "status": "Đã xác nhận"
-        }
-      ]
-    }
-  ],
-  "dispatcherNotice": "Lệnh điều phối an toàn"
-}
-Giữ tối đa 2-3 đề xuất súc tích, thực tế.`;
-  try {
-    const response = await getOrCreateGeminiRequest(`optimize-schedule:${JSON.stringify(payload)}`, () => generateWithGemini(prompt, userActor));
-    return parseGeminiJson(extractJsonText(response));
-  } catch (err) {
-    console.warn('[Gemini] Lỗi gọi API, dùng fallback optimizer:', err);
-    return buildFallbackScheduleOptimization(payload);
-  }
+  return runScheduleOptimization(payload, userActor);
 }
 
 // API Route: Generate personalized itinerary using Gemini
@@ -974,21 +955,36 @@ app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (re
 
 // API Route: Optimize active schedule based on real-time factors
 app.post('/api/gemini/optimize-schedule', requireAuth, aiRateLimiter, async (req: AuthenticatedRequest, res) => {
-  const cacheKey = createGeminiCacheKey('optimize-schedule', req.body);
-  const cachedResult = getCachedGeminiResult(cacheKey);
+  const userActor = req.authUser?.email || 'Người dùng';
+  let payload: Awaited<ReturnType<typeof buildOptimizePayload>>;
+  try {
+    payload = await buildOptimizePayload(req.body, req.authUser);
+  } catch (error) {
+    console.error('[Optimize] Lỗi khi chuẩn bị dữ liệu chuyến đi:', error);
+    return res.status(500).json({ success: false, error: 'Không thể chuẩn bị dữ liệu chuyến đi để tối ưu.' });
+  }
+  if (!payload) {
+    return res.status(400).json({ success: false, error: 'Thiếu dữ liệu chuyến đi (currentTrip.days) để tối ưu lịch trình.' });
+  }
 
+  const cacheKey = createGeminiCacheKey('optimize-schedule', payload);
+  const cachedResult = getCachedGeminiResult(cacheKey);
   if (cachedResult !== undefined) {
     return res.json({ success: true, data: cachedResult, cached: true });
   }
 
   if (!ai) {
-    const fallbackData = buildFallbackScheduleOptimization(req.body);
-    setCachedGeminiResult(cacheKey, fallbackData);
-    return res.json({ success: true, data: fallbackData, cached: true });
+    // Không có API key: chỉ bộ dự phòng chạy, nhưng vẫn qua kiểm tra khả thi và được gắn nhãn source='fallback'.
+    try {
+      const data = await runScheduleOptimization(payload, userActor);
+      return res.json({ success: true, data });
+    } catch (error) {
+      console.error('[Optimize] Lỗi khi tối ưu lịch trình:', error);
+      return res.status(500).json({ success: false, error: 'Không thể kiểm tra phương án tối ưu lịch trình.' });
+    }
   }
 
-  const userActor = req.authUser?.email || 'Người dùng';
-  const job = createGeminiJob('optimize-schedule', req.body, userActor);
+  const job = createGeminiJob('optimize-schedule', payload, userActor);
   return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
 });
 

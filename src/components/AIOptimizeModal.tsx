@@ -30,6 +30,21 @@ export interface ScheduleChangeDetail {
   status?: string;
 }
 
+export interface ValidationViolation {
+  code: string;
+  message: string;
+  activityId?: string;
+}
+
+export interface OptimizationValidation {
+  source: 'gemini' | 'fallback';
+  tripSource?: 'server' | 'client';
+  repaired: boolean;
+  checked: number;
+  accepted: number;
+  rejected: { id?: string; actionTitle: string; violations: ValidationViolation[] }[];
+}
+
 export interface OptimizationRecommendation {
   id?: string;
   actionTitle: string;
@@ -40,6 +55,8 @@ export interface OptimizationRecommendation {
   targetDayIndex?: number;
   scheduleChanges?: ScheduleChangeDetail[];
   updatedActivities?: any[];
+  /** Cảnh báo mềm từ bộ kiểm tra khả thi (đề xuất vẫn hợp lệ). */
+  warnings?: ValidationViolation[];
 }
 
 export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
@@ -55,59 +72,31 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
   const [recommendations, setRecommendations] = useState<OptimizationRecommendation[]>([]);
   const [selectedRecIndex, setSelectedRecIndex] = useState(0);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
+  const [validation, setValidation] = useState<OptimizationValidation | null>(null);
 
-  const getClientFallbackRecommendations = (): OptimizationRecommendation[] => {
-    const targetDay = trip.days.find((d) => d.hasWarning || d.pendingCount > 0) || trip.days[0] || { dayIndex: 3 };
-    const targetDayIndex = targetDay.dayIndex || 3;
+  // Nhận kết quả từ server. Server đã lọc đề xuất qua bộ kiểm tra khả thi nên client
+  // KHÔNG tự bịa đề xuất dự phòng nữa: rỗng nghĩa là không có phương án nào an toàn để áp dụng.
+  const applyResult = (data: any) => {
+    const recs: OptimizationRecommendation[] = Array.isArray(data?.recommendations) ? data.recommendations : [];
+    const info: OptimizationValidation | null = data?.validation ?? null;
+    setRecommendations(recs);
+    setSelectedRecIndex(0);
+    setValidation(info);
+    if (recs.length === 0) {
+      setErrorMsg(
+        info && info.checked > 0
+          ? `Không có phương án nào vượt qua kiểm tra khả thi (${info.rejected.length}/${info.checked} bị loại). Xem lý do bên dưới hoặc điều chỉnh quy tắc rồi phân tích lại.`
+          : 'Chưa có phương án phù hợp từ hệ thống. Hãy thử phân tích lại sau.',
+      );
+    }
+    setIsLoading(false);
+  };
 
-    return [
-      {
-        id: 'rec-weather-pass',
-        actionTitle: 'Điều phối tránh dông đèo Hải Vân: Vượt đèo buổi sáng, đảo tham quan trong nhà vào buổi chiều',
-        reason: 'Trạm khí tượng dự báo mưa lớn 75% và sương mù dày tại Đèo Hải Vân từ 14:00 - 17:00. Dời lịch trình vượt đèo lên 08:30 sáng giúp xe 29 chỗ di chuyển an toàn tuyệt đối, tầm nhìn thoáng đãng và giảm 45 phút thời gian chậm trễ.',
-        timeSaved: 'Tiết kiệm 45 phút',
-        costSaved: '640.000 ₫',
-        confidence: '96%',
-        targetDayIndex,
-        scheduleChanges: [
-          {
-            activityId: 'act-10',
-            activityTitle: 'Khởi hành đi Lăng Cô qua Đèo Hải Vân',
-            oldTime: '14:30 — 17:30',
-            newTime: '08:30 — 10:30',
-            action: 'Dời lên buổi sáng trời quang đãng, tầm nhìn an toàn tuyệt đối',
-            status: 'Đã xác nhận',
-          },
-          {
-            activityId: 'act-9',
-            activityTitle: 'Tham quan trong nhà & Nghỉ trưa',
-            oldTime: '09:45 — 13:00',
-            newTime: '13:30 — 16:30',
-            action: 'Chuyển sang buổi chiều râm mát, có mái che tránh mưa nắng',
-            status: 'Đã xác nhận',
-          },
-        ],
-      },
-      {
-        id: 'rec-early-depart',
-        actionTitle: 'Dự phòng lưu lượng Quốc Lộ 1A: Khởi hành sớm 20 phút',
-        reason: 'Cung đường cửa ngõ kết nối Đà Nẵng - Huế có mật độ phương tiện cao vào cuối buổi chiều. Khởi hành sớm 20 phút giúp đoàn nhận phòng đúng 17:00 và thưởng thức bữa tối thư thái.',
-        timeSaved: 'Tiết kiệm 20 phút',
-        costSaved: '280.000 ₫',
-        confidence: '92%',
-        targetDayIndex,
-        scheduleChanges: [
-          {
-            activityId: 'act-10',
-            activityTitle: 'Chặng di chuyển Lăng Cô',
-            oldTime: '14:30',
-            newTime: '14:10',
-            action: 'Khởi hành sớm 20 phút vượt giờ cao điểm',
-            status: 'Đã xác nhận',
-          },
-        ],
-      },
-    ];
+  const failAnalysis = (message: string) => {
+    setRecommendations([]);
+    setValidation(null);
+    setErrorMsg(message);
+    setIsLoading(false);
   };
 
   const pollJob = async (jobId: string) => {
@@ -119,31 +108,26 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
       }
       setJobStatus(job.job.progress);
       if (job.job.status === 'completed') {
-        if (!Array.isArray(job.job.result?.recommendations) || job.job.result.recommendations.length === 0) {
-          setRecommendations(getClientFallbackRecommendations());
-        } else {
-          setRecommendations(job.job.result.recommendations);
-        }
-        setIsLoading(false);
+        applyResult(job.job.result);
         return;
       }
       if (job.job.status === 'failed') {
-        setRecommendations(getClientFallbackRecommendations());
-        setIsLoading(false);
+        failAnalysis(job.job.error || 'Phân tích lịch trình thất bại. Vui lòng thử lại.');
         return;
       }
       window.setTimeout(() => void pollJob(jobId), 1500);
-    } catch {
-      setRecommendations(getClientFallbackRecommendations());
-      setIsLoading(false);
+    } catch (error) {
+      failAnalysis(error instanceof Error ? error.message : 'Không thể kiểm tra tiến trình phân tích.');
     }
   };
 
   const handleAnalyze = async () => {
     setIsLoading(true);
     setErrorMsg(null);
+    setValidation(null);
     setJobStatus('Đang phân tích dữ liệu vận hành');
     try {
+      // Gửi ĐẦY ĐỦ hoạt động từng ngày (server vẫn ưu tiên dữ liệu đã lưu của chuyến đi).
       const compactTrip = {
         id: trip.id,
         title: trip.title,
@@ -154,11 +138,13 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
         totalKm: trip.totalKm,
         vehicle: trip.vehicle,
         budgetTotal: trip.budgetTotal,
-        days: trip.days?.slice(0, 7).map((day) => ({
+        days: trip.days?.map((day) => ({
           dayIndex: day.dayIndex,
           fullDate: day.fullDate,
-          summary: day.dispatcherNote,
-          activities: day.activities?.slice(0, 5).map((activity) => ({
+          dispatcherNote: day.dispatcherNote,
+          hasWarning: day.hasWarning,
+          pendingCount: day.pendingCount,
+          activities: day.activities?.map((activity) => ({
             id: activity.id,
             timeStart: activity.timeStart,
             timeEnd: activity.timeEnd,
@@ -166,8 +152,11 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
             location: activity.location,
             status: activity.status,
             type: activity.type,
+            cost: activity.cost,
+            coordinates: activity.coordinates,
           })),
         })),
+        waypoints: trip.waypoints?.map((w) => ({ name: w.name, lat: w.lat, lng: w.lng, openHours: w.openHours })),
       };
 
       const response = await authenticatedFetch('/api/gemini/optimize-schedule', {
@@ -180,20 +169,17 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
         }),
       });
       const result = await safeJsonResponse(response);
-      if (result.success && Array.isArray(result.data?.recommendations) && result.data.recommendations.length > 0) {
-        setRecommendations(result.data.recommendations);
-        setIsLoading(false);
+      if (result.success && result.data) {
+        applyResult(result.data);
         return;
       }
       if (result.jobId) {
         await pollJob(result.jobId);
         return;
       }
-      setRecommendations(getClientFallbackRecommendations());
-      setIsLoading(false);
-    } catch {
-      setRecommendations(getClientFallbackRecommendations());
-      setIsLoading(false);
+      failAnalysis(result.error || 'Không nhận được phương án từ hệ thống.');
+    } catch (error) {
+      failAnalysis(error instanceof Error ? error.message : 'Không thể kết nối để phân tích lịch trình.');
     }
   };
 
@@ -289,6 +275,36 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
               </button>
             </div>
             {errorMsg && <p role="alert" className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">{errorMsg}</p>}
+            {validation?.source === 'fallback' && (
+              <p className="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                Gemini không khả dụng — đề xuất dưới đây (nếu có) đến từ bộ quy tắc dự phòng, không phải AI.
+              </p>
+            )}
+            {validation && validation.checked > 0 && (
+              <p className="text-[11px] text-slate-500">
+                Kiểm tra khả thi: {validation.accepted}/{validation.checked} phương án đạt
+                {validation.repaired ? ' (đã yêu cầu AI sửa 1 lần)' : ''}.
+              </p>
+            )}
+            {validation && validation.rejected.length > 0 && (
+              <details className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <summary className="cursor-pointer font-bold text-slate-700">
+                  {validation.rejected.length} phương án bị loại vì không khả thi
+                </summary>
+                <ul className="mt-2 space-y-2">
+                  {validation.rejected.map((item, index) => (
+                    <li key={`${item.id ?? 'rej'}-${index}`}>
+                      <span className="font-semibold text-slate-800">{item.actionTitle}</span>
+                      <ul className="list-disc list-inside text-[11px] text-slate-500">
+                        {item.violations.map((violation, vIndex) => (
+                          <li key={vIndex}>{violation.message}</li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {recommendations.map((recommendation, index) => {
               const isSelected = selectedRecIndex === index;
               return (
@@ -313,6 +329,13 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed font-normal">{recommendation.reason}</p>
+                  {recommendation.warnings && recommendation.warnings.length > 0 && (
+                    <ul className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 list-disc list-inside space-y-0.5">
+                      {recommendation.warnings.map((warning, wIndex) => (
+                        <li key={wIndex}>{warning.message}</li>
+                      ))}
+                    </ul>
+                  )}
 
                   {/* Concrete Schedule changes */}
                   {recommendation.scheduleChanges && recommendation.scheduleChanges.length > 0 && (

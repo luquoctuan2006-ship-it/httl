@@ -562,6 +562,9 @@ export const AdminUsersManagementView: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+    // Tự làm mới để thấy user vừa đăng ký mà không cần reload trang
+    const timer = setInterval(fetchUsers, 15000);
+    return () => clearInterval(timer);
   }, []);
 
   const userStats = useMemo(() => {
