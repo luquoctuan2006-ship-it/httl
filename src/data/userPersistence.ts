@@ -12,38 +12,8 @@ export interface ManagedUserRecord {
   lastLogin: string;
 }
 
-export const initialDefaultUsers: ManagedUserRecord[] = [
-  {
-    id: 'usr-admin-tuan',
-    name: 'Lữ Quốc Tuấn',
-    email: 'luquoctuan2006@gmail.com',
-    phone: '0905 123 456',
-    role: 'Admin',
-    isLocked: false,
-    createdAt: '01/10/2026',
-    lastLogin: 'Hôm nay',
-  },
-  {
-    id: 'usr-admin-voyager',
-    name: 'Điều phối viên Voyager',
-    email: 'admin@voyager.vn',
-    phone: '0905 888 999',
-    role: 'Admin',
-    isLocked: false,
-    createdAt: '01/10/2026',
-    lastLogin: 'Hôm nay',
-  },
-  {
-    id: 'usr-tourist-demo',
-    name: 'Khách du lịch mẫu',
-    email: 'demo.tourist@voyager.vn',
-    phone: '0912 345 678',
-    role: 'Khách du lịch',
-    isLocked: false,
-    createdAt: '05/10/2026',
-    lastLogin: 'Hôm qua',
-  },
-];
+// Không còn tài khoản mẫu: danh sách người dùng được tạo khi có người đăng nhập.
+export const initialDefaultUsers: ManagedUserRecord[] = [];
 
 export interface UsersPersistenceStore {
   load(): Promise<ManagedUserRecord[]>;

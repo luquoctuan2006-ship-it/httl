@@ -110,64 +110,20 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
   const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : '';
   if (!token) return res.status(401).json({ success: false, error: 'Vui lòng đăng nhập' });
 
-  // Xác thực token giả lập trong môi trường dev/local:
-  // KHÔNG TIN TƯỞNG role do client gửi lên; chỉ cấp quyền admin nếu email nằm trong danh sách quản trị
-  if (token.startsWith('mock-token:')) {
-    const parts = token.split(':');
-    const uid = parts[1] || 'mock-user';
-    const email = (parts[3] || parts[2] || '').trim().toLowerCase();
-
-    const isRegisteredAdmin =
-      email === 'luquoctuan2006@gmail.com' ||
-      email === 'admin@voyager.vn' ||
-      memoryUsers.some((u) => u.email.toLowerCase() === email && u.role === 'Admin');
-
-    req.authUser = {
-      uid,
-      role: isRegisteredAdmin ? 'admin' : 'user',
-      email: email || 'user@voyager.vn',
-    } as unknown as DecodedIdToken;
-    return next();
-  }
-
+  // Chỉ chấp nhận ID token Firebase đã được xác minh chữ ký.
+  // Quyền admin chỉ đến từ custom claim `role` (đặt bằng scripts/set-role.ts).
   if (!firebaseAuth) {
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-        const email = (payload.email || '').trim().toLowerCase();
-        const isRegisteredAdmin =
-          payload.role === 'admin' ||
-          email === 'luquoctuan2006@gmail.com' ||
-          email === 'admin@voyager.vn' ||
-          memoryUsers.some((u) => u.email.toLowerCase() === email && u.role === 'Admin');
-
-        req.authUser = {
-          uid: payload.user_id || payload.sub || 'firebase-user',
-          role: isRegisteredAdmin ? 'admin' : 'user',
-          email: email || 'user@voyager.vn',
-        } as unknown as DecodedIdToken;
-        return next();
-      }
-    } catch {
-      // Token không hợp lệ
-    }
-    // LOẠI BỎ HOÀN TOÀN fallback-user quyền admin tùy tiện
-    return res.status(401).json({ success: false, error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn' });
+    return res.status(503).json({
+      success: false,
+      error: 'Máy chủ chưa cấu hình Firebase Admin (secrets/firebase-service-account.json) nên không thể xác thực.',
+    });
   }
 
   try {
     const decoded = await firebaseAuth.verifyIdToken(token, true);
-    const email = (decoded.email || '').trim().toLowerCase();
-    const isAdmin =
-      decoded.role === 'admin' ||
-      email === 'luquoctuan2006@gmail.com' ||
-      email === 'admin@voyager.vn' ||
-      memoryUsers.some((u) => u.email.toLowerCase() === email && u.role === 'Admin');
-
     req.authUser = {
       ...decoded,
-      role: isAdmin ? 'admin' : 'user',
+      role: decoded.role === 'admin' ? 'admin' : 'user',
     } as DecodedIdToken;
     return next();
   } catch {
@@ -344,7 +300,6 @@ const getActiveTripHandler = async (req: AuthenticatedRequest, res: Response) =>
   }
 };
 app.get('/api/trips/active', requireAuth, getActiveTripHandler);
-app.get('/api/trip/active', requireAuth, getActiveTripHandler);
 
 const saveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
   const trip = normalizeTripData(req.body);
@@ -367,7 +322,6 @@ const saveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
   }
 };
 app.put('/api/trips/active', requireAuth, saveTripHandler);
-app.put('/api/trip/active', requireAuth, saveTripHandler);
 app.put('/api/trips/:tripId', requireAuth, saveTripHandler);
 
 app.post('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -1075,17 +1029,6 @@ app.get('/api/gemini/jobs/:jobId', requireAuth, (req, res) => {
   return res.json({ success: true, job });
 });
 
-// Alias for itinerary endpoints mentioned in architecture
-app.post('/api/itinerary/generate', requireAuth, requireAdmin, (req, res, next) => {
-  req.url = '/api/gemini/generate-itinerary';
-  (app as any)._router.handle(req, res, next);
-});
-
-app.post('/api/itinerary/optimize-realtime', requireAuth, requireAdmin, (req, res, next) => {
-  req.url = '/api/gemini/optimize-schedule';
-  (app as any)._router.handle(req, res, next);
-});
-
 // ==========================================
 // ADMIN API ENDPOINTS: Dynamic Models, Config, Users, Logs
 // ==========================================
@@ -1184,16 +1127,6 @@ app.get('/api/admin/audit-logs', requireAuth, requireAdmin, (_req, res) => {
     success: true,
     logs: auditLogs,
   });
-});
-
-app.get('/api/admin/system/config', requireAuth, requireAdmin, (req, res, next) => {
-  req.url = '/api/admin/config';
-  (app as any)._router.handle(req, res, next);
-});
-
-app.post('/api/admin/system/config', requireAuth, requireAdmin, (req, res, next) => {
-  req.url = '/api/admin/config';
-  (app as any)._router.handle(req, res, next);
 });
 
 // Test AI Connection & Latency
@@ -1374,9 +1307,13 @@ app.delete('/api/admin/reference-costs/:costId', requireAuth, requireAdmin, (req
 // ==================== USERS & RBAC MANAGEMENT ====================
 // Get Managed Users (with dynamic session user sync & persistence)
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
-  const callerEmail = (req.authUser?.email || 'luquoctuan2006@gmail.com').toLowerCase();
+  const callerEmail = (req.authUser?.email || '').toLowerCase();
   const existingIdx = memoryUsers.findIndex((u) => u.email.toLowerCase() === callerEmail);
   let hasChange = false;
+
+  if (!callerEmail) {
+    return res.json({ success: true, users: memoryUsers });
+  }
 
   if (existingIdx >= 0) {
     memoryUsers[existingIdx].lastLogin = 'Vừa xong (Trực tuyến)';
@@ -1420,7 +1357,7 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req: Authenticate
 
   const cleanEmail = String(email).trim().toLowerCase();
   const targetRole =
-    role === 'Admin' || cleanEmail.includes('admin') || cleanEmail === 'luquoctuan2006@gmail.com'
+    role === 'Admin'
       ? 'Admin'
       : 'Khách du lịch';
 

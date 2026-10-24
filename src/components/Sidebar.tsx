@@ -24,7 +24,6 @@ interface SidebarProps {
   onSelectTab: (tab: string) => void;
   alertCount?: number;
   tripCount?: number;
-  onOpenProjectDocs: () => void;
   onOpenAIPlanner: () => void;
 }
 
@@ -36,7 +35,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   alertCount = 3,
   tripCount = 0,
-  onOpenProjectDocs,
   onOpenAIPlanner,
 }) => {
   const mainNav = userRole === 'admin'

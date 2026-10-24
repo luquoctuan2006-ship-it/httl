@@ -24,3 +24,6 @@ Thumbs.db
 *.log
 *.local
 *.tmp
+
+# Runtime data (tự tạo khi server chạy, chứa dữ liệu người dùng)
+/data/

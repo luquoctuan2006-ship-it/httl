@@ -1,43 +1,12 @@
 import { firebaseAuth } from './firebase';
 
-const SESSION_TOKEN_KEY = 'voyager_session_token';
-
-let mockToken = typeof localStorage !== 'undefined'
-  ? localStorage.getItem(SESSION_TOKEN_KEY) || 'mock-token:mock-admin:admin:admin@voyager.vn'
-  : 'mock-token:mock-admin:admin:admin@voyager.vn';
-
-export function setMockAuthToken(token: string) {
-  mockToken = token;
-  if (typeof localStorage !== 'undefined') {
-    if (token) {
-      localStorage.setItem(SESSION_TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(SESSION_TOKEN_KEY);
-    }
-  }
-}
-
-export function clearMockAuthToken() {
-  mockToken = '';
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(SESSION_TOKEN_KEY);
-  }
-}
-
+// Chỉ gửi ID token Firebase thật; server sẽ xác minh chữ ký và claim `role`.
 export async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const user = firebaseAuth?.currentUser;
   const headers = new Headers(init.headers);
 
   if (user) {
-    try {
-      const idToken = await user.getIdToken();
-      headers.set('Authorization', `Bearer ${idToken}`);
-    } catch (tokenErr) {
-      console.warn('Could not retrieve Firebase ID token, using fallback token:', tokenErr);
-      headers.set('Authorization', `Bearer ${mockToken}`);
-    }
-  } else {
-    headers.set('Authorization', `Bearer ${mockToken}`);
+    headers.set('Authorization', `Bearer ${await user.getIdToken()}`);
   }
 
   return fetch(input, { ...init, headers });

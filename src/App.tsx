@@ -23,7 +23,6 @@ import { AIOptimizeModal } from './components/AIOptimizeModal';
 import { AddActivityModal } from './components/AddActivityModal';
 import { AlertsListModal } from './components/AlertsListModal';
 import { ActivityDetailModal } from './components/ActivityDetailModal';
-import { ProjectArchitectureModal } from './components/ProjectArchitectureModal';
 import { TripsListView } from './components/TripsListView';
 import { EditTripModal } from './components/EditTripModal';
 import { detectScheduleAndWeatherAlerts } from './utils/alertDetector';
@@ -41,7 +40,7 @@ import {
 import { initialTripData } from './data/mockData';
 import { normalizeTripData } from './data/normalizeTripData';
 import { TripData, Activity, TripMember } from './types/travel';
-import { authenticatedFetch, clearMockAuthToken, safeJsonResponse, setMockAuthToken } from './api';
+import { authenticatedFetch, safeJsonResponse } from './api';
 import { applyScheduleChangesStrict, filterAlertsByRecommendation } from './utils/applyOptimization';
 import { RotateCcw } from 'lucide-react';
 import {
@@ -62,62 +61,13 @@ type AuthUser = {
   role: AppRole;
 };
 
-function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) {
+function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('admin@voyager.vn');
-  const [password, setPassword] = useState('123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const performMockLogin = (overrideEmail?: string, overrideRole?: AppRole, overrideName?: string) => {
-    const normalizedEmail = (overrideEmail || email).trim().toLowerCase() || 'admin@voyager.vn';
-    const role: AppRole =
-      overrideRole ||
-      (normalizedEmail === 'luquoctuan2006@gmail.com' ||
-      normalizedEmail.includes('admin') ||
-      normalizedEmail.startsWith('admin@')
-        ? 'admin'
-        : 'user');
-    const uid = `usr-${normalizedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const displayName =
-      overrideName ||
-      name.trim() ||
-      (role === 'admin' ? 'Điều phối viên Admin' : normalizedEmail.split('@')[0] || 'Khách du lịch');
-    
-    const token = `mock-token:${uid}:${role}:${normalizedEmail}`;
-    setMockAuthToken(token);
-
-    const loggedUser: AuthUser = {
-      id: uid,
-      name: displayName,
-      email: normalizedEmail,
-      role,
-    };
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('voyager_auth_user', JSON.stringify(loggedUser));
-    }
-
-    // Lưu vào database users phía server để lưu trữ vĩnh viễn
-    try {
-      void fetch('/api/admin/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: displayName,
-          email: normalizedEmail,
-          phone: '0905 123 789',
-          role: role === 'admin' ? 'Admin' : 'Khách du lịch',
-        }),
-      }).catch(() => {});
-    } catch {}
-
-    onMockLogin(loggedUser);
-  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -145,64 +95,28 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
       return;
     }
 
+    if (!firebaseAuth) {
+      setMessage('Hệ thống chưa cấu hình Firebase Auth nên chưa thể đăng nhập.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       if (mode === 'login') {
-        if (firebaseAuth) {
-          try {
-            await signInWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
-            return;
-          } catch (fbErr: any) {
-            console.warn('Firebase login failed, falling back to seamless session:', fbErr?.code);
-            performMockLogin(cleanEmail);
-            return;
-          }
-        } else {
-          performMockLogin(cleanEmail);
-          return;
-        }
+        await signInWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
       } else {
-        // mode === 'register'
-        if (firebaseAuth) {
-          try {
-            const credential = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
-            if (name.trim()) {
-              try {
-                await updateProfile(credential.user, { displayName: name.trim() });
-              } catch {}
-            }
-            // Ghi user mới vào danh sách quản lý của admin (trước đây bước này bị thiếu)
-            try {
-              const idToken = await credential.user.getIdToken();
-              await fetch('/api/admin/users', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${idToken}`,
-                },
-                body: JSON.stringify({
-                  name: name.trim() || cleanEmail.split('@')[0],
-                  email: cleanEmail,
-                  phone: '',
-                  role: 'Khách du lịch',
-                }),
-              });
-            } catch (syncErr) {
-              console.warn('Không đồng bộ được user vào danh sách quản lý:', syncErr);
-            }
-            return;
-          } catch (fbErr: any) {
-            console.warn('Firebase register failed, falling back to seamless session:', fbErr?.code);
-            performMockLogin(cleanEmail, undefined, name.trim());
-            return;
-          }
-        } else {
-          performMockLogin(cleanEmail, undefined, name.trim());
-          return;
-        }
+        const credential = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
+        try {
+          await updateProfile(credential.user, { displayName: name.trim() });
+        } catch {}
       }
-    } catch (error) {
-      console.error('Authentication error:', error);
-      performMockLogin(cleanEmail, undefined, name.trim());
+    } catch (error: any) {
+      console.warn('Firebase auth failed:', error?.code);
+      setMessage(
+        mode === 'login'
+          ? 'Email hoặc mật khẩu không đúng.'
+          : 'Không thể tạo tài khoản. Email có thể đã được sử dụng.',
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -225,8 +139,8 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
             type="button"
             onClick={() => {
               setMode('login');
-              setEmail('admin@voyager.vn');
-              setPassword('123456');
+              setEmail('');
+              setPassword('');
               setMessage('');
             }}
             className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'login' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
@@ -272,7 +186,7 @@ function AuthScreen({ onMockLogin }: { onMockLogin: (user: AuthUser) => void }) 
               autoComplete="email"
               required
               className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-              placeholder={mode === 'register' ? 'vidu@voyager.vn hoặc email của bạn' : 'admin@voyager.vn'}
+              placeholder="email@example.com"
             />
             {mode === 'register' && (
               <p className="mt-1 text-[11px] text-slate-400">
@@ -359,20 +273,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // 1. Phục hồi phiên đăng nhập từ localStorage ngay khi nạp trang
-    if (typeof localStorage !== 'undefined') {
-      const savedUserJson = localStorage.getItem('voyager_auth_user');
-      if (savedUserJson) {
-        try {
-          const parsed = JSON.parse(savedUserJson);
-          if (parsed && parsed.email) {
-            setAuthUser(parsed);
-            setAuthLoading(false);
-          }
-        } catch {}
-      }
-    }
-
     if (!firebaseAuth) {
       setAuthLoading(false);
       return;
@@ -380,43 +280,22 @@ export default function App() {
 
     return onAuthStateChanged(firebaseAuth, async (user) => {
       if (!user) {
-        // Nếu Firebase Auth chưa có phiên, kiểm tra xem có phiên local hợp lệ không
-        if (typeof localStorage !== 'undefined') {
-          const savedUserJson = localStorage.getItem('voyager_auth_user');
-          if (savedUserJson) {
-            try {
-              const parsed = JSON.parse(savedUserJson);
-              if (parsed && parsed.email) {
-                setAuthUser(parsed);
-                setAuthLoading(false);
-                return;
-              }
-            } catch {}
-          }
-        }
         setAuthUser(null);
         setAuthLoading(false);
         return;
       }
 
       try {
+        // Quyền admin chỉ lấy từ custom claim `role` đã được Firebase ký.
         const token = await user.getIdTokenResult();
-        const isAdmin =
-          token.claims.role === 'admin' ||
-          user.email === 'luquoctuan2006@gmail.com' ||
-          (user.email && user.email.toLowerCase().includes('admin'));
-        const verifiedUser: AuthUser = {
+        setAuthUser({
           id: user.uid,
           name: user.displayName || user.email?.split('@')[0] || 'Người dùng',
           email: user.email || '',
-          role: isAdmin ? 'admin' : 'user',
-        };
-        setAuthUser(verifiedUser);
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('voyager_auth_user', JSON.stringify(verifiedUser));
-        }
+          role: token.claims.role === 'admin' ? 'admin' : 'user',
+        });
       } catch {
-        // Giữ phiên hiện tại nếu có
+        setAuthUser(null);
       } finally {
         setAuthLoading(false);
       }
@@ -523,7 +402,6 @@ export default function App() {
   const [isAIOptimizeOpen, setIsAIOptimizeOpen] = useState<boolean>(false);
   const [isAddActivityOpen, setIsAddActivityOpen] = useState<boolean>(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
-  const [isProjectDocsOpen, setIsProjectDocsOpen] = useState<boolean>(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [toastMessage, setToastMessage] = useState<{
     text: string;
@@ -1106,10 +984,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('voyager_auth_user');
-        localStorage.removeItem('voyager_session_token');
       }
-      clearMockAuthToken();
       if (firebaseAuth && firebaseAuth.currentUser) {
         await signOut(firebaseAuth);
       }
@@ -1125,7 +1000,7 @@ export default function App() {
   }
 
   if (!authUser) {
-    return <AuthScreen onMockLogin={setAuthUser} />;
+    return <AuthScreen />;
   }
 
   return (
@@ -1156,8 +1031,6 @@ export default function App() {
           setIsAddActivityOpen={setIsAddActivityOpen}
           isAlertsModalOpen={isAlertsModalOpen}
           setIsAlertsModalOpen={setIsAlertsModalOpen}
-          isProjectDocsOpen={isProjectDocsOpen}
-          setIsProjectDocsOpen={setIsProjectDocsOpen}
           selectedActivity={selectedActivity}
           setSelectedActivity={setSelectedActivity}
           handleSelectTab={handleSelectTab}
@@ -1304,8 +1177,6 @@ function AdminDashboard({
   setIsAddActivityOpen,
   isAlertsModalOpen,
   setIsAlertsModalOpen,
-  isProjectDocsOpen,
-  setIsProjectDocsOpen,
   selectedActivity,
   setSelectedActivity,
   handleSelectTab,
@@ -1356,8 +1227,6 @@ function AdminDashboard({
   setIsAddActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isAlertsModalOpen: boolean;
   setIsAlertsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isProjectDocsOpen: boolean;
-  setIsProjectDocsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   selectedActivity: Activity | null;
   setSelectedActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
   handleSelectTab: (tab: string) => void;
@@ -1396,7 +1265,6 @@ function AdminDashboard({
         onSelectTab={handleSelectTab}
         alertCount={trip.alerts.length}
         tripCount={trips.length}
-        onOpenProjectDocs={() => setIsProjectDocsOpen(true)}
         onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
       />
 
@@ -1630,7 +1498,6 @@ function AdminDashboard({
         onDeleteActivity={handleDeleteActivity}
         onEditActivity={handleEditActivity}
       />
-      <ProjectArchitectureModal isOpen={isProjectDocsOpen} onClose={() => setIsProjectDocsOpen(false)} />
       </div>
     </div>
   );
@@ -1745,7 +1612,6 @@ function UserDashboard({
           onSelectTab={(tab) => setCurrentTab(tab)}
           alertCount={trip.alerts.length}
           tripCount={trips.length}
-          onOpenProjectDocs={() => undefined}
           onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
         />
 
