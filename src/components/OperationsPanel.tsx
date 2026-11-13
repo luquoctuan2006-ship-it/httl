@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   RotateCcw,
   RefreshCw,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { TripData } from '../types/travel';
 
@@ -22,6 +24,8 @@ interface OperationsPanelProps {
   canUndo?: boolean;
   onScanAlerts?: () => Promise<void>;
   isScanningAlerts?: boolean;
+  notificationsEnabled?: boolean;
+  onToggleNotifications?: () => void;
 }
 
 export const OperationsPanel: React.FC<OperationsPanelProps> = ({
@@ -33,6 +37,8 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
   canUndo,
   onScanAlerts,
   isScanningAlerts = false,
+  notificationsEnabled = false,
+  onToggleNotifications,
 }) => {
   return (
     <div className="flex flex-col gap-4">
@@ -47,13 +53,27 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
                 Cảnh báo vận hành
               </h3>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              {onToggleNotifications && (
+                <button
+                  type="button"
+                  onClick={onToggleNotifications}
+                  title={notificationsEnabled ? 'Đang bật thông báo đẩy trình duyệt' : 'Bật thông báo đẩy trình duyệt khi có cảnh báo mới'}
+                  className={`p-1 rounded-lg transition ${
+                    notificationsEnabled
+                      ? 'text-teal-700 bg-teal-50 hover:bg-teal-100'
+                      : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {notificationsEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+                </button>
+              )}
               {onScanAlerts && (
                 <button
                   type="button"
                   onClick={onScanAlerts}
                   disabled={isScanningAlerts}
-                  title="Quét lại cảnh báo thời tiết & xung đột lịch trình"
+                  title="Quét lại cảnh báo thời tiết & xung đột lịch trình (Tự động quét mỗi 3 phút)"
                   className="p-1 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isScanningAlerts ? 'animate-spin text-teal-600' : ''}`} />

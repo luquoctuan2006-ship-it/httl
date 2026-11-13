@@ -3,269 +3,158 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { TripPlannerModal } from "./components/TripPlannerModal";
+import { AutoArrangeModal } from "./components/AutoArrangeModal";
+import { EditTripModal } from "./components/EditTripModal";
+import { AccountModal } from "./components/AccountModal";
+import { AuthScreen } from "./components/AuthScreen";
+import { AdminDashboard } from "./components/AdminDashboard";
+import { UserDashboard } from "./components/UserDashboard";
+import { detectScheduleAndWeatherAlerts } from "./utils/alertDetector";
+import { normalizeTripData } from "./data/normalizeTripData";
+import { TripData, Activity, TripMember, DaySchedule, Waypoint } from "./types/travel";
+import { AuthUser } from "./types/auth";
+import { authenticatedFetch, safeJsonResponse } from "./api";
+import { applyScheduleChangesStrict, filterAlertsByRecommendation } from "./utils/applyOptimization";
+import { getTripComparableJson } from "./utils/tripRepository";
+import { useOnlineStatus } from "./hooks/useOnlineStatus";
 import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-} from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { MetricCards } from './components/MetricCards';
-import { LiveRouteMap } from './components/LiveRouteMap';
-import { OperationsPanel } from './components/OperationsPanel';
-import { TimelineSchedule } from './components/TimelineSchedule';
-import { AIPlannerModal } from './components/AIPlannerModal';
-import { AIOptimizeModal } from './components/AIOptimizeModal';
-import { AddActivityModal } from './components/AddActivityModal';
-import { AlertsListModal } from './components/AlertsListModal';
-import { ActivityDetailModal } from './components/ActivityDetailModal';
-import { TripsListView } from './components/TripsListView';
-import { EditTripModal } from './components/EditTripModal';
-import { detectScheduleAndWeatherAlerts } from './utils/alertDetector';
-import { MembersView } from './components/MembersView';
-import { BudgetView } from './components/BudgetView';
+  clearTripPendingOfflineSync,
+  getOfflineCacheKey,
+  loadOfflineTripsCache,
+  markTripPendingOfflineSyncDetailed,
+  saveOfflineTripsCacheDetailed,
+} from "./utils/offlineStorage";
+import { cloneTripForTemplate, findMatchingActivityForWaypoint } from "./utils/tripHelpers";
 import {
-  AdminDashboardView,
-  AdminUsersManagementView,
-  AdminPlanningDataView,
-  AdminDispatchRulesView,
-  AdminAIManagementView,
-  AdminScheduleMonitoringView,
-  AdminSystemManagementView,
-} from './components/AdminManagementViews';
-import { initialTripData } from './data/mockData';
-import { normalizeTripData } from './data/normalizeTripData';
-import { TripData, Activity, TripMember } from './types/travel';
-import { authenticatedFetch, safeJsonResponse } from './api';
-import { applyScheduleChangesStrict, filterAlertsByRecommendation } from './utils/applyOptimization';
-import { RotateCcw } from 'lucide-react';
-import {
-  db,
-  firebaseAuth,
-  firebaseAuthConfigured,
-  handleFirestoreError,
-  OperationType,
-  testFirestoreConnection,
-} from './firebase';
+  AuthSessionError,
+  PROFILE_UPDATED_EVENT,
+  PayloadTooLargeError,
+  SingleFlightQueue,
+  clearPendingRegisteredDisplayName,
+  getPendingRegisteredDisplayName,
+  mergeAlertScanIntoTrip,
+  offloadTripReceipts,
+} from "./utils/tripSyncHelpers";
+import { SyncConflictModal } from "./components/SyncConflictModal";
+import { AlertTriangle, RotateCcw } from "lucide-react";
+import { firebaseAuth } from "./firebase";
 
-type AppRole = 'user' | 'admin';
-
-type AuthUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: AppRole;
-};
-
-function AuthScreen() {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setMessage('');
-
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
-
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setMessage('Vui lòng nhập định dạng email hợp lệ.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (cleanPassword.length < 6) {
-      setMessage('Mật khẩu phải có ít nhất 6 ký tự.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (mode === 'register' && !name.trim()) {
-      setMessage('Vui lòng nhập họ và tên của bạn.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!firebaseAuth) {
-      setMessage('Hệ thống chưa cấu hình Firebase Auth nên chưa thể đăng nhập.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      if (mode === 'login') {
-        await signInWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
-      } else {
-        const credential = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
-        try {
-          await updateProfile(credential.user, { displayName: name.trim() });
-        } catch {}
-      }
-    } catch (error: any) {
-      console.warn('Firebase auth failed:', error?.code);
-      setMessage(
-        mode === 'login'
-          ? 'Email hoặc mật khẩu không đúng.'
-          : 'Không thể tạo tài khoản. Email có thể đã được sử dụng.',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900/90 p-6 shadow-2xl shadow-slate-950/60">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-xl font-black text-white shadow-lg shadow-teal-600/30">
-            V
-          </div>
-          <h1 className="text-2xl font-black text-white">Voyager Travel Ops</h1>
-          <p className="mt-2 text-sm text-slate-400">{mode === 'login' ? 'Đăng nhập vào hệ thống' : 'Tạo tài khoản mới'}</p>
-        </div>
-
-
-        <div className="mb-5 grid grid-cols-2 rounded-xl bg-slate-800 p-1">
-          <button
-            type="button"
-            onClick={() => {
-              setMode('login');
-              setEmail('');
-              setPassword('');
-              setMessage('');
-            }}
-            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'login' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
-          >
-            Đăng nhập
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('register');
-              setName('');
-              setEmail('');
-              setPassword('');
-              setMessage('');
-            }}
-            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'register' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
-          >
-            Đăng ký
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'register' && (
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Họ tên</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="name"
-                required
-                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-                placeholder="Nguyễn Văn A"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-              placeholder="email@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Mật khẩu</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              minLength={6}
-              required
-              className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {message && (
-            <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-2.5 text-xs text-amber-300 flex items-start gap-2">
-              <span>⚠️</span>
-              <span>{message}</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-teal-900/30 active:scale-98"
-          >
-            {isSubmitting ? 'Đang xác thực...' : mode === 'login' ? 'Đăng nhập vào hệ thống' : 'Tạo tài khoản & Đăng nhập'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function hasMojibake(value: unknown): boolean {
-  if (typeof value === 'string') {
-    // Chỉ bắt lỗi mã hóa thật (UTF-8 bị đọc thành Latin-1); không báo nhầm chữ Â, Ã, Õ hay dấu "?" hợp lệ
-    return /�|Ã[\u0080-\u00BF]|Â[\u00A0-\u00BF]|á[»º]/.test(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.some((item) => hasMojibake(item));
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).some((item) => hasMojibake(item));
-  }
-
-  return false;
-}
-
-function sanitizeTripData<T>(value: T): T {
-  if (!value || typeof value !== 'object') return value;
-  if (hasMojibake(value)) {
-    return initialTripData as T;
-  }
-  return value;
-}
+const ALERT_NOTIFY_PREF_KEY = 'voyager_alerts_notify';
+const PERIODIC_ALERT_SCAN_MS = 3 * 60 * 1000;
 
 export default function App() {
-  const [trip, setTrip] = useState<TripData>(initialTripData);
+  const [trip, setTrip] = useState<TripData | null>(null);
   const [trips, setTrips] = useState<TripData[]>([]);
+  const [tripsLoaded, setTripsLoaded] = useState<boolean>(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [currentDayIndex, setCurrentDayIndex] = useState<number>(3); // Day 3 (T4 14) matching screenshot
+  const [currentDayIndex, setCurrentDayIndex] = useState<number>(1);
   const [filterMode, setFilterMode] = useState<'timeline' | 'all'>('timeline');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isAIApplied, setIsAIApplied] = useState<boolean>(false);
   const [loadedTripUserId, setLoadedTripUserId] = useState<string | null>(null);
   const [firebaseStatus, setFirebaseStatus] = useState<'loading' | 'connected' | 'error'>('loading');
+
+  // Offline & Notification states
+  const isOnline = useOnlineStatus();
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
+    return Notification.permission === 'granted' && window.localStorage.getItem(ALERT_NOTIFY_PREF_KEY) === '1';
+  });
+
+  // Modals state
+  const [isAIPlannerOpen, setIsAIPlannerOpen] = useState<boolean>(false);
+  const [plannerInitialTab, setPlannerInitialTab] = useState<'traditional' | 'ai'>('traditional');
+  const [isAutoArrangeOpen, setIsAutoArrangeOpen] = useState<boolean>(false);
+  const [isAIOptimizeOpen, setIsAIOptimizeOpen] = useState<boolean>(false);
+  const [isAddActivityOpen, setIsAddActivityOpen] = useState<boolean>(false);
+  const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    text: string;
+    type: 'success' | 'error' | 'info';
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
+  const [lastOptimizedTripSnapshot, setLastOptimizedTripSnapshot] = useState<TripData | null>(null);
+  const [isEditTripModalOpen, setIsEditTripModalOpen] = useState<boolean>(false);
+  const [tripToEdit, setTripToEdit] = useState<TripData | null>(null);
+  const [isScanningAlerts, setIsScanningAlerts] = useState<boolean>(false);
+  const [conflictState, setConflictState] = useState<{
+    localTrip: TripData;
+    serverTrip: TripData;
+  } | null>(null);
+  const [isResolvingConflict, setIsResolvingConflict] = useState<boolean>(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState<boolean>(false);
+  const [isSyncingBeforeLogout, setIsSyncingBeforeLogout] = useState<boolean>(false);
+
+  const authUserId = authUser?.id || null;
   const isAdminMode = authUser?.role === 'admin';
+  const lastSavedContentByTripIdRef = useRef<Record<string, string>>({});
+  const latestServerVersionByTripIdRef = useRef<Record<string, number>>({});
+  const latestTripRef = useRef<TripData | null>(trip);
+  const saveQueueRef = useRef<SingleFlightQueue>(new SingleFlightQueue());
+  const isSyncingOfflineRef = useRef<boolean>(false);
+  const lastQuotaWarnAtRef = useRef<number>(0);
 
   useEffect(() => {
-    void testFirestoreConnection();
+    latestTripRef.current = trip;
+  }, [trip]);
+
+  const showToast = useCallback((
+    text: string,
+    type: 'success' | 'error' | 'info' = 'success',
+    actionLabel?: string,
+    onAction?: () => void,
+  ) => {
+    setToastMessage({ text, type, actionLabel, onAction });
+    window.setTimeout(() => {
+      setToastMessage((current) => (current?.text === text ? null : current));
+    }, 4500);
   }, []);
+
+  const warnIfQuotaExceeded = useCallback((quotaExceeded: boolean) => {
+    if (!quotaExceeded) return;
+    const now = Date.now();
+    if (now - lastQuotaWarnAtRef.current < 10_000) return;
+    lastQuotaWarnAtRef.current = now;
+    showToast(
+      'Bộ nhớ trình duyệt đã đầy nên không thể lưu bản sao ngoại tuyến. Vui lòng giữ kết nối mạng hoặc dọn bớt dữ liệu cũ.',
+      'error',
+    );
+  }, [showToast]);
+
+  const performSignOutAndClearCache = useCallback(async (uidOverride?: string | null) => {
+    const uid = uidOverride ?? authUserId;
+    if (uid && typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(getOfflineCacheKey(uid));
+    }
+    setIsLogoutConfirmOpen(false);
+    setConflictState(null);
+    setPendingSyncCount(0);
+    setCachedAt(null);
+    setTrips([]);
+    setTrip(null);
+    lastSavedContentByTripIdRef.current = {};
+    latestServerVersionByTripIdRef.current = {};
+
+    try {
+      if (firebaseAuth && firebaseAuth.currentUser) {
+        await signOut(firebaseAuth);
+      }
+    } catch (err) {
+      console.warn('SignOut error:', err);
+    } finally {
+      setAuthUser(null);
+    }
+  }, [authUserId]);
 
   useEffect(() => {
     if (!firebaseAuth) {
@@ -273,7 +162,16 @@ export default function App() {
       return;
     }
 
-    return onAuthStateChanged(firebaseAuth, async (user) => {
+    const handleProfileUpdated = (event: Event) => {
+      const custom = event as CustomEvent<{ uid?: string; displayName?: string }>;
+      const uid = custom.detail?.uid;
+      const displayName = custom.detail?.displayName;
+      if (!uid || !displayName) return;
+      setAuthUser((prev) => (prev && prev.id === uid ? { ...prev, name: displayName } : prev));
+    };
+
+    window.addEventListener(PROFILE_UPDATED_EVENT, handleProfileUpdated);
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (!user) {
         setAuthUser(null);
         setAuthLoading(false);
@@ -283,9 +181,15 @@ export default function App() {
       try {
         // Quyền admin chỉ lấy từ custom claim `role` đã được Firebase ký.
         const token = await user.getIdTokenResult();
+        const pendingName = getPendingRegisteredDisplayName(user.uid);
+        const resolvedName =
+          user.displayName || pendingName || user.email?.split('@')[0] || 'Người dùng';
+        if (user.displayName) {
+          clearPendingRegisteredDisplayName(user.uid);
+        }
         setAuthUser({
           id: user.uid,
-          name: user.displayName || user.email?.split('@')[0] || 'Người dùng',
+          name: resolvedName,
           email: user.email || '',
           role: token.claims.role === 'admin' ? 'admin' : 'user',
         });
@@ -295,6 +199,11 @@ export default function App() {
         setAuthLoading(false);
       }
     });
+
+    return () => {
+      window.removeEventListener(PROFILE_UPDATED_EVENT, handleProfileUpdated);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -305,7 +214,7 @@ export default function App() {
   }, [isAdminMode, currentTab]);
 
   useEffect(() => {
-    if (trip.days && trip.days.length > 0) {
+    if (trip?.days && trip.days.length > 0) {
       if (!trip.days.some((d) => d.dayIndex === currentDayIndex)) {
         const fallbackDay =
           trip.currentDay && trip.days.some((d) => d.dayIndex === trip.currentDay)
@@ -326,36 +235,138 @@ export default function App() {
     setCurrentTab(tab);
   };
 
+  // Luôn đồng bộ danh sách trips theo state trip hiện hành để chuyển chuyến qua lại không bị dữ liệu cũ
+  useEffect(() => {
+    if (!trip?.id) return;
+    setTrips((prev) => {
+      const idx = prev.findIndex((t) => t.id === trip.id);
+      if (idx === -1 || prev[idx] === trip) return prev;
+      const next = [...prev];
+      next[idx] = trip;
+      return next;
+    });
+  }, [trip]);
+
+  // Luôn lưu cache cục bộ mỗi khi trips hoặc trip đang chọn thay đổi sau khi đã tải
+  useEffect(() => {
+    if (!authUserId || !tripsLoaded || loadedTripUserId !== authUserId) return;
+    const result = saveOfflineTripsCacheDetailed(authUserId, trips, trip?.id || null);
+    warnIfQuotaExceeded(result.quotaExceeded);
+    if (result.cache) {
+      setCachedAt(result.cache.cachedAt);
+      setPendingSyncCount(result.cache.pendingSyncIds.length);
+    }
+  }, [authUserId, tripsLoaded, loadedTripUserId, trips, trip, warnIfQuotaExceeded]);
+
   useEffect(() => {
     let cancelled = false;
 
-    if (!authUser) return;
+    if (!authUserId) {
+      setTrips([]);
+      setTrip(null);
+      setTripsLoaded(false);
+      setLoadedTripUserId(null);
+      setPendingSyncCount(0);
+      setCachedAt(null);
+      return;
+    }
+
     setFirebaseStatus('loading');
+    setTripsLoaded(false);
     // Đổi tài khoản: bỏ ngay dữ liệu của người trước và chặn autosave cho tới khi nạp xong
     setTrips([]);
+    setTrip(null);
+    lastSavedContentByTripIdRef.current = {};
     setLoadedTripUserId(null);
+
+    const existingCache = loadOfflineTripsCache(authUserId);
+    if (existingCache) {
+      setCachedAt(existingCache.cachedAt);
+      setPendingSyncCount(existingCache.pendingSyncIds.length);
+    }
 
     const loadFromApi = async () => {
       try {
         // Server chỉ trả về các chuyến của chính user này (admin: tất cả)
         const response = await authenticatedFetch('/api/trips');
+        if (response.status === 401 || response.status === 403) {
+          throw new AuthSessionError(response.status);
+        }
         if (!response.ok) throw new Error('Không thể tải dữ liệu chuyến đi');
         const { activeTrip, trips: savedTrips } = await safeJsonResponse(response);
-        if (cancelled || !activeTrip) return;
+        if (cancelled) return;
 
-        const correctedTrip = normalizeTripData(activeTrip);
         const correctedTrips = Array.isArray(savedTrips)
-          ? savedTrips.map(normalizeTripData)
-          : [correctedTrip];
+          ? savedTrips.map((item: unknown) => normalizeTripData(item))
+          : activeTrip
+            ? [normalizeTripData(activeTrip)]
+            : [];
+
+        const primaryTrip =
+          (activeTrip ? normalizeTripData(activeTrip) : null) || correctedTrips[0] || null;
+
+        const savedMap: Record<string, string> = {};
+        const versionMap: Record<string, number> = {};
+        for (const item of correctedTrips) {
+          savedMap[item.id] = getTripComparableJson(item);
+          if (typeof item.version === 'number') {
+            versionMap[item.id] = item.version;
+          }
+        }
+        lastSavedContentByTripIdRef.current = savedMap;
+        latestServerVersionByTripIdRef.current = versionMap;
+
         setTrips(correctedTrips);
-        setTrip(correctedTrip);
-        setCurrentDayIndex(correctedTrip.currentDay || 1);
+        setTrip(primaryTrip);
+        setCurrentDayIndex(primaryTrip?.currentDay || 1);
         setFirebaseStatus('connected');
-        setLoadedTripUserId(authUser.id);
+        setLoadedTripUserId(authUserId);
+        setTripsLoaded(true);
+
+        const cachedResult = saveOfflineTripsCacheDetailed(
+          authUserId,
+          correctedTrips,
+          primaryTrip?.id || null,
+          existingCache?.pendingSyncIds,
+        );
+        warnIfQuotaExceeded(cachedResult.quotaExceeded);
+        if (cachedResult.cache) {
+          setCachedAt(cachedResult.cache.cachedAt);
+          setPendingSyncCount(cachedResult.cache.pendingSyncIds.length);
+        }
       } catch (error) {
         if (cancelled) return;
         console.error('Trip loading error:', error);
+
+        // Nếu phiên đăng nhập hết hạn / tài khoản bị vô hiệu hóa (401/403) -> xóa cache ngoại tuyến & đăng xuất, KHÔNG nạp lại dữ liệu cũ
+        if (error instanceof AuthSessionError) {
+          await performSignOutAndClearCache(authUserId);
+          showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+          return;
+        }
+
+        // Chế độ ngoại tuyến (lỗi mạng / máy chủ 5xx): nạp lại chuyến đi từ cache thiết bị nếu có
+        const offlineCache = loadOfflineTripsCache(authUserId);
+        if (offlineCache) {
+          const restoredTrips = offlineCache.trips;
+          const restoredActive =
+            restoredTrips.find((t) => t.id === offlineCache.activeTripId) || restoredTrips[0] || null;
+          setTrips(restoredTrips);
+          setTrip(restoredActive);
+          setCurrentDayIndex(restoredActive?.currentDay || 1);
+          setCachedAt(offlineCache.cachedAt);
+          setPendingSyncCount(offlineCache.pendingSyncIds.length);
+          setLoadedTripUserId(authUserId);
+          setTripsLoaded(true);
+          setFirebaseStatus('error');
+          if (restoredTrips.length > 0) {
+            showToast('Đang dùng dữ liệu ngoại tuyến lưu trên thiết bị.', 'info');
+          }
+          return;
+        }
+
         setFirebaseStatus('error');
+        setTripsLoaded(true);
       }
     };
 
@@ -363,89 +374,640 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [authUser]);
+  }, [authUserId, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+
+  const uploadReceiptToServer = useCallback(async (tripId: string, dataUrl: string): Promise<string | null> => {
+    try {
+      const res = await authenticatedFetch(`/api/trips/${encodeURIComponent(tripId)}/receipts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl }),
+      });
+      if (!res.ok) return null;
+      const payload = await safeJsonResponse(res);
+      return typeof payload?.receiptId === 'string' ? payload.receiptId : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchServerTripSnapshot = useCallback(async (tripId: string): Promise<TripData | null> => {
+    try {
+      const freshRes = await authenticatedFetch(`/api/trips/${encodeURIComponent(tripId)}`);
+      if (!freshRes.ok) return null;
+      const freshJson = await safeJsonResponse(freshRes);
+      const freshTrip = freshJson?.trip || (freshJson?.id ? freshJson : null);
+      return freshTrip?.id ? normalizeTripData(freshTrip) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Thực thi tuần tự một yêu cầu PUT chuyến đi kèm xử lý offload ảnh, 401/403, 413 và 409
+  const executeTripPut = useCallback(async (
+    candidateTrip: TripData,
+    options?: {
+      forceServerVersion?: number;
+      alignWithSessionVersion?: boolean;
+      onPreparedTrip?: (prepared: TripData) => void;
+    },
+  ): Promise<
+    | { status: 'ok'; savedTrip: TripData; version?: number }
+    | { status: 'conflict'; localTrip: TripData; serverTrip: TripData | null }
+  > => {
+    const normalized = normalizeTripData(candidateTrip);
+    const alignedVersion =
+      typeof options?.forceServerVersion === 'number'
+        ? options.forceServerVersion
+        : options?.alignWithSessionVersion && typeof latestServerVersionByTripIdRef.current[normalized.id] === 'number'
+          ? latestServerVersionByTripIdRef.current[normalized.id]
+          : normalized.version;
+
+    const prepared = await offloadTripReceipts(
+      { ...normalized, ...(typeof alignedVersion === 'number' ? { version: alignedVersion } : {}) },
+      uploadReceiptToServer,
+    );
+    options?.onPreparedTrip?.(prepared);
+
+    const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(prepared.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prepared),
+    });
+    const result = await safeJsonResponse(response);
+
+    if (response.status === 401 || response.status === 403) {
+      throw new AuthSessionError(response.status, result?.error || undefined);
+    }
+
+    if (response.status === 413) {
+      throw new PayloadTooLargeError(result?.error || undefined);
+    }
+
+    if (response.status === 409) {
+      const freshServer = await fetchServerTripSnapshot(prepared.id);
+      if (freshServer) {
+        if (typeof freshServer.version === 'number') {
+          latestServerVersionByTripIdRef.current[freshServer.id] = freshServer.version;
+        }
+        // Nếu nội dung chuẩn hóa giống hệt máy chủ -> không phải xung đột thật
+        if (getTripComparableJson(prepared) === getTripComparableJson(freshServer)) {
+          return { status: 'ok', savedTrip: freshServer, version: freshServer.version };
+        }
+      }
+      return { status: 'conflict', localTrip: prepared, serverTrip: freshServer };
+    }
+
+    if (!response.ok || (result && result.success === false)) {
+      throw new Error(result?.error || 'Không thể lưu dữ liệu chuyến đi');
+    }
+
+    const serverSaved = result?.trip?.id ? normalizeTripData(result.trip) : prepared;
+    const nextVersion =
+      typeof result?.version === 'number'
+        ? result.version
+        : typeof serverSaved.version === 'number'
+          ? serverSaved.version
+          : prepared.version;
+    if (typeof nextVersion === 'number') {
+      latestServerVersionByTripIdRef.current[prepared.id] = nextVersion;
+    }
+
+    const savedTrip: TripData = {
+      ...prepared,
+      ...serverSaved,
+      ...(typeof nextVersion === 'number' ? { version: nextVersion } : {}),
+    };
+
+    return {
+      status: 'ok',
+      savedTrip,
+      version: nextVersion,
+    };
+  }, [fetchServerTripSnapshot, uploadReceiptToServer]);
+
+  // Đồng bộ lại các thay đổi offline lên máy chủ khi có mạng trở lại (tôn trọng xung đột 409, không tự xóa thay đổi)
+  const syncPendingOfflineTrips = useCallback(async () => {
+    if (!authUserId || !isOnline || isSyncingOfflineRef.current || conflictState) return;
+    const cache = loadOfflineTripsCache(authUserId);
+    if (!cache || cache.pendingSyncIds.length === 0) {
+      setPendingSyncCount(0);
+      return;
+    }
+
+    isSyncingOfflineRef.current = true;
+    let syncedCount = 0;
+
+    try {
+      for (const pendingId of cache.pendingSyncIds) {
+        const queuedTrip = cache.trips.find((t) => t.id === pendingId);
+        if (!queuedTrip) {
+          clearTripPendingOfflineSync(authUserId, pendingId);
+          continue;
+        }
+
+        let preparedSnapshot = queuedTrip;
+        try {
+          const outcome = await saveQueueRef.current.enqueue(() =>
+            executeTripPut(queuedTrip, {
+              alignWithSessionVersion: false,
+              onPreparedTrip: (prepared) => {
+                preparedSnapshot = prepared;
+              },
+            }),
+          );
+
+          if (outcome.status === 'conflict') {
+            if (preparedSnapshot !== queuedTrip) {
+              const savedRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+              warnIfQuotaExceeded(savedRes.quotaExceeded);
+            }
+            if (outcome.serverTrip) {
+              setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+              showToast('Phát hiện xung đột đồng bộ ngoại tuyến — hãy chọn phiên bản muốn giữ.', 'info');
+            } else {
+              showToast('Xung đột phiên bản khi đồng bộ, vui lòng kiểm tra lại.', 'error');
+            }
+            setFirebaseStatus('error');
+            break;
+          }
+
+          const { savedTrip, version } = outcome;
+          lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+          clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          setTrip((prev) =>
+            prev?.id === savedTrip.id
+              ? {
+                  ...prev,
+                  invoices: savedTrip.invoices,
+                  budgetTotal: savedTrip.budgetTotal,
+                  budgetUsed: savedTrip.budgetUsed,
+                  budgetRemaining: savedTrip.budgetRemaining,
+                  budgetUsedPercent: savedTrip.budgetUsedPercent,
+                  ...(typeof version === 'number' ? { version } : {}),
+                }
+              : prev,
+          );
+          syncedCount += 1;
+        } catch (itemError) {
+          if (itemError instanceof AuthSessionError) {
+            await performSignOutAndClearCache(authUserId);
+            showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+            return;
+          }
+          if (preparedSnapshot !== queuedTrip) {
+            const savedRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+            warnIfQuotaExceeded(savedRes.quotaExceeded);
+          }
+          if (itemError instanceof PayloadTooLargeError) {
+            clearTripPendingOfflineSync(authUserId, pendingId);
+            setFirebaseStatus('error');
+            showToast(itemError.message, 'error');
+            continue;
+          }
+          throw itemError;
+        }
+      }
+
+      const refreshedCache = loadOfflineTripsCache(authUserId);
+      setPendingSyncCount(refreshedCache?.pendingSyncIds.length || 0);
+      if (syncedCount > 0) {
+        setFirebaseStatus('connected');
+        showToast(`Đã đồng bộ ${syncedCount} chuyến đi thay đổi khi ngoại tuyến.`, 'success');
+      }
+    } catch (error) {
+      console.warn('Offline sync retry failed:', error);
+    } finally {
+      isSyncingOfflineRef.current = false;
+    }
+  }, [authUserId, isOnline, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
 
   useEffect(() => {
-    if (!authUser || loadedTripUserId !== authUser.id) return;
+    if (isOnline && authUserId && tripsLoaded && pendingSyncCount > 0 && !conflictState) {
+      void syncPendingOfflineTrips();
+    }
+  }, [isOnline, authUserId, tripsLoaded, pendingSyncCount, conflictState, syncPendingOfflineTrips]);
 
+  // Autosave trip changes qua hàng đợi tuần tự (single-flight)
+  useEffect(() => {
+    if (!authUserId || !trip?.id || loadedTripUserId !== authUserId || conflictState) return;
+
+    const currentComparable = getTripComparableJson(trip);
+    if (!currentComparable || currentComparable === lastSavedContentByTripIdRef.current[trip.id]) return;
+
+    const tripIdSnapshot = trip.id;
     const timeout = window.setTimeout(() => {
-      const saveTrip = async () => {
+      void saveQueueRef.current.enqueue(async () => {
+        const liveTrip = latestTripRef.current;
+        if (!liveTrip || liveTrip.id !== tripIdSnapshot) return;
+
+        const normalized = normalizeTripData(liveTrip);
+        const targetComparable = getTripComparableJson(normalized);
+        if (!targetComparable || targetComparable === lastSavedContentByTripIdRef.current[normalized.id]) {
+          return;
+        }
+
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          const saveRes = markTripPendingOfflineSyncDetailed(authUserId, normalized);
+          warnIfQuotaExceeded(saveRes.quotaExceeded);
+          if (saveRes.cache) {
+            setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+            setCachedAt(saveRes.cache.cachedAt);
+          }
+          setFirebaseStatus('error');
+          return;
+        }
+
+        let preparedSnapshot = normalized;
         try {
-          const normalized = normalizeTripData(trip);
-          const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(normalized.id)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(normalized),
+          const outcome = await executeTripPut(normalized, {
+            alignWithSessionVersion: true,
+            onPreparedTrip: (prepared) => {
+              preparedSnapshot = prepared;
+            },
           });
-          if (!response.ok) throw new Error('Không thể lưu dữ liệu chuyến đi');
-          setTrips((prev) => prev.map((item) => (item.id === normalized.id ? normalized : item)));
+          if (outcome.status === 'conflict') {
+            const saveRes = markTripPendingOfflineSyncDetailed(authUserId, outcome.localTrip);
+            warnIfQuotaExceeded(saveRes.quotaExceeded);
+            if (saveRes.cache) {
+              setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+              setCachedAt(saveRes.cache.cachedAt);
+            }
+            if (outcome.serverTrip) {
+              setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+              showToast('Phát hiện xung đột phiên bản — bản sửa của bạn vẫn được giữ an toàn.', 'info');
+            } else {
+              showToast('Dữ liệu chuyến đi bị xung đột phiên bản. Vui lòng kiểm tra lại.', 'error');
+            }
+            setFirebaseStatus('error');
+            return;
+          }
+
+          const { savedTrip, version } = outcome;
+          lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+          setTrip((prev) => {
+            if (!prev || prev.id !== savedTrip.id) return prev;
+            const prevJson = getTripComparableJson(prev);
+            const prevIsSame =
+              prevJson === targetComparable || prevJson === getTripComparableJson(preparedSnapshot);
+            return {
+              ...prev,
+              ...(prevIsSame
+                ? {
+                    invoices: savedTrip.invoices,
+                    budgetTotal: savedTrip.budgetTotal,
+                    budgetUsed: savedTrip.budgetUsed,
+                    budgetRemaining: savedTrip.budgetRemaining,
+                    budgetUsedPercent: savedTrip.budgetUsedPercent,
+                  }
+                : {}),
+              ...(typeof version === 'number' ? { version } : {}),
+            };
+          });
           setFirebaseStatus('connected');
         } catch (error) {
+          if (error instanceof AuthSessionError) {
+            await performSignOutAndClearCache(authUserId);
+            showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+            return;
+          }
+          if (error instanceof PayloadTooLargeError) {
+            const cacheAfter = clearTripPendingOfflineSync(authUserId, preparedSnapshot.id);
+            if (cacheAfter) {
+              setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+            }
+            setFirebaseStatus('error');
+            showToast(error.message, 'error');
+            return;
+          }
           console.error('Trip save error:', error);
+          if (preparedSnapshot !== normalized) {
+            setTrip((prev) =>
+              prev?.id === preparedSnapshot.id ? { ...prev, invoices: preparedSnapshot.invoices } : prev,
+            );
+          }
+          const saveRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+          warnIfQuotaExceeded(saveRes.quotaExceeded);
+          if (saveRes.cache) {
+            setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+            setCachedAt(saveRes.cache.cachedAt);
+          }
           setFirebaseStatus('error');
         }
-      };
-
-      void saveTrip();
+      });
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [trip, authUser, loadedTripUserId]);
+  }, [trip, authUserId, loadedTripUserId, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
 
-  // Modals state
-  const [isAIPlannerOpen, setIsAIPlannerOpen] = useState<boolean>(false);
-  const [isAIOptimizeOpen, setIsAIOptimizeOpen] = useState<boolean>(false);
-  const [isAddActivityOpen, setIsAddActivityOpen] = useState<boolean>(false);
-  const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
-  const [toastMessage, setToastMessage] = useState<{
-    text: string;
-    type: 'success' | 'error' | 'info';
-    actionLabel?: string;
-    onAction?: () => void;
-  } | null>(null);
-  const [lastOptimizedTripSnapshot, setLastOptimizedTripSnapshot] = useState<TripData | null>(null);
-  const [isEditTripModalOpen, setIsEditTripModalOpen] = useState<boolean>(false);
-  const [tripToEdit, setTripToEdit] = useState<TripData | null>(null);
-  const [isScanningAlerts, setIsScanningAlerts] = useState<boolean>(false);
-
-  const showToast = (
-    text: string,
-    type: 'success' | 'error' | 'info' = 'success',
-    actionLabel?: string,
-    onAction?: () => void,
-  ) => {
-    setToastMessage({ text, type, actionLabel, onAction });
-    window.setTimeout(() => {
-      setToastMessage((current) => (current?.text === text ? null : current));
-    }, 4500);
-  };
-
-  const saveTripToFirestore = async (updatedTrip: TripData, successMessage?: string) => {
+  const saveTripToFirestore = useCallback(async (updatedTrip: TripData, successMessage?: string) => {
     const normalizedTrip = normalizeTripData(updatedTrip);
     setTrip(normalizedTrip);
+
+    if (authUserId && typeof navigator !== 'undefined' && !navigator.onLine) {
+      const saveRes = markTripPendingOfflineSyncDetailed(authUserId, normalizedTrip);
+      warnIfQuotaExceeded(saveRes.quotaExceeded);
+      if (saveRes.cache) {
+        setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+        setCachedAt(saveRes.cache.cachedAt);
+      }
+      setFirebaseStatus('error');
+      showToast('Đang ngoại tuyến: đã lưu tạm vào bộ nhớ máy và sẽ đồng bộ khi có mạng.', 'info');
+      return;
+    }
+
     setFirebaseStatus('loading');
+    let preparedSnapshot = normalizedTrip;
 
     try {
-      const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(normalizedTrip.id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(normalizedTrip),
-      });
-      const result = await safeJsonResponse(response);
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Lỗi lưu chuyến đi');
-      }
-      setTrips((prev) => prev.map((item) => (item.id === normalizedTrip.id ? normalizedTrip : item)));
-      setFirebaseStatus('connected');
+      await saveQueueRef.current.enqueue(async () => {
+        const outcome = await executeTripPut(normalizedTrip, {
+          alignWithSessionVersion: true,
+          onPreparedTrip: (prepared) => {
+            preparedSnapshot = prepared;
+          },
+        });
+        if (outcome.status === 'conflict') {
+          if (authUserId) {
+            const saveRes = markTripPendingOfflineSyncDetailed(authUserId, outcome.localTrip);
+            warnIfQuotaExceeded(saveRes.quotaExceeded);
+            if (saveRes.cache) {
+              setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+              setCachedAt(saveRes.cache.cachedAt);
+            }
+          }
+          if (preparedSnapshot !== normalizedTrip) {
+            setTrip((prev) =>
+              prev?.id === preparedSnapshot.id ? { ...prev, invoices: preparedSnapshot.invoices } : prev,
+            );
+          }
+          if (outcome.serverTrip) {
+            setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+            showToast('Phát hiện xung đột phiên bản — bản sửa của bạn vẫn được giữ nguyên.', 'info');
+          } else {
+            showToast('Xung đột phiên bản: Dữ liệu đã được cập nhật bởi phiên làm việc khác.', 'error');
+          }
+          setFirebaseStatus('error');
+          return;
+        }
 
-      if (successMessage) showToast(successMessage, 'success');
+        const { savedTrip, version } = outcome;
+        const sentComparable = getTripComparableJson(savedTrip);
+        lastSavedContentByTripIdRef.current[savedTrip.id] = sentComparable;
+        if (authUserId) {
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+        }
+        setTrip((prev) => {
+          if (!prev || prev.id !== savedTrip.id) return prev;
+          const prevJson = getTripComparableJson(prev);
+          const isUnchangedWhileSaving =
+            prevJson === getTripComparableJson(normalizedTrip) ||
+            prevJson === getTripComparableJson(preparedSnapshot);
+          return {
+            ...prev,
+            ...(isUnchangedWhileSaving
+              ? {
+                  invoices: savedTrip.invoices,
+                  budgetTotal: savedTrip.budgetTotal,
+                  budgetUsed: savedTrip.budgetUsed,
+                  budgetRemaining: savedTrip.budgetRemaining,
+                  budgetUsedPercent: savedTrip.budgetUsedPercent,
+                }
+              : {}),
+            ...(typeof version === 'number' ? { version } : {}),
+          };
+        });
+        setFirebaseStatus('connected');
+        if (successMessage) showToast(successMessage, 'success');
+      });
     } catch (error) {
+      if (error instanceof AuthSessionError) {
+        await performSignOutAndClearCache(authUserId);
+        showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+        return;
+      }
+      if (error instanceof PayloadTooLargeError) {
+        if (authUserId) {
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, preparedSnapshot.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+        }
+        setFirebaseStatus('error');
+        showToast(error.message, 'error');
+        return;
+      }
       console.error('All trip save methods failed:', error);
+      if (preparedSnapshot !== normalizedTrip) {
+        setTrip((prev) =>
+          prev?.id === preparedSnapshot.id ? { ...prev, invoices: preparedSnapshot.invoices } : prev,
+        );
+      }
+      if (authUserId) {
+        const saveRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+        warnIfQuotaExceeded(saveRes.quotaExceeded);
+        if (saveRes.cache) {
+          setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+          setCachedAt(saveRes.cache.cachedAt);
+        }
+      }
       setFirebaseStatus('error');
-      showToast('Lỗi khi lưu chuyến đi, vui lòng thử lại', 'error');
+      showToast('Không thể kết nối máy chủ — thay đổi đã được lưu tạm ngoại tuyến.', 'error');
+    }
+  }, [authUserId, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+
+  const handleKeepLocalConflict = async () => {
+    if (!conflictState) return;
+    setIsResolvingConflict(true);
+    const { localTrip, serverTrip } = conflictState;
+    try {
+      await saveQueueRef.current.enqueue(async () => {
+        const outcome = await executeTripPut(localTrip, { forceServerVersion: serverTrip.version });
+        if (outcome.status === 'conflict') {
+          if (outcome.serverTrip) {
+            setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+          }
+          showToast('Máy chủ lại có thay đổi mới hơn trong lúc ghi đè. Vui lòng chọn lại.', 'error');
+          return;
+        }
+        const { savedTrip } = outcome;
+        lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+        if (authUser) {
+          const cacheAfter = clearTripPendingOfflineSync(authUser.id, savedTrip.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+        }
+        setTrip(savedTrip);
+        setConflictState(null);
+        setFirebaseStatus('connected');
+        showToast('Đã giữ bản chỉnh sửa của bạn và cập nhật lên máy chủ!', 'success');
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'Không thể ghi đè bản cục bộ lên máy chủ', 'error');
+    } finally {
+      setIsResolvingConflict(false);
     }
   };
+
+  const handleUseServerConflict = () => {
+    if (!conflictState) return;
+    const serverTrip = normalizeTripData(conflictState.serverTrip);
+    lastSavedContentByTripIdRef.current[serverTrip.id] = getTripComparableJson(serverTrip);
+    if (typeof serverTrip.version === 'number') {
+      latestServerVersionByTripIdRef.current[serverTrip.id] = serverTrip.version;
+    }
+    if (authUser) {
+      const cacheAfter = clearTripPendingOfflineSync(authUser.id, serverTrip.id);
+      if (cacheAfter) {
+        setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+      }
+    }
+    setTrip(serverTrip);
+    setConflictState(null);
+    setFirebaseStatus('connected');
+    showToast(`Đã áp dụng bản máy chủ (v${serverTrip.version ?? '?'}) thành công.`, 'info');
+  };
+
+  // Handler: Bật/tắt thông báo đẩy trình duyệt (Web Notification API)
+  const handleToggleNotifications = useCallback(async () => {
+    if (notificationsEnabled) {
+      setNotificationsEnabled(false);
+      window.localStorage.removeItem(ALERT_NOTIFY_PREF_KEY);
+      showToast('Đã tắt thông báo đẩy trình duyệt.', 'info');
+      return;
+    }
+
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      showToast('Trình duyệt hiện tại không hỗ trợ Web Notification.', 'error');
+      return;
+    }
+
+    try {
+      const permission =
+        Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (permission === 'granted') {
+        setNotificationsEnabled(true);
+        window.localStorage.setItem(ALERT_NOTIFY_PREF_KEY, '1');
+        showToast('Đã bật thông báo đẩy khi phát hiện cảnh báo mới!', 'success');
+      } else {
+        setNotificationsEnabled(false);
+        showToast('Trình duyệt đã chặn quyền gửi thông báo. Hãy cấp quyền trong cài đặt.', 'error');
+      }
+    } catch {
+      showToast('Không thể yêu cầu quyền thông báo trên trình duyệt này.', 'error');
+    }
+  }, [notificationsEnabled, showToast]);
+
+  // Handler: Tự động quét và cập nhật cảnh báo vận hành thời gian thực qua API server
+  // Chỉ gộp alerts, weather và version; bỏ qua lượt quét tự động nếu đang sửa hoặc đang lưu để tránh mất chỉnh sửa
+  const handleScanRealtimeAlerts = useCallback(async (silent = false) => {
+    const activeTrip = latestTripRef.current;
+    if (!activeTrip?.id || conflictState) return;
+
+    const currentComparable = getTripComparableJson(activeTrip);
+    const hasUnsavedEdits = currentComparable !== lastSavedContentByTripIdRef.current[activeTrip.id];
+
+    if (silent && (saveQueueRef.current.isBusy || hasUnsavedEdits)) {
+      return;
+    }
+
+    setIsScanningAlerts(true);
+    const targetTripId = activeTrip.id;
+    const previousAlertIds = new Set((activeTrip.alerts || []).map((a) => a.id));
+
+    try {
+      // Nếu ngoại tuyến -> tính cục bộ bằng bộ phát hiện quy tắc
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const detected = detectScheduleAndWeatherAlerts(activeTrip);
+        const updated: TripData = { ...activeTrip, alerts: detected };
+        await saveTripToFirestore(updated);
+        if (!silent) {
+          showToast(`Ngoại tuyến: Đã quét cục bộ ${detected.length} cảnh báo.`, 'info');
+        }
+        return;
+      }
+
+      const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(targetTripId)}/scan-alerts`, {
+        method: 'POST',
+      });
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result.success || !result.trip) {
+        throw new Error(result?.error || 'Không thể quét cảnh báo từ máy chủ');
+      }
+
+      const scannedTrip = normalizeTripData(result.trip);
+      if (typeof scannedTrip.version === 'number') {
+        latestServerVersionByTripIdRef.current[scannedTrip.id] = scannedTrip.version;
+      }
+
+      setTrip((prev) => {
+        if (!prev || prev.id !== scannedTrip.id) return prev;
+        const wasClean = getTripComparableJson(prev) === lastSavedContentByTripIdRef.current[scannedTrip.id];
+        const merged = mergeAlertScanIntoTrip(prev, scannedTrip);
+        if (wasClean) {
+          lastSavedContentByTripIdRef.current[scannedTrip.id] = getTripComparableJson(merged);
+        }
+        return merged;
+      });
+      setFirebaseStatus('connected');
+
+      const newlyDetected = (scannedTrip.alerts || []).filter((a) => !previousAlertIds.has(a.id));
+
+      if (
+        notificationsEnabled &&
+        newlyDetected.length > 0 &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        const firstAlert = newlyDetected[0];
+        new Notification(`Cảnh báo mới: ${scannedTrip.title}`, {
+          body:
+            newlyDetected.length === 1
+              ? `${firstAlert.title} — ${firstAlert.description}`
+              : `Phát hiện ${newlyDetected.length} cảnh báo vận hành/thời tiết mới (${firstAlert.title}...).`,
+          icon: '/pwa-192x192.png',
+        });
+      }
+
+      if (!silent) {
+        showToast(
+          `Đã quét máy chủ: ${scannedTrip.alerts.length} cảnh báo (Thời tiết ${scannedTrip.weather.temp}°C — ${scannedTrip.weather.description}).`,
+          'success',
+        );
+      } else if (newlyDetected.length > 0) {
+        showToast(`Phát hiện ${newlyDetected.length} cảnh báo vận hành mới!`, 'info');
+      }
+    } catch (error: any) {
+      console.error('Scan alerts error:', error);
+      if (!silent) {
+        showToast(error?.message || 'Lỗi khi quét cảnh báo', 'error');
+      }
+    } finally {
+      setIsScanningAlerts(false);
+    }
+  }, [conflictState, notificationsEnabled, saveTripToFirestore, showToast]);
+
+  const latestScanRef = useRef(handleScanRealtimeAlerts);
+  useEffect(() => {
+    latestScanRef.current = handleScanRealtimeAlerts;
+  }, [handleScanRealtimeAlerts]);
+
+  // Tự động quét cảnh báo định kỳ mỗi 3 phút khi trực tuyến và đang mở chuyến đi
+  useEffect(() => {
+    if (!authUserId || !trip?.id || !isOnline || loadedTripUserId !== authUserId) return;
+    const timer = window.setInterval(() => {
+      void latestScanRef.current(true);
+    }, PERIODIC_ALERT_SCAN_MS);
+    return () => window.clearInterval(timer);
+  }, [authUserId, trip?.id, isOnline, loadedTripUserId]);
 
   // Handler: Hoàn tác phương án tối ưu (Undo Optimization)
   const handleUndoOptimization = async () => {
@@ -462,26 +1024,48 @@ export default function App() {
 
   // Handler: Mở modal chỉnh sửa thông tin chuyến đi
   const handleOpenEditTripModal = (tripTarget?: TripData) => {
-    setTripToEdit(tripTarget || trip);
+    const resolved = tripTarget || trip;
+    if (!resolved) return;
+    setTripToEdit(resolved);
     setIsEditTripModalOpen(true);
   };
 
   // Handler: Lưu thông tin chuyến đi sau khi chỉnh sửa
   const handleSaveEditedTrip = async (updatedFields: Partial<TripData>) => {
     const target = tripToEdit || trip;
+    if (!target) return;
     const merged: TripData = {
       ...target,
       ...updatedFields,
     };
-    await saveTripToFirestore(merged, 'Đã cập nhật thông tin chuyến đi thành công!');
-    if (target.id === trip.id) {
-      setTrip(merged);
+    if (trip && target.id === trip.id) {
+      await saveTripToFirestore(merged, 'Đã cập nhật thông tin chuyến đi thành công!');
+    } else {
+      try {
+        await saveQueueRef.current.enqueue(async () => {
+          const outcome = await executeTripPut(merged, { alignWithSessionVersion: true });
+          if (outcome.status === 'conflict') {
+            if (outcome.serverTrip) {
+              setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+              showToast('Phát hiện xung đột phiên bản — bản sửa của bạn vẫn được giữ nguyên.', 'info');
+            } else {
+              showToast('Xung đột phiên bản: Không thể cập nhật chuyến đi.', 'error');
+            }
+            return;
+          }
+          const finalMerged = outcome.savedTrip;
+          lastSavedContentByTripIdRef.current[finalMerged.id] = getTripComparableJson(finalMerged);
+          setTrips((prev) => prev.map((t) => (t.id === finalMerged.id ? finalMerged : t)));
+          showToast('Đã cập nhật thông tin chuyến đi thành công!', 'success');
+        });
+      } catch (err: any) {
+        showToast(err?.message || 'Không thể cập nhật chuyến đi', 'error');
+      }
     }
-    setTrips((prev) => prev.map((t) => (t.id === target.id ? merged : t)));
     setIsEditTripModalOpen(false);
   };
 
-  // Handler: Xóa chuyến đi
+  // Handler: Xóa chuyến đi (không tự bịa chuyến mẫu khi xóa hết)
   const handleDeleteTrip = async (tripId: string) => {
     try {
       const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(tripId)}`, {
@@ -494,26 +1078,25 @@ export default function App() {
 
       const nextTrips = trips.filter((t) => t.id !== tripId);
       setTrips(nextTrips);
+      delete lastSavedContentByTripIdRef.current[tripId];
 
-      if (trip.id === tripId) {
+      if (trip?.id === tripId) {
         if (nextTrips.length > 0) {
           setTrip(nextTrips[0]);
+          setCurrentDayIndex(nextTrips[0].currentDay || 1);
         } else if (result.activeTrip) {
-          setTrip(result.activeTrip);
+          const fallbackActive = normalizeTripData(result.activeTrip);
+          setTrip(fallbackActive);
+          setTrips([fallbackActive]);
+          setCurrentDayIndex(fallbackActive.currentDay || 1);
         } else {
-          // Khởi tạo chuyến mới nếu xóa hết
-          const safeUid = authUser?.id || 'user';
-          const freshTrip: TripData = {
-            ...initialTripData,
-            id: `trip-${Date.now()}-${safeUid}`,
-            ownerId: safeUid,
-            title: 'Chuyến đi mới chưa đặt tên',
-            code: `VN-${Math.floor(1000 + Math.random() * 9000)}`,
-            days: initialTripData.days,
-          };
-          setTrip(freshTrip);
-          setTrips([freshTrip]);
+          setTrip(null);
+          setCurrentDayIndex(1);
         }
+      }
+
+      if (authUser) {
+        clearTripPendingOfflineSync(authUser.id, tripId);
       }
 
       showToast(result.message || 'Đã xóa chuyến đi thành công', 'success');
@@ -523,38 +1106,99 @@ export default function App() {
     }
   };
 
-  // Handler: Tự động quét và cập nhật cảnh báo vận hành thời gian thực
-  const handleScanRealtimeAlerts = async () => {
-    setIsScanningAlerts(true);
+  // Handler: Nhân bản chuyến đi làm tour mẫu mới
+  const handleCloneTrip = async (sourceTrip: TripData) => {
+    const clonedPayload = cloneTripForTemplate(sourceTrip, authUser?.id);
     try {
-      const detected = detectScheduleAndWeatherAlerts(trip);
-      const updated: TripData = {
-        ...trip,
-        alerts: detected,
-      };
-      await saveTripToFirestore(updated);
-      showToast(`Đã quét tự động: phát hiện ${detected.length} cảnh báo vận hành thực tế!`, 'success');
+      const response = await authenticatedFetch('/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clonedPayload),
+      });
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result.success || !result.trip) {
+        throw new Error(result?.error || 'Không thể nhân bản chuyến đi');
+      }
+
+      const savedClone = normalizeTripData(result.trip);
+      lastSavedContentByTripIdRef.current[savedClone.id] = getTripComparableJson(savedClone);
+      setTrips((prev) => [savedClone, ...prev.filter((t) => t.id !== savedClone.id)]);
+      setTrip(savedClone);
+      setCurrentDayIndex(1);
+      setIsAIApplied(false);
+      showToast(`Đã nhân bản thành tour "${savedClone.title}"!`, 'success');
     } catch (error: any) {
-      console.error('Scan alerts error:', error);
-      showToast('Lỗi khi quét cảnh báo', 'error');
-    } finally {
-      setIsScanningAlerts(false);
+      console.error('Clone trip error:', error);
+      showToast(error?.message || 'Lỗi khi nhân bản chuyến đi', 'error');
     }
   };
 
-  // User là người trực tiếp dùng AI để tạo/tối ưu tour; Admin chỉ quản lý & giám sát (log, cấu hình, hạn mức).
-  const handleOpenAIPlanner = () => setIsAIPlannerOpen(true);
-  const handleOpenAIOptimize = () => setIsAIOptimizeOpen(true);
+  // Handler: Click vào điểm dừng (waypoint) trên bản đồ để mở hoạt động tương ứng
+  const handleSelectWaypoint = (waypoint: Waypoint) => {
+    if (!trip) return;
+    const match = findMatchingActivityForWaypoint(trip, waypoint);
+    if (match) {
+      setCurrentDayIndex(match.dayIndex);
+      setSelectedActivity(match.activity);
+      setCurrentTab('schedule');
+      showToast(`Đã mở chặng "${match.activity.title}" (Ngày ${match.dayIndex})`, 'info');
+    } else {
+      const timeRange = [waypoint.arrivalTime, waypoint.departureTime].filter(Boolean).join(' - ');
+      showToast(
+        `Điểm dừng "${waypoint.name}"${timeRange ? ` (${timeRange})` : ''} chưa gắn hoạt động chi tiết trong lịch trình.`,
+        'info',
+      );
+    }
+  };
+
+  // Chức năng Lập lịch truyền thống & Lập lịch tự động
+  const handleOpenTraditionalPlanner = () => {
+    setPlannerInitialTab('traditional');
+    setIsAIPlannerOpen(true);
+  };
+
+  const handleOpenAIPlanner = () => {
+    setPlannerInitialTab('ai');
+    setIsAIPlannerOpen(true);
+  };
+
+  const handleOpenAutoArrange = () => {
+    if (!trip) return;
+    setIsAutoArrangeOpen(true);
+  };
+
+  const handleApplyAutoArrangeDay = async (updatedDay: DaySchedule, message: string) => {
+    if (!trip) return;
+    const updatedDays = trip.days.map((d) => (d.dayIndex === updatedDay.dayIndex ? updatedDay : d));
+    const allActs = updatedDays.flatMap((d) => d.activities);
+    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
+    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+    const updatedTrip: TripData = {
+      ...trip,
+      days: updatedDays,
+      confirmedActivities: confirmed,
+      pendingActivities: pending,
+    };
+    await saveTripToFirestore(updatedTrip, message);
+  };
+
+  const handleApplyAutoArrangeTrip = async (updatedTrip: TripData, message: string) => {
+    await saveTripToFirestore(updatedTrip, message);
+  };
+
+  const handleOpenAIOptimize = () => {
+    if (!trip) return;
+    setIsAIOptimizeOpen(true);
+  };
 
   // Handler: Apply AI / Rule-based Optimization
-  // Tuân thủ: Ghép thay đổi CHỈ theo activityId duy nhất; chỉ xóa cảnh báo thực sự được xử lý.
   const handleApplyAIOptimization = async (
     actionTitle?: string,
     actionReason?: string,
     costSaved?: string,
     recommendationData?: any
   ) => {
-    // 1. Lưu bản chụp trạng thái chuyến đi trước khi tối ưu để có thể hoàn tác (Undo)
+    if (!trip) return;
     setLastOptimizedTripSnapshot(structuredClone(trip));
 
     const targetDayIndex =
@@ -570,7 +1214,6 @@ export default function App() {
 
     const updatedDays = trip.days.map((day) => {
       if (day.dayIndex === targetDayIndex) {
-        // GHÉP THAY ĐỔI DUY NHẤT THEO activityId
         const { updatedDay, changedActivities } = applyScheduleChangesStrict(
           day,
           scheduleChanges,
@@ -586,8 +1229,12 @@ export default function App() {
     const allActs = updatedDays.flatMap((d) => d.activities);
     const confirmed = allActs.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+    const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
+    const invoiceCosts = (trip.invoices || []).reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const newSpent = totalActivityCosts + invoiceCosts;
+    const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
+    const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
 
-    // LỌC CẢNH BÁO: CHỈ XÓA CẢNH BÁO MÀ ĐỀ XUẤT THỰC SỰ XỬ LÝ (giữ nguyên cảnh báo khác)
     const { remainingAlerts, resolvedAlerts } = filterAlertsByRecommendation(
       trip.alerts,
       recommendationData || { actionTitle, reason: actionReason, scheduleChanges },
@@ -595,17 +1242,14 @@ export default function App() {
       targetDayIndex,
     );
 
-    const savingsNumber =
-      Number(costSaved?.replace(/\D/g, '')) ||
-      Number(trip.aiSavingsEstimate?.replace(/\D/g, '')) ||
-      320000;
-
     const updatedTrip: TripData = {
       ...trip,
       alerts: remainingAlerts,
       days: updatedDays,
-      budgetRemaining: trip.budgetRemaining + savingsNumber,
-      aiSavingsEstimate: costSaved || trip.aiSavingsEstimate,
+      budgetUsed: newSpent,
+      budgetRemaining: newRemaining,
+      budgetUsedPercent: newPercent,
+      aiSavingsEstimate: costSaved || trip.aiSavingsEstimate || '',
       confirmedActivities: confirmed,
       pendingActivities: pending,
     };
@@ -623,6 +1267,7 @@ export default function App() {
 
   // Handler: Add Activity
   const handleAddActivity = async (newAct: Activity, targetDayIndex?: number) => {
+    if (!trip) return;
     const dayTarget = targetDayIndex ?? currentDayIndex;
     let dayMatched = false;
     const updatedDays = trip.days.map((d) => {
@@ -651,7 +1296,8 @@ export default function App() {
 
     const allActs = updatedDays.flatMap((d) => d.activities);
     const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
-    const newSpent = totalActivityCosts > 0 ? totalActivityCosts : trip.budgetUsed + (newAct.cost || 0);
+    const invoiceCosts = (trip.invoices || []).reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const newSpent = totalActivityCosts + invoiceCosts;
     const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
     const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
@@ -668,11 +1314,12 @@ export default function App() {
       days: updatedDays,
     };
 
-    await saveTripToFirestore(updatedTrip, `Đã thêm hoạt động "${newAct.title}" vào Firestore!`);
+    await saveTripToFirestore(updatedTrip, `Đã thêm hoạt động "${newAct.title}"!`);
   };
 
   // Handler: Add New Day
   const handleAddDay = async () => {
+    if (!trip) return;
     const nextDayIndex = trip.days.length > 0 ? Math.max(...trip.days.map((d) => d.dayIndex)) + 1 : 1;
     const dayNamesCycle = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     const dayName = dayNamesCycle[(nextDayIndex - 1) % 7];
@@ -699,6 +1346,7 @@ export default function App() {
 
   // Handler: Delete Day
   const handleDeleteDay = async (dayIndexToDelete: number) => {
+    if (!trip) return;
     if (trip.days.length <= 1) {
       showToast('Hành trình cần ít nhất 1 ngày!', 'error');
       return;
@@ -711,7 +1359,8 @@ export default function App() {
       }));
     const allActs = updatedDays.flatMap((d) => d.activities);
     const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
-    const newSpent = totalActivityCosts;
+    const invoiceCosts = (trip.invoices || []).reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const newSpent = totalActivityCosts + invoiceCosts;
     const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
     const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
 
@@ -733,6 +1382,7 @@ export default function App() {
 
   // Handler: Update Day Note
   const handleUpdateDayNote = async (dayIndex: number, note: string) => {
+    if (!trip) return;
     const updatedDays = trip.days.map((d) => (d.dayIndex === dayIndex ? { ...d, dispatcherNote: note } : d));
     const updatedTrip: TripData = { ...trip, days: updatedDays };
     await saveTripToFirestore(updatedTrip, `Đã lưu ghi chú Ngày ${dayIndex}!`);
@@ -740,6 +1390,7 @@ export default function App() {
 
   // Handler: Update Activity status
   const handleUpdateActivityStatus = async (id: string, newStatus: Activity['status']) => {
+    if (!trip) return;
     let activityTitle = '';
     const updatedDays = trip.days.map((d) => ({
       ...d,
@@ -765,12 +1416,13 @@ export default function App() {
 
     await saveTripToFirestore(
       updatedTrip,
-      `Đã chuyển "${activityTitle || 'Hoạt động'}" sang "${newStatus}" trên Firestore!`
+      `Đã chuyển "${activityTitle || 'Hoạt động'}" sang "${newStatus}"!`,
     );
   };
 
   // Handler: Delete Activity
   const handleDeleteActivity = async (id: string) => {
+    if (!trip) return;
     let deletedTitle = '';
     const updatedDays = trip.days.map((d) => {
       const remaining = d.activities.filter((a) => {
@@ -787,7 +1439,8 @@ export default function App() {
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
     const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
-    const newSpent = totalActivityCosts;
+    const invoiceCosts = (trip.invoices || []).reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const newSpent = totalActivityCosts + invoiceCosts;
     const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
     const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
 
@@ -804,12 +1457,13 @@ export default function App() {
 
     await saveTripToFirestore(
       updatedTrip,
-      `Đã xóa hoạt động "${deletedTitle || id}" trên Firestore!`
+      `Đã xóa hoạt động "${deletedTitle || id}"!`,
     );
   };
 
   // Handler: Edit Activity
   const handleEditActivity = async (updatedActivity: Activity) => {
+    if (!trip) return;
     const updatedDays = trip.days.map((d) => ({
       ...d,
       activities: d.activities.map((a) => (a.id === updatedActivity.id ? updatedActivity : a)),
@@ -819,7 +1473,8 @@ export default function App() {
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
     const totalActivityCosts = allActs.reduce((sum, a) => sum + (a.cost || 0), 0);
-    const newSpent = totalActivityCosts;
+    const invoiceCosts = (trip.invoices || []).reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const newSpent = totalActivityCosts + invoiceCosts;
     const newRemaining = Math.max(0, trip.budgetTotal - newSpent);
     const newPercent = trip.budgetTotal > 0 ? Math.min(100, Math.round((newSpent / trip.budgetTotal) * 100)) : 0;
 
@@ -836,47 +1491,100 @@ export default function App() {
 
     await saveTripToFirestore(
       updatedTrip,
-      `Đã cập nhật hoạt động "${updatedActivity.title}" trên Firestore!`
+      `Đã cập nhật hoạt động "${updatedActivity.title}"!`,
     );
   };
 
   // Handler: Toggle Member Attendance
-  // Chỉ cập nhật đúng 1 thành viên qua PATCH (không ghi đè cả chuyến đi); lỗi mới dùng lưu toàn bộ làm dự phòng.
   const handleToggleMemberAttendance = async (id: string) => {
+    if (!trip) return;
     const member = trip.members.find((item) => item.id === id);
     if (!member) return;
 
     const attendanceStatus: TripMember['attendanceStatus'] = member.attendanceStatus === 'Có mặt' ? 'Vắng mặt' : 'Có mặt';
     const tripId = trip.id;
+    const optimisticMembers = trip.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
+    const optimisticPresent = optimisticMembers.filter((item) => item.attendanceStatus === 'Có mặt').length;
+    const optimisticTrip: TripData = {
+      ...trip,
+      members: optimisticMembers,
+      membersTotal: optimisticMembers.length,
+      membersOnline: optimisticMembers.filter((m) => m.status === 'online').length,
+      membersStatus: `${optimisticPresent}/${optimisticMembers.length} đã điểm danh`,
+    };
 
     try {
-      const response = await authenticatedFetch(
-        `/api/trips/${encodeURIComponent(tripId)}/members/${encodeURIComponent(id)}/attendance`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ attendanceStatus }),
-        },
-      );
-      const result = await safeJsonResponse(response);
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Không thể lưu điểm danh');
-      }
+      await saveQueueRef.current.enqueue(async () => {
+        const versionToUse = latestServerVersionByTripIdRef.current[tripId] ?? trip.version;
+        const response = await authenticatedFetch(
+          `/api/trips/${encodeURIComponent(tripId)}/members/${encodeURIComponent(id)}/attendance`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attendanceStatus, version: versionToUse }),
+          },
+        );
+        const result = await safeJsonResponse(response);
+        if (response.status === 401 || response.status === 403) {
+          throw new AuthSessionError(response.status, result?.error || undefined);
+        }
+        if (response.status === 409) {
+          const freshNormalized = await fetchServerTripSnapshot(tripId);
+          if (freshNormalized) {
+            if (typeof freshNormalized.version === 'number') {
+              latestServerVersionByTripIdRef.current[freshNormalized.id] = freshNormalized.version;
+            }
+            if (getTripComparableJson(optimisticTrip) === getTripComparableJson(freshNormalized)) {
+              lastSavedContentByTripIdRef.current[freshNormalized.id] = getTripComparableJson(freshNormalized);
+              setTrip(freshNormalized);
+              return;
+            }
+            setTrip(optimisticTrip);
+            setConflictState({ localTrip: optimisticTrip, serverTrip: freshNormalized });
+            showToast('Phát hiện xung đột điểm danh với máy chủ — hãy chọn phiên bản muốn giữ.', 'info');
+            return;
+          }
+          throw new Error(result?.error || 'Xung đột phiên bản điểm danh');
+        }
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Không thể lưu điểm danh');
+        }
 
-      // Cập nhật theo state mới nhất để không làm mất các thay đổi khác
-      setTrip((prev) => {
-        if (prev.id !== tripId) return prev;
-        const members = prev.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
-        const presentCount = members.filter((item) => item.attendanceStatus === 'Có mặt').length;
-        return { ...prev, members, membersStatus: `${presentCount}/${members.length} đã điểm danh` };
+        if (typeof result.version === 'number') {
+          latestServerVersionByTripIdRef.current[tripId] = result.version;
+        }
+
+        setTrip((prev) => {
+          if (!prev || prev.id !== tripId) return prev;
+          const prevWasClean = getTripComparableJson(prev) === lastSavedContentByTripIdRef.current[tripId];
+          const members = prev.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
+          const presentCount = members.filter((item) => item.attendanceStatus === 'Có mặt').length;
+          const nextTrip: TripData = {
+            ...prev,
+            members,
+            membersTotal: members.length,
+            membersOnline: members.filter((m) => m.status === 'online').length,
+            membersStatus: `${presentCount}/${members.length} đã điểm danh`,
+            ...(typeof result.version === 'number' ? { version: result.version } : {}),
+          };
+          // Chỉ cập nhật mốc đã lưu khi state trước đó chưa có thay đổi nào khác đang chờ autosave,
+          // tránh đánh dấu nhầm các sửa đổi đang nhập là "đã lưu".
+          if (prevWasClean) {
+            lastSavedContentByTripIdRef.current[tripId] = getTripComparableJson(nextTrip);
+          }
+          return nextTrip;
+        });
+        showToast(`Đã lưu điểm danh: ${member.name} (${attendanceStatus})`, 'success');
       });
-      showToast(`Đã lưu điểm danh: ${member.name} (${attendanceStatus})`, 'success');
     } catch (error) {
+      if (error instanceof AuthSessionError) {
+        await performSignOutAndClearCache(authUserId);
+        showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+        return;
+      }
       console.warn('PATCH điểm danh thất bại, chuyển sang lưu toàn bộ chuyến đi:', error);
-      const updatedMembers = trip.members.map((item) => (item.id === id ? { ...item, attendanceStatus } : item));
-      const presentCount = updatedMembers.filter((item) => item.attendanceStatus === 'Có mặt').length;
       await saveTripToFirestore(
-        { ...trip, members: updatedMembers, membersStatus: `${presentCount}/${updatedMembers.length} đã điểm danh` },
+        optimisticTrip,
         `Đã lưu điểm danh: ${member.name} (${attendanceStatus})`,
       );
     }
@@ -884,12 +1592,12 @@ export default function App() {
 
   // Handler: Update Trip Budget
   const handleUpdateTripBudget = async (updatedTrip: TripData) => {
-    await saveTripToFirestore(updatedTrip, 'Đã cập nhật ngân sách chuyến đi trên Firestore!');
+    await saveTripToFirestore(updatedTrip, 'Đã cập nhật ngân sách và chứng từ chuyến đi!');
   };
 
-  // Handler: Update Trip Members list (Add, Edit, Delete)
-  // Đồng bộ "tài xế phụ trách xe" (telematics) với thành viên có vai trò "Tài xế".
+  // Handler: Update Trip Members list
   const handleUpdateMembers = async (updatedMembers: TripMember[]) => {
+    if (!trip) return;
     const presentCount = updatedMembers.filter((item) => item.attendanceStatus === 'Có mặt').length;
     const membersStatus = `${presentCount}/${updatedMembers.length} đã điểm danh`;
 
@@ -906,7 +1614,6 @@ export default function App() {
     if (assigned) {
       telematics = { ...baseTelematics, driver: assigned.name, driverPhone: assigned.phone, driverMemberId: assigned.id };
     } else if (wasLinked) {
-      // Tài xế đã liên kết bị xóa hoặc đổi vai trò và không còn tài xế nào khác
       telematics = { ...baseTelematics, driver: 'Chưa phân công', driverPhone: '' };
     }
 
@@ -918,16 +1625,17 @@ export default function App() {
       membersOnline: updatedMembers.filter((m) => m.status === 'online').length,
       telematics,
     };
-    await saveTripToFirestore(updatedTrip, 'Đã cập nhật danh sách thành viên trên Firestore!');
+    await saveTripToFirestore(updatedTrip, 'Đã cập nhật danh sách thành viên!');
   };
 
-  // Handler: Update General Trip Data (Telematics, Weather, etc.)
+  // Handler: Update General Trip Data
   const handleUpdateTrip = async (updatedTrip: TripData, message?: string) => {
-    await saveTripToFirestore(updatedTrip, message || 'Đã đồng bộ dữ liệu chuyến đi lên Firestore!');
+    await saveTripToFirestore(updatedTrip, message || 'Đã đồng bộ dữ liệu chuyến đi!');
   };
 
   // Handler: Dismiss Alert
   const handleDismissAlert = async (id: string) => {
+    if (!trip) return;
     const updatedTrip: TripData = {
       ...trip,
       alerts: trip.alerts.filter((a) => a.id !== id),
@@ -935,10 +1643,11 @@ export default function App() {
     await saveTripToFirestore(updatedTrip);
   };
 
-  // Handler: Apply newly generated trip from Gemini AI
+  // Handler: Select Trip
   const handleSelectTrip = (selectedTrip: TripData) => {
-    setTrip(selectedTrip);
-    setCurrentDayIndex(selectedTrip.currentDay || 1);
+    const latestFromList = trips.find((t) => t.id === selectedTrip.id) || selectedTrip;
+    setTrip(latestFromList);
+    setCurrentDayIndex(latestFromList.currentDay || 1);
     setCurrentTab('dashboard');
   };
 
@@ -949,35 +1658,63 @@ export default function App() {
       body: JSON.stringify(newTrip),
     });
     const result = await safeJsonResponse(response);
+    if (response.status === 413) {
+      throw new PayloadTooLargeError(result?.error || undefined);
+    }
     if (!response.ok || !result.success) {
       throw new Error(result.error || 'Không thể lưu chuyến đi mới');
     }
 
-    // Không thay chuyến đi vừa tạo bằng dữ liệu mẫu; server đã chuẩn hóa, client chỉ chuẩn hóa lại
     const savedTrip = normalizeTripData(result.trip);
+    lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+    if (typeof savedTrip.version === 'number') {
+      latestServerVersionByTripIdRef.current[savedTrip.id] = savedTrip.version;
+    }
     setTrips((prev) => [savedTrip, ...prev.filter((item) => item.id !== savedTrip.id)]);
     setTrip(savedTrip);
     setCurrentDayIndex(1);
     setIsAIApplied(false);
+    setCurrentTab('dashboard');
     showToast(`Đã tạo chuyến đi ${savedTrip.title} thành công!`, 'success');
   };
 
+
   const handleLogout = async () => {
+    const hasUnsavedCurrentTrip = Boolean(
+      trip?.id && getTripComparableJson(trip) !== lastSavedContentByTripIdRef.current[trip.id],
+    );
+    if (pendingSyncCount > 0 || hasUnsavedCurrentTrip || conflictState) {
+      setIsLogoutConfirmOpen(true);
+      return;
+    }
+    await performSignOutAndClearCache();
+  };
+
+  const handleSyncAndLogout = async () => {
+    if (!authUser) {
+      await performSignOutAndClearCache();
+      return;
+    }
+    setIsSyncingBeforeLogout(true);
     try {
-      if (typeof localStorage !== 'undefined') {
+      await syncPendingOfflineTrips();
+      const cache = loadOfflineTripsCache(authUser.id);
+      if (!cache || cache.pendingSyncIds.length === 0) {
+        await performSignOutAndClearCache();
+      } else {
+        showToast('Vẫn còn dữ liệu chưa thể đồng bộ. Vui lòng xử lý xung đột hoặc xác nhận đăng xuất.', 'info');
       }
-      if (firebaseAuth && firebaseAuth.currentUser) {
-        await signOut(firebaseAuth);
-      }
-    } catch (err) {
-      console.warn('SignOut error:', err);
     } finally {
-      setAuthUser(null);
+      setIsSyncingBeforeLogout(false);
     }
   };
 
   if (authLoading) {
-    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm text-slate-300">Đang kiểm tra phiên đăng nhập...</div>;
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm text-slate-300">
+        Đang kiểm tra phiên đăng nhập...
+      </div>
+    );
   }
 
   if (!authUser) {
@@ -990,6 +1727,7 @@ export default function App() {
         <AdminDashboard
           trip={trip}
           trips={trips}
+          tripsLoaded={tripsLoaded}
           onSelectTrip={handleSelectTrip}
           currentTab={currentTab}
           setCurrentTab={setCurrentTab}
@@ -1003,6 +1741,7 @@ export default function App() {
           isAIApplied={isAIApplied}
           authUser={authUser}
           onLogout={handleLogout}
+          onOpenAccount={() => setIsAccountModalOpen(true)}
           isAdminMode={isAdminMode}
           isAIPlannerOpen={isAIPlannerOpen}
           setIsAIPlannerOpen={setIsAIPlannerOpen}
@@ -1033,15 +1772,25 @@ export default function App() {
           onUndo={handleUndoOptimization}
           onOpenEditTripModal={handleOpenEditTripModal}
           onDeleteTrip={handleDeleteTrip}
-          onScanAlerts={handleScanRealtimeAlerts}
+          onCloneTrip={handleCloneTrip}
+          onSelectWaypoint={handleSelectWaypoint}
+          onScanAlerts={() => handleScanRealtimeAlerts(false)}
           isScanningAlerts={isScanningAlerts}
+          notificationsEnabled={notificationsEnabled}
+          onToggleNotifications={() => void handleToggleNotifications()}
+          pendingSyncCount={pendingSyncCount}
+          cachedAt={cachedAt}
+          onRetryOfflineSync={() => void syncPendingOfflineTrips()}
           onOpenAIPlanner={handleOpenAIPlanner}
           onOpenAIOptimize={handleOpenAIOptimize}
+          onOpenAutoArrange={handleOpenAutoArrange}
+          onOpenTraditionalPlanner={handleOpenTraditionalPlanner}
         />
       ) : (
         <UserDashboard
           trip={trip}
           trips={trips}
+          tripsLoaded={tripsLoaded}
           onSelectTrip={handleSelectTrip}
           currentTab={currentTab}
           currentDayIndex={currentDayIndex}
@@ -1053,6 +1802,7 @@ export default function App() {
           firebaseStatus={firebaseStatus}
           authUser={authUser}
           onLogout={handleLogout}
+          onOpenAccount={() => setIsAccountModalOpen(true)}
           setCurrentTab={setCurrentTab}
           setSelectedActivity={setSelectedActivity}
           selectedActivity={selectedActivity}
@@ -1071,10 +1821,10 @@ export default function App() {
           setIsAIOptimizeOpen={setIsAIOptimizeOpen}
           isAddActivityOpen={isAddActivityOpen}
           setIsAddActivityOpen={setIsAddActivityOpen}
-          isAIApplied={isAIApplied}
           isAlertsModalOpen={isAlertsModalOpen}
           setIsAlertsModalOpen={setIsAlertsModalOpen}
           handleDismissAlert={handleDismissAlert}
+          isAIApplied={isAIApplied}
           handleApplyGeneratedTrip={handleApplyGeneratedTrip}
           handleApplyAIOptimization={handleApplyAIOptimization}
           handleAddActivity={handleAddActivity}
@@ -1083,14 +1833,43 @@ export default function App() {
           onUndo={handleUndoOptimization}
           onOpenEditTripModal={handleOpenEditTripModal}
           onDeleteTrip={handleDeleteTrip}
-          onScanAlerts={handleScanRealtimeAlerts}
+          onCloneTrip={handleCloneTrip}
+          onSelectWaypoint={handleSelectWaypoint}
+          onScanAlerts={() => handleScanRealtimeAlerts(false)}
           isScanningAlerts={isScanningAlerts}
+          notificationsEnabled={notificationsEnabled}
+          onToggleNotifications={() => void handleToggleNotifications()}
+          pendingSyncCount={pendingSyncCount}
+          cachedAt={cachedAt}
+          onRetryOfflineSync={() => void syncPendingOfflineTrips()}
           onOpenAIPlanner={handleOpenAIPlanner}
           onOpenAIOptimize={handleOpenAIOptimize}
+          onOpenAutoArrange={handleOpenAutoArrange}
+          onOpenTraditionalPlanner={handleOpenTraditionalPlanner}
         />
       )}
 
-      {/* Modal Chỉnh sửa thông tin chuyến đi (tên, ngày, ngân sách...) */}
+      {/* Modal Lập lịch trình Đa năng */}
+      <TripPlannerModal
+        isOpen={isAIPlannerOpen}
+        onClose={() => setIsAIPlannerOpen(false)}
+        onApplyPlan={handleApplyGeneratedTrip}
+        initialTab={plannerInitialTab}
+      />
+
+      {/* Modal Tự động Xếp lịch & Cân bằng thời gian */}
+      {isAutoArrangeOpen && trip && (
+        <AutoArrangeModal
+          isOpen={isAutoArrangeOpen}
+          onClose={() => setIsAutoArrangeOpen(false)}
+          currentDay={trip.days.find((d) => d.dayIndex === currentDayIndex) || trip.days[0]}
+          trip={trip}
+          onApplyDay={handleApplyAutoArrangeDay}
+          onApplyTrip={handleApplyAutoArrangeTrip}
+        />
+      )}
+
+      {/* Modal Chỉnh sửa thông tin chuyến đi */}
       {isEditTripModalOpen && tripToEdit && (
         <EditTripModal
           isOpen={isEditTripModalOpen}
@@ -1100,7 +1879,80 @@ export default function App() {
         />
       )}
 
-      {/* Floating Toast Notification for Firestore Actions */}
+      {/* Modal Quản lý tài khoản */}
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        authUser={authUser}
+        onProfileUpdated={(newName) => {
+          setAuthUser((prev) => (prev ? { ...prev, name: newName } : prev));
+        }}
+        onAccountDeleted={() => {
+          setIsAccountModalOpen(false);
+          void performSignOutAndClearCache(authUserId);
+        }}
+        onShowToast={(text, type) => showToast(text, type)}
+      />
+
+      {/* Modal xử lý xung đột đồng bộ phiên bản (409) */}
+      <SyncConflictModal
+        localTrip={conflictState?.localTrip || null}
+        serverTrip={conflictState?.serverTrip || null}
+        isResolving={isResolvingConflict}
+        onKeepLocal={() => void handleKeepLocalConflict()}
+        onUseServer={handleUseServerConflict}
+        onDismiss={() => setConflictState(null)}
+      />
+
+      {/* Modal cảnh báo khi đăng xuất còn dữ liệu ngoại tuyến chưa đồng bộ */}
+      {isLogoutConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-rose-200 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 bg-rose-600 text-white flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <div>
+                <h3 className="text-sm font-extrabold">Cảnh báo dữ liệu chưa đồng bộ</h3>
+                <p className="text-[11px] text-rose-100">Đăng xuất sẽ xóa bộ nhớ đệm ngoại tuyến trên máy</p>
+              </div>
+            </div>
+            <div className="p-5 space-y-4 text-xs text-slate-700 leading-relaxed">
+              <p>
+                Hiện vẫn còn <strong>{Math.max(1, pendingSyncCount)} thay đổi</strong> đang lưu tạm trên thiết bị chưa được đồng bộ lên máy chủ. Để tránh lộ dữ liệu đoàn khách và ảnh chứng từ, thao tác đăng xuất sẽ xóa sạch cache ngoại tuyến khỏi trình duyệt này.
+              </p>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsLogoutConfirmOpen(false)}
+                  disabled={isSyncingBeforeLogout}
+                  className="px-3.5 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Hủy
+                </button>
+                {isOnline && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSyncAndLogout()}
+                    disabled={isSyncingBeforeLogout}
+                    className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold transition disabled:opacity-50"
+                  >
+                    {isSyncingBeforeLogout ? 'Đang đồng bộ...' : 'Đồng bộ rồi đăng xuất'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void performSignOutAndClearCache()}
+                  disabled={isSyncingBeforeLogout}
+                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition disabled:opacity-50"
+                >
+                  Vẫn đăng xuất &amp; Xóa cache
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
       {toastMessage && (
         <div
           role="status"
@@ -1130,798 +1982,5 @@ export default function App() {
         </div>
       )}
     </>
-  );
-}
-
-function AdminDashboard({
-  trip,
-  trips,
-  onSelectTrip,
-  currentTab,
-  setCurrentTab,
-  currentDayIndex,
-  setCurrentDayIndex,
-  filterMode,
-  setFilterMode,
-  searchQuery,
-  setSearchQuery,
-  firebaseStatus,
-  isAIApplied,
-  authUser,
-  onLogout,
-  isAdminMode,
-  isAIPlannerOpen,
-  setIsAIPlannerOpen,
-  isAIOptimizeOpen,
-  setIsAIOptimizeOpen,
-  isAddActivityOpen,
-  setIsAddActivityOpen,
-  isAlertsModalOpen,
-  setIsAlertsModalOpen,
-  selectedActivity,
-  setSelectedActivity,
-  handleSelectTab,
-  handleApplyGeneratedTrip,
-  handleApplyAIOptimization,
-  handleAddActivity,
-  handleUpdateActivityStatus,
-  handleDeleteActivity,
-  handleEditActivity,
-  handleAddDay,
-  handleDeleteDay,
-  handleUpdateDayNote,
-  handleToggleMemberAttendance,
-  handleUpdateMembers,
-  handleUpdateTrip,
-  handleDismissAlert,
-  handleUpdateTripBudget,
-  canUndo,
-  onUndo,
-  onOpenEditTripModal,
-  onDeleteTrip,
-  onScanAlerts,
-  isScanningAlerts,
-  onOpenAIPlanner,
-  onOpenAIOptimize,
-}: {
-  trip: TripData;
-  trips: TripData[];
-  onSelectTrip: (trip: TripData) => void;
-  currentTab: string;
-  setCurrentTab: React.Dispatch<React.SetStateAction<string>>;
-  currentDayIndex: number;
-  setCurrentDayIndex: React.Dispatch<React.SetStateAction<number>>;
-  filterMode: 'timeline' | 'all';
-  setFilterMode: React.Dispatch<React.SetStateAction<'timeline' | 'all'>>;
-  searchQuery: string;
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-  firebaseStatus: 'loading' | 'connected' | 'error';
-  isAIApplied: boolean;
-  authUser: AuthUser;
-  onLogout: () => void;
-  isAdminMode: boolean;
-  isAIPlannerOpen: boolean;
-  setIsAIPlannerOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAIOptimizeOpen: boolean;
-  setIsAIOptimizeOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAddActivityOpen: boolean;
-  setIsAddActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAlertsModalOpen: boolean;
-  setIsAlertsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  selectedActivity: Activity | null;
-  setSelectedActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
-  handleSelectTab: (tab: string) => void;
-  handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
-  handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string) => void;
-  handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
-  handleUpdateActivityStatus: (id: string, newStatus: Activity['status']) => void;
-  handleDeleteActivity: (id: string) => void;
-  handleEditActivity: (activity: Activity) => void;
-  handleAddDay: () => Promise<void>;
-  handleDeleteDay: (dayIndex: number) => Promise<void>;
-  handleUpdateDayNote: (dayIndex: number, note: string) => Promise<void>;
-  handleToggleMemberAttendance: (id: string) => Promise<void>;
-  handleUpdateMembers: (members: TripMember[]) => Promise<void>;
-  handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
-  handleDismissAlert: (id: string) => void;
-  handleUpdateTripBudget: (updated: TripData) => Promise<void>;
-  canUndo?: boolean;
-  onUndo?: () => void;
-  onOpenEditTripModal?: (tripTarget?: TripData) => void;
-  onDeleteTrip?: (tripId: string) => void;
-  onScanAlerts?: () => Promise<void>;
-  isScanningAlerts?: boolean;
-  onOpenAIPlanner?: () => void;
-  onOpenAIOptimize?: () => void;
-}) {
-  return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#0f172a,#111827_28%,#020817_100%)] text-slate-200 font-['Plus_Jakarta_Sans',sans-serif]">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(45,212,191,0.12),transparent_40%,rgba(59,130,246,0.08))]" />
-      <div className="relative flex h-full w-full">
-      <Sidebar
-        currentTab={currentTab}
-        userName={authUser.name}
-        userRole={authUser.role}
-        onLogout={onLogout}
-        onSelectTab={handleSelectTab}
-        alertCount={trip.alerts.length}
-        tripCount={trips.length}
-        onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-      />
-
-      <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-        <Header
-          trip={trip}
-          role="admin"
-          onOpenCreateTripModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-          onOpenEditTripModal={() => onOpenEditTripModal?.(trip)}
-          onDeleteCurrentTrip={() => onDeleteTrip?.(trip.id)}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onSelectActivity={(act, dayIdx) => {
-            setSelectedActivity(act);
-            setCurrentDayIndex(dayIdx);
-            setCurrentTab('schedule');
-          }}
-          onSelectLocation={() => setCurrentTab('locations')}
-          onSelectMember={() => setCurrentTab('members')}
-          onToggleAttendance={handleToggleMemberAttendance}
-          firebaseStatus={firebaseStatus}
-        />
-
-        <main className="flex-1 p-5 md:p-6 space-y-6 max-w-[1680px] w-full mx-auto">
-          {firebaseStatus === 'error' && (
-            <div
-              role="status"
-              className="px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-2"
-            >
-              <span>⚠️</span>
-              <span>Không thể đồng bộ cơ sở dữ liệu Firestore Cloud</span>
-            </div>
-          )}
-
-          {currentTab === 'dashboard' && isAdminMode && (
-            <AdminDashboardView
-              trip={trip}
-              trips={trips}
-              firebaseStatus={firebaseStatus}
-              onNavigate={handleSelectTab}
-              onOpenAIPlanner={() => setIsAIPlannerOpen(true)}
-              onOpenAIOptimize={() => setIsAIOptimizeOpen(true)}
-            />
-          )}
-
-          {currentTab === 'users' && <AdminUsersManagementView />}
-          {currentTab === 'planning' && <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />}
-          {currentTab === 'rules' && <AdminDispatchRulesView />}
-          {currentTab === 'ai' && <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} />}
-          {currentTab === 'monitoring' && <AdminScheduleMonitoringView trip={trip} trips={trips} onUpdateTrip={handleUpdateTrip} />}
-          {currentTab === 'system' && <AdminSystemManagementView trip={trip} />}
-          {currentTab === 'locations' && <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />}
-
-          {currentTab === 'dashboard' && !isAdminMode && (
-            <>
-              <MetricCards
-                trip={trip}
-                onOpenMembers={() => setCurrentTab('members')}
-                onOpenBudget={() => setCurrentTab('budget')}
-                onOpenSchedule={() => setCurrentTab('schedule')}
-              />
-
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                <div className="lg:col-span-8">
-                  <LiveRouteMap
-                    trip={trip}
-                    onSelectWaypoint={(wp) => console.log('Selected waypoint:', wp.name)}
-                    onUpdateTrip={handleUpdateTrip}
-                    searchQuery={searchQuery}
-                    onClearSearch={() => setSearchQuery('')}
-                  />
-                </div>
-
-                <div className="lg:col-span-4">
-                  <OperationsPanel
-                    trip={trip}
-                    onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
-                    onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                    isAIApplied={isAIApplied}
-                    onUndo={onUndo}
-                    canUndo={canUndo}
-                    onScanAlerts={onScanAlerts}
-                    isScanningAlerts={isScanningAlerts}
-                  />
-                </div>
-              </div>
-
-              <TimelineSchedule
-                days={trip.days}
-                currentDayIndex={currentDayIndex}
-                onSelectDay={setCurrentDayIndex}
-                onAddActivity={() => setIsAddActivityOpen(true)}
-                onSelectActivity={(act) => setSelectedActivity(act)}
-                filterMode={filterMode}
-                onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                searchQuery={searchQuery}
-                onClearSearch={() => setSearchQuery('')}
-                onUpdateStatus={handleUpdateActivityStatus}
-              />
-            </>
-          )}
-
-
-
-          {currentTab === 'trips' && (
-            <TripsListView
-              trips={trips}
-              currentTrip={trip}
-              onSelectTrip={onSelectTrip}
-              onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-              onEditTrip={onOpenEditTripModal}
-              onDeleteTrip={onDeleteTrip}
-              searchQuery={searchQuery}
-              onClearSearch={() => setSearchQuery('')}
-            />
-          )}
-
-          {currentTab === 'schedule' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-black text-white">Chi tiết Lịch trình Toàn bộ Hành trình</h2>
-                  <p className="text-xs text-slate-400 font-medium">
-                    Xem và chỉnh sửa toàn bộ các chặng từ Ngày 1 đến Ngày {trip.totalDays}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsAddActivityOpen(true)}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-teal-900/30 transition"
-                >
-                  + Thêm hoạt động mới
-                </button>
-              </div>
-
-              <TimelineSchedule
-                days={trip.days}
-                currentDayIndex={currentDayIndex}
-                onSelectDay={setCurrentDayIndex}
-                onAddActivity={() => setIsAddActivityOpen(true)}
-                onSelectActivity={(act) => setSelectedActivity(act)}
-                filterMode={filterMode}
-                onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                searchQuery={searchQuery}
-                onClearSearch={() => setSearchQuery('')}
-                onUpdateStatus={handleUpdateActivityStatus}
-                onDeleteActivity={handleDeleteActivity}
-                onEditActivity={handleEditActivity}
-                onAddDay={handleAddDay}
-                onDeleteDay={handleDeleteDay}
-                onUpdateDayNote={handleUpdateDayNote}
-              />
-            </div>
-          )}
-
-          {currentTab === 'map' && (
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-white">Bản đồ Tuyến đường Toàn cảnh & Telematics</h2>
-                <p className="text-xs text-slate-400 font-medium">
-                  Giám sát hành trình xe 29 chỗ trực tiếp trên cung đường Đà Nẵng - Huế
-                </p>
-              </div>
-              <LiveRouteMap
-                trip={trip}
-                onUpdateTrip={handleUpdateTrip}
-                searchQuery={searchQuery}
-                onClearSearch={() => setSearchQuery('')}
-              />
-            </div>
-          )}
-
-          {currentTab === 'members' && (
-            <MembersView
-              members={trip.members}
-              onToggleStatus={handleToggleMemberAttendance}
-              onUpdateMembers={handleUpdateMembers}
-              searchQuery={searchQuery}
-              onClearSearch={() => setSearchQuery('')}
-            />
-          )}
-
-          {currentTab === 'budget' && (
-            <BudgetView
-              trip={trip}
-              onUpdateTripBudget={handleUpdateTripBudget}
-              searchQuery={searchQuery}
-              onClearSearch={() => setSearchQuery('')}
-            />
-          )}
-
-        </main>
-      </div>
-
-      <AIOptimizeModal
-        isOpen={isAIOptimizeOpen}
-        onClose={() => setIsAIOptimizeOpen(false)}
-        trip={trip}
-        onApplyChanges={handleApplyAIOptimization}
-        isApplied={isAIApplied}
-        onUndo={onUndo}
-        canUndo={canUndo}
-      />
-      <AddActivityModal
-        isOpen={isAddActivityOpen}
-        onClose={() => setIsAddActivityOpen(false)}
-        dayIndex={currentDayIndex}
-        days={trip.days}
-        defaultLocation={trip.destinationFull}
-        onAdd={handleAddActivity}
-      />
-      <AlertsListModal
-        isOpen={isAlertsModalOpen}
-        onClose={() => setIsAlertsModalOpen(false)}
-        alerts={trip.alerts}
-        onDismissAlert={handleDismissAlert}
-        onTriggerAI={() => {
-          setIsAlertsModalOpen(false);
-          if (onOpenAIOptimize) {
-            onOpenAIOptimize();
-          } else {
-            setIsAIOptimizeOpen(true);
-          }
-        }}
-        onScanAlerts={onScanAlerts}
-        isScanningAlerts={isScanningAlerts}
-      />
-      <ActivityDetailModal
-        activity={selectedActivity}
-        onClose={() => setSelectedActivity(null)}
-        onUpdateStatus={handleUpdateActivityStatus}
-        onDeleteActivity={handleDeleteActivity}
-        onEditActivity={handleEditActivity}
-      />
-      </div>
-    </div>
-  );
-}
-
-function UserDashboard({
-  trip,
-  trips,
-  onSelectTrip,
-  currentTab,
-  currentDayIndex,
-  setCurrentDayIndex,
-  filterMode,
-  setFilterMode,
-  searchQuery,
-  setSearchQuery,
-  firebaseStatus,
-  authUser,
-  onLogout,
-  setCurrentTab,
-  setSelectedActivity,
-  selectedActivity,
-  handleUpdateActivityStatus,
-  handleDeleteActivity,
-  handleEditActivity,
-  handleAddDay,
-  handleDeleteDay,
-  handleUpdateDayNote,
-  handleToggleMemberAttendance,
-  handleUpdateMembers,
-  handleUpdateTrip,
-  isAIPlannerOpen,
-  setIsAIPlannerOpen,
-  isAIOptimizeOpen,
-  setIsAIOptimizeOpen,
-  isAddActivityOpen,
-  setIsAddActivityOpen,
-  isAlertsModalOpen,
-  setIsAlertsModalOpen,
-  handleDismissAlert,
-  isAIApplied,
-  handleApplyGeneratedTrip,
-  handleApplyAIOptimization,
-  handleAddActivity,
-  handleUpdateTripBudget,
-  canUndo,
-  onUndo,
-  onOpenEditTripModal,
-  onDeleteTrip,
-  onScanAlerts,
-  isScanningAlerts,
-  onOpenAIPlanner,
-  onOpenAIOptimize,
-}: {
-  trip: TripData;
-  trips: TripData[];
-  onSelectTrip: (trip: TripData) => void;
-  currentTab: string;
-  currentDayIndex: number;
-  setCurrentDayIndex: React.Dispatch<React.SetStateAction<number>>;
-  filterMode: 'timeline' | 'all';
-  setFilterMode: React.Dispatch<React.SetStateAction<'timeline' | 'all'>>;
-  searchQuery: string;
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-  firebaseStatus: 'loading' | 'connected' | 'error';
-  authUser: AuthUser;
-  onLogout: () => void;
-  setCurrentTab: React.Dispatch<React.SetStateAction<string>>;
-  setSelectedActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
-  selectedActivity: Activity | null;
-  handleUpdateActivityStatus: (id: string, newStatus: Activity['status']) => void;
-  handleDeleteActivity: (id: string) => void;
-  handleEditActivity: (activity: Activity) => void;
-  handleAddDay: () => Promise<void>;
-  handleDeleteDay: (dayIndex: number) => Promise<void>;
-  handleUpdateDayNote: (dayIndex: number, note: string) => Promise<void>;
-  handleToggleMemberAttendance: (id: string) => Promise<void>;
-  handleUpdateMembers: (members: TripMember[]) => Promise<void>;
-  handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
-  isAIPlannerOpen: boolean;
-  setIsAIPlannerOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAIOptimizeOpen: boolean;
-  setIsAIOptimizeOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAddActivityOpen: boolean;
-  setIsAddActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAlertsModalOpen: boolean;
-  setIsAlertsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  handleDismissAlert: (id: string) => void;
-  isAIApplied: boolean;
-  handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
-  handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string, recommendationData?: any) => void;
-  handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
-  handleUpdateTripBudget: (updated: TripData) => Promise<void>;
-  canUndo?: boolean;
-  onUndo?: () => void;
-  onOpenEditTripModal?: (tripTarget?: TripData) => void;
-  onDeleteTrip?: (tripId: string) => void;
-  onScanAlerts?: () => Promise<void>;
-  isScanningAlerts?: boolean;
-  onOpenAIPlanner?: () => void;
-  onOpenAIOptimize?: () => void;
-}) {
-  return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,#ecfeff,#f0fdf4_20%,#f8fafc_55%,#edf6ff_100%)] text-slate-800">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(14,165,233,0.12),transparent_35%,rgba(16,185,129,0.12))] pointer-events-none" />
-      <div className="relative flex h-full w-full min-w-0 overflow-hidden">
-        <Sidebar
-          currentTab={currentTab}
-          userName={authUser.name}
-          userRole={authUser.role}
-          onLogout={onLogout}
-          onSelectTab={(tab) => setCurrentTab(tab)}
-          alertCount={trip.alerts.length}
-          tripCount={trips.length}
-          onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-        />
-
-        <div className="flex-1 flex flex-col h-screen min-w-0 overflow-y-auto">
-          <Header
-            trip={trip}
-            role="user"
-            onOpenCreateTripModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-            onOpenEditTripModal={() => onOpenEditTripModal?.(trip)}
-            onDeleteCurrentTrip={() => onDeleteTrip?.(trip.id)}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onSelectActivity={(act, dayIdx) => {
-              setSelectedActivity(act);
-              setCurrentDayIndex(dayIdx);
-              setCurrentTab('schedule');
-            }}
-            onSelectLocation={() => setCurrentTab('map')}
-            onSelectMember={() => setCurrentTab('members')}
-            onToggleAttendance={handleToggleMemberAttendance}
-            firebaseStatus={firebaseStatus}
-          />
-
-          <main className="flex-1 p-4 sm:p-5 md:p-6 space-y-5 max-w-[1600px] w-full mx-auto min-w-0">
-            {/* Firestore direct sync indicator banner */}
-            <div
-              role="status"
-              className={`text-xs font-semibold flex items-center justify-between p-3 rounded-2xl border ${
-                firebaseStatus === 'connected'
-                  ? 'bg-teal-50/80 text-teal-800 border-teal-200'
-                  : firebaseStatus === 'loading'
-                    ? 'bg-amber-50 text-amber-800 border-amber-200'
-                    : 'bg-rose-50 text-rose-800 border-rose-200'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    firebaseStatus === 'connected'
-                      ? 'bg-emerald-500'
-                      : firebaseStatus === 'loading'
-                        ? 'bg-amber-500 animate-pulse'
-                        : 'bg-rose-500'
-                  }`}
-                />
-                <span>
-                  {firebaseStatus === 'loading' && 'Đang kết nối Firestore...'}
-                  {firebaseStatus === 'connected' && 'Firestore trực tiếp: Tự động lưu mọi thay đổi (thêm hoạt động, điểm danh, đổi trạng thái)'}
-                  {firebaseStatus === 'error' && 'Không thể kết nối Firestore, đang dùng bộ nhớ tạm thời.'}
-                </span>
-              </div>
-              <span className="text-[11px] font-bold text-slate-500">
-                Chuyến đi: {trip.code} • Ngày {trip.currentDay}/{trip.totalDays}
-              </span>
-            </div>
-
-            {searchQuery && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex items-center justify-between text-xs text-amber-900">
-                <span className="font-semibold">
-                  Đang lọc toàn bộ dữ liệu theo: &quot;{searchQuery}&quot;
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="font-bold text-amber-800 hover:underline cursor-pointer"
-                >
-                  Xóa tìm kiếm
-                </button>
-              </div>
-            )}
-
-            {currentTab === 'dashboard' && (
-              <>
-                {/* Hero Banner with Quick Actions */}
-                <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 p-6 text-white shadow-xl shadow-teal-950/20 border border-slate-800">
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-                    <div>
-                      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-teal-400">
-                        <span className="w-2 h-2 rounded-full bg-teal-400"></span>
-                        <span>Bảng Điều Phối Du Lịch Thông Minh</span>
-                      </div>
-                      <h2 className="mt-2 text-2xl sm:text-3xl font-black text-white">
-                        Chào {authUser.name}
-                      </h2>
-                      <p className="mt-1.5 max-w-2xl text-xs sm:text-sm text-slate-300">
-                        Hành trình <strong className="text-white">{trip.title}</strong> ({trip.originFull} ➔ {trip.destinationFull}) • {trip.totalDays} ngày ({trip.dates}). Hệ thống giám sát giao thông, thời tiết đèo dốc và tự động tối ưu hóa lịch trình.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                      <button
-                        onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                        className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition shadow-lg shadow-teal-500/25 flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <span>⚡ Tối ưu AI</span>
-                      </button>
-                      {canUndo && onUndo && (
-                        <button
-                          onClick={onUndo}
-                          className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-400/40 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                          title="Hoàn tác phương án tối ưu lịch trình vừa áp dụng"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Hoàn tác điều phối</span>
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setIsAddActivityOpen(true)}
-                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <span>+ Thêm hoạt động</span>
-                      </button>
-                      <button
-                        onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                        className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <span>✨ Tạo tour mới</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Metric Cards Row */}
-                <MetricCards
-                  trip={trip}
-                  onOpenMembers={() => setCurrentTab('members')}
-                  onOpenBudget={() => setCurrentTab('budget')}
-                  onOpenSchedule={() => setCurrentTab('schedule')}
-                />
-
-                {/* Operations Panel and Live Route Map */}
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start min-w-0">
-                  <div className="xl:col-span-8 min-w-0">
-                    <LiveRouteMap
-                      trip={trip}
-                      onSelectWaypoint={(wp) => console.log('Selected waypoint:', wp.name)}
-                      onUpdateTrip={handleUpdateTrip}
-                      searchQuery={searchQuery}
-                      onClearSearch={() => setSearchQuery('')}
-                    />
-                  </div>
-
-                  <div className="xl:col-span-4 min-w-0 space-y-4">
-                    <OperationsPanel
-                      trip={trip}
-                      onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
-                      onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                      isAIApplied={isAIApplied}
-                      onUndo={onUndo}
-                      canUndo={canUndo}
-                      onScanAlerts={onScanAlerts}
-                      isScanningAlerts={isScanningAlerts}
-                    />
-                  </div>
-                </div>
-
-                {/* Full-width Timeline Schedule */}
-                <div className="w-full min-w-0">
-                  <TimelineSchedule
-                    days={trip.days}
-                    currentDayIndex={currentDayIndex}
-                    onSelectDay={setCurrentDayIndex}
-                    onAddActivity={() => setIsAddActivityOpen(true)}
-                    onSelectActivity={(act) => setSelectedActivity(act)}
-                    filterMode={filterMode}
-                    onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                    searchQuery={searchQuery}
-                    onClearSearch={() => setSearchQuery('')}
-                    onUpdateStatus={handleUpdateActivityStatus}
-                    onDeleteActivity={handleDeleteActivity}
-                    onEditActivity={handleEditActivity}
-                    onAddDay={handleAddDay}
-                    onDeleteDay={handleDeleteDay}
-                    onUpdateDayNote={handleUpdateDayNote}
-                  />
-                </div>
-              </>
-            )}
-
-            {currentTab === 'trips' && (
-              <TripsListView
-                trips={trips}
-                currentTrip={trip}
-                onSelectTrip={onSelectTrip}
-                onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                onEditTrip={onOpenEditTripModal}
-                onDeleteTrip={onDeleteTrip}
-                readOnly={false}
-                searchQuery={searchQuery}
-                onClearSearch={() => setSearchQuery('')}
-              />
-            )}
-
-            {currentTab === 'schedule' && (
-              <div className="space-y-4 min-w-0 w-full">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                  <div>
-                    <h2 className="text-xl font-black text-slate-900">Chi tiết Lịch trình Chuyến đi</h2>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Hành trình {trip.title} • {trip.totalDays} ngày ({trip.confirmedActivities}/{trip.totalActivities} hoạt động đã xác nhận)
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                      className="px-3.5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                      title="Phân tích và tối ưu lại lịch trình thông minh với Gemini AI"
-                    >
-                      <span>⚡ Tối ưu AI</span>
-                    </button>
-                    <button
-                      onClick={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
-                    >
-                      {filterMode === 'timeline' ? 'Hiện toàn bộ ngày' : 'Chế độ timeline'}
-                    </button>
-                    <button
-                      onClick={() => setIsAddActivityOpen(true)}
-                      className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
-                    >
-                      + Thêm hoạt động vào Ngày {currentDayIndex}
-                    </button>
-                  </div>
-                </div>
-
-                <TimelineSchedule
-                  days={trip.days}
-                  currentDayIndex={currentDayIndex}
-                  onSelectDay={setCurrentDayIndex}
-                  onAddActivity={() => setIsAddActivityOpen(true)}
-                  onSelectActivity={setSelectedActivity}
-                  filterMode={filterMode}
-                  onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                  canAddActivity
-                  searchQuery={searchQuery}
-                  onClearSearch={() => setSearchQuery('')}
-                  onUpdateStatus={handleUpdateActivityStatus}
-                  onDeleteActivity={handleDeleteActivity}
-                  onEditActivity={handleEditActivity}
-                  onAddDay={handleAddDay}
-                  onDeleteDay={handleDeleteDay}
-                  onUpdateDayNote={handleUpdateDayNote}
-                />
-              </div>
-            )}
-
-            {currentTab === 'map' && (
-              <div className="w-full min-w-0">
-                <LiveRouteMap
-                  trip={trip}
-                  onUpdateTrip={handleUpdateTrip}
-                  searchQuery={searchQuery}
-                  onClearSearch={() => setSearchQuery('')}
-                />
-              </div>
-            )}
-
-            {currentTab === 'members' && (
-              <div className="w-full min-w-0">
-                <MembersView
-                  members={trip.members}
-                  onToggleStatus={handleToggleMemberAttendance}
-                  onUpdateMembers={handleUpdateMembers}
-                  searchQuery={searchQuery}
-                  onClearSearch={() => setSearchQuery('')}
-                />
-              </div>
-            )}
-
-            {currentTab === 'budget' && (
-              <div className="w-full min-w-0">
-                <BudgetView
-                  trip={trip}
-                  onUpdateTripBudget={handleUpdateTripBudget}
-                  searchQuery={searchQuery}
-                  onClearSearch={() => setSearchQuery('')}
-                />
-              </div>
-            )}
-          </main>
-        </div>
-
-        <AIPlannerModal
-          isOpen={isAIPlannerOpen}
-          onClose={() => setIsAIPlannerOpen(false)}
-          onApplyPlan={handleApplyGeneratedTrip}
-        />
-        <AIOptimizeModal
-          isOpen={isAIOptimizeOpen}
-          onClose={() => setIsAIOptimizeOpen(false)}
-          trip={trip}
-          onApplyChanges={handleApplyAIOptimization}
-          isApplied={isAIApplied}
-          onUndo={onUndo}
-          canUndo={canUndo}
-        />
-        <AddActivityModal
-          isOpen={isAddActivityOpen}
-          onClose={() => setIsAddActivityOpen(false)}
-          dayIndex={currentDayIndex}
-          days={trip.days}
-          defaultLocation={trip.destinationFull}
-          onAdd={handleAddActivity}
-        />
-        <AlertsListModal
-          isOpen={isAlertsModalOpen}
-          onClose={() => setIsAlertsModalOpen(false)}
-          alerts={trip.alerts}
-          onDismissAlert={handleDismissAlert}
-          onTriggerAI={() => {
-            setIsAlertsModalOpen(false);
-            if (onOpenAIOptimize) {
-              onOpenAIOptimize();
-            } else {
-              setIsAIOptimizeOpen(true);
-            }
-          }}
-          onScanAlerts={onScanAlerts}
-          isScanningAlerts={isScanningAlerts}
-        />
-        <ActivityDetailModal
-          activity={selectedActivity}
-          onClose={() => setSelectedActivity(null)}
-          onUpdateStatus={handleUpdateActivityStatus}
-          onDeleteActivity={handleDeleteActivity}
-          onEditActivity={handleEditActivity}
-          canEdit
-        />
-      </div>
-    </div>
   );
 }

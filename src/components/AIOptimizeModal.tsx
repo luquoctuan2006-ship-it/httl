@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Sparkles,
@@ -16,6 +16,9 @@ import {
 import { TripData } from '../types/travel';
 import { authenticatedFetch, safeJsonResponse } from '../api';
 import { computeOptimizationDiff, OptimizationDiff } from '../utils/applyOptimization';
+import { buildTripScheduleSignature } from '../utils/tripSyncHelpers';
+
+const MAX_POLL_DURATION_MS = 90_000;
 
 interface AIOptimizeModalProps {
   isOpen: boolean;
@@ -83,6 +86,17 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
   const [validation, setValidation] = useState<OptimizationValidation | null>(null);
   const [activeViewMode, setActiveViewMode] = useState<'cards' | 'diff'>('cards');
 
+  const pollTimeoutRef = useRef<number | null>(null);
+  const pollRunIdRef = useRef(0);
+  const tripScheduleSignature = buildTripScheduleSignature(trip);
+
+  const clearPolling = () => {
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  };
+
   // Nhận kết quả từ server. Server đã lọc đề xuất qua bộ kiểm tra khả thi nên client
   // KHÔNG tự bịa đề xuất dự phòng nữa: rỗng nghĩa là không có phương án nào an toàn để áp dụng.
   const applyResult = (data: any) => {
@@ -108,10 +122,18 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
     setIsLoading(false);
   };
 
-  const pollJob = async (jobId: string) => {
+  const pollJob = async (jobId: string, runId: number, startedAt: number) => {
+    if (pollRunIdRef.current !== runId) return;
+    if (Date.now() - startedAt > MAX_POLL_DURATION_MS) {
+      failAnalysis('Quá thời gian chờ phân tích AI (90 giây). Vui lòng thử phân tích lại.');
+      return;
+    }
+
     try {
       const response = await authenticatedFetch(`/api/gemini/jobs/${jobId}`);
+      if (pollRunIdRef.current !== runId) return;
       const job = await safeJsonResponse(response);
+      if (pollRunIdRef.current !== runId) return;
       if (!response.ok || !job.success) {
         throw new Error(job.error || 'Không thể kiểm tra tiến trình AI');
       }
@@ -124,13 +146,20 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
         failAnalysis(job.job.error || 'Phân tích lịch trình thất bại. Vui lòng thử lại.');
         return;
       }
-      window.setTimeout(() => void pollJob(jobId), 1500);
+      clearPolling();
+      pollTimeoutRef.current = window.setTimeout(() => {
+        void pollJob(jobId, runId, startedAt);
+      }, 1500);
     } catch (error) {
+      if (pollRunIdRef.current !== runId) return;
       failAnalysis(error instanceof Error ? error.message : 'Không thể kiểm tra tiến trình phân tích.');
     }
   };
 
   const handleAnalyze = async () => {
+    clearPolling();
+    const runId = ++pollRunIdRef.current;
+    const startedAt = Date.now();
     setIsLoading(true);
     setErrorMsg(null);
     setValidation(null);
@@ -176,27 +205,56 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
           userGoal: 'Ưu tiên an toàn, đúng lịch trình, tránh mưa đèo dốc và giảm chi phí phát sinh.',
         }),
       });
+      if (pollRunIdRef.current !== runId) return;
       const result = await safeJsonResponse(response);
+      if (pollRunIdRef.current !== runId) return;
       if (result.success && result.data) {
         applyResult(result.data);
         return;
       }
       if (result.jobId) {
-        await pollJob(result.jobId);
+        await pollJob(result.jobId, runId, startedAt);
         return;
       }
       failAnalysis(result.error || 'Không nhận được phương án từ hệ thống.');
     } catch (error) {
+      if (pollRunIdRef.current !== runId) return;
       failAnalysis(error instanceof Error ? error.message : 'Không thể kết nối để phân tích lịch trình.');
     }
   };
 
-  // Tự động phân tích khi mở modal nếu chưa có đề xuất
-  React.useEffect(() => {
+  // Xóa kết quả cũ và hủy polling khi đổi chuyến đi hoặc thay đổi lịch trình/cảnh báo
+  useEffect(() => {
+    clearPolling();
+    pollRunIdRef.current += 1;
+    setRecommendations([]);
+    setSelectedRecIndex(0);
+    setValidation(null);
+    setErrorMsg(null);
+    setJobStatus(null);
+    setActiveViewMode('cards');
+    setIsLoading(false);
+  }, [tripScheduleSignature]);
+
+  // Hủy polling khi đóng modal hoặc unmount
+  useEffect(() => {
+    if (!isOpen) {
+      clearPolling();
+      pollRunIdRef.current += 1;
+      setIsLoading(false);
+    }
+    return () => {
+      clearPolling();
+      pollRunIdRef.current += 1;
+    };
+  }, [isOpen]);
+
+  // Tự động phân tích khi mở modal nếu chưa có đề xuất cho lịch trình hiện tại
+  useEffect(() => {
     if (isOpen && recommendations.length === 0 && !isLoading) {
       void handleAnalyze();
     }
-  }, [isOpen]);
+  }, [isOpen, tripScheduleSignature]);
 
   const handleApply = () => {
     const recommendation = recommendations[selectedRecIndex] || recommendations[0];
@@ -238,7 +296,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                     ? 'bg-amber-950/70 text-amber-300 border-amber-700/60'
                     : 'bg-teal-900/60 text-teal-300 border-teal-700/60'
                 }`}>
-                  {isFallback ? '⚡ Dự phòng quy tắc' : `${trip.aiConfidence || '94%'} Tin cậy`}
+                  {isFallback ? '⚡ Dự phòng quy tắc' : trip.aiConfidence ? `${trip.aiConfidence} Tin cậy` : 'Gemini AI'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Clock, MapPin, Tag, FileText, Plus, DollarSign } from 'lucide-react';
 import { Activity } from '../types/travel';
+import { validateActivityTimeRange } from '../utils/tripSyncHelpers';
 
 interface AddActivityModalProps {
   isOpen: boolean;
@@ -28,9 +29,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [status, setStatus] = useState<Activity['status']>('Đã xác nhận');
   const [details, setDetails] = useState('');
   const [cost, setCost] = useState<number>(0);
+  const [timeError, setTimeError] = useState<string | null>(null);
 
   React.useEffect(() => {
     setSelectedDay(dayIndex);
+    setTimeError(null);
   }, [dayIndex, isOpen]);
 
   React.useEffect(() => {
@@ -45,6 +48,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
 
+    const rangeError = validateActivityTimeRange(timeStart, timeEnd);
+    if (rangeError) {
+      setTimeError(rangeError);
+      return;
+    }
+    setTimeError(null);
+
     const newActivity: Activity = {
       id: `act-custom-${Date.now()}`,
       title: title.trim(),
@@ -58,6 +68,9 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     };
 
     onAdd(newActivity, selectedDay);
+    setTitle('');
+    setDetails('');
+    setCost(0);
     onClose();
   };
 
@@ -111,9 +124,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <span>Giờ bắt đầu</span>
               </label>
               <input
-                type="text"
+                type="time"
+                required
                 value={timeStart}
-                onChange={(e) => setTimeStart(e.target.value)}
+                onChange={(e) => {
+                  setTimeStart(e.target.value);
+                  setTimeError(null);
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none font-mono"
               />
             </div>
@@ -124,13 +141,23 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <span>Giờ kết thúc</span>
               </label>
               <input
-                type="text"
+                type="time"
+                required
                 value={timeEnd}
-                onChange={(e) => setTimeEnd(e.target.value)}
+                onChange={(e) => {
+                  setTimeEnd(e.target.value);
+                  setTimeError(null);
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none font-mono"
               />
             </div>
           </div>
+
+          {timeError && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+              {timeError}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">

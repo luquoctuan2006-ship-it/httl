@@ -6,6 +6,7 @@
  * mà không cần server hay API key.
  */
 
+import { Activity, DaySchedule, OperationalAlert, TripData, Waypoint } from '../types/travel';
 import {
   buildRulesPromptSection,
   effectiveBufferMinutes,
@@ -22,11 +23,11 @@ export type OptimizeSource = 'gemini' | 'fallback';
 
 export interface OptimizationDeps {
   /** Gọi AI và trả về JSON đã parse. `dedupeKey` null = không gộp request. */
-  ask: (prompt: string, dedupeKey: string | null) => Promise<any>;
+  ask: (prompt: string, dedupeKey: string | null) => Promise<unknown>;
   /** Bộ dự phòng khi AI lỗi; kết quả vẫn bị kiểm tra như đề xuất AI. */
-  fallback: (payload: any) => any;
+  fallback: (payload: unknown) => unknown;
   /** Quy tắc dùng khi payload không mang theo `rules`. */
-  defaultRules?: any;
+  defaultRules?: unknown;
   warn?: (message: string, error?: unknown) => void;
 }
 
@@ -46,7 +47,7 @@ export function pickTripForOptimization(source: any) {
       hasWarning: day?.hasWarning,
       pendingCount: day?.pendingCount,
       // Gửi ĐẦY ĐỦ hoạt động của ngày (trước đây bị cắt còn 5) để AI và bộ kiểm tra thấy cả ngày.
-      activities: (Array.isArray(day?.activities) ? day.activities : []).slice(0, 40).map((a: any) => ({
+      activities: (Array.isArray(day?.activities) ? (day.activities as Activity[]) : []).slice(0, 40).map((a) => ({
         id: a?.id,
         timeStart: a?.timeStart,
         timeEnd: a?.timeEnd,
@@ -62,11 +63,11 @@ export function pickTripForOptimization(source: any) {
   };
 }
 
-export function buildOptimizePrompt(payload: any, rules: ScheduleRules): string {
+export function buildOptimizePrompt(payload: Record<string, unknown>, rules: ScheduleRules): string {
   return `Bạn là chuyên gia điều phối tour du lịch cao cấp tại Việt Nam. Dựa trên chuyến đi thật dưới đây và các cảnh báo vận hành, hãy đề xuất phương án điều phối lại lịch trình. Chỉ trả về JSON hợp lệ.
 Chuyến đi (đầy đủ hoạt động từng ngày, kèm tọa độ khi có): ${JSON.stringify(payload.currentTrip)}
 Cảnh báo vận hành: ${JSON.stringify(payload.alertDetails || [])}
-Mục tiêu người dùng: ${payload.userGoal || 'An toàn, đúng lịch trình, tránh mưa đèo dốc, giảm chi phí'}
+Mục tiêu người dùng: ${typeof payload.userGoal === 'string' ? payload.userGoal : 'An toàn, đúng lịch trình, tránh mưa đèo dốc, giảm chi phí'}
 
 ${buildRulesPromptSection(rules)}
 
@@ -115,15 +116,15 @@ function describeValidation(
   };
 }
 
-export async function runOptimization(payload: any, deps: OptimizationDeps) {
+export async function runOptimization(payload: Record<string, unknown>, deps: OptimizationDeps) {
   const warn = deps.warn ?? (() => undefined);
   const rules = parseRules(payload?.rules ?? deps.defaultRules);
-  const trip = payload?.currentTrip ?? {};
+  const trip = (payload?.currentTrip ?? {}) as Partial<TripData>;
   const tripSource = String(payload?.tripSource ?? 'client');
   const prompt = buildOptimizePrompt(payload, rules);
 
   let source: OptimizeSource = 'gemini';
-  let raw: any;
+  let raw: unknown;
   try {
     raw = await deps.ask(prompt, `optimize-schedule:${JSON.stringify(payload)}`);
   } catch (error) {
@@ -156,7 +157,9 @@ export async function runOptimization(payload: any, deps: OptimizationDeps) {
   return {
     recommendations: outcome.accepted,
     dispatcherNotice:
-      outcome.accepted.length > 0 && typeof raw?.dispatcherNotice === 'string' ? raw.dispatcherNotice : undefined,
+      outcome.accepted.length > 0 && typeof (raw as any)?.dispatcherNotice === 'string'
+        ? (raw as any).dispatcherNotice
+        : undefined,
     validation: describeValidation(source, tripSource, outcome, repaired),
   };
 }
@@ -172,9 +175,9 @@ export async function runOptimization(payload: any, deps: OptimizationDeps) {
  */
 export function buildRuleBasedScheduleOptimization(payload: any): any {
   const trip = payload?.currentTrip ?? {};
-  const alertDetails: any[] = Array.isArray(payload?.alertDetails) ? payload.alertDetails : [];
+  const alertDetails: OperationalAlert[] = Array.isArray(payload?.alertDetails) ? payload.alertDetails : [];
   const rules: ScheduleRules = parseRules(payload?.rules ?? {});
-  const days: any[] = Array.isArray(trip?.days) ? trip.days : [];
+  const days: DaySchedule[] = Array.isArray(trip?.days) ? trip.days : [];
 
   if (days.length === 0) {
     return {
@@ -186,11 +189,11 @@ export function buildRuleBasedScheduleOptimization(payload: any): any {
   // 1. Tìm ngày mục tiêu cần tối ưu: ưu tiên ngày có cảnh báo hoặc pendingCount > 0
   const targetDay =
     days.find((d) => d.hasWarning || (typeof d.pendingCount === 'number' && d.pendingCount > 0)) ||
-    days.find((d) => Array.isArray(d.activities) && d.activities.some((a: any) => a.status === 'Cần xử lý' || a.status === 'Chờ duyệt')) ||
+    days.find((d) => Array.isArray(d.activities) && d.activities.some((a: Activity) => a.status === 'Cần xử lý' || a.status === 'Chờ duyệt')) ||
     days[0];
 
   const targetDayIndex = Number(targetDay?.dayIndex) || 1;
-  const rawActivities: any[] = Array.isArray(targetDay?.activities) ? targetDay.activities : [];
+  const rawActivities: Activity[] = Array.isArray(targetDay?.activities) ? targetDay.activities : [];
 
   if (rawActivities.length === 0) {
     return {
@@ -200,7 +203,27 @@ export function buildRuleBasedScheduleOptimization(payload: any): any {
   }
 
   const buffer = effectiveBufferMinutes(rules);
-  const recommendations: any[] = [];
+
+  interface RuleRecommendation {
+    id: string;
+    actionTitle: string;
+    reason: string;
+    timeSaved: string;
+    costSaved: string;
+    confidence: string;
+    targetDayIndex: number;
+    scheduleChanges: Array<{
+      activityId: string;
+      activityTitle: string;
+      oldTime: string;
+      newTime: string;
+      action?: string;
+      status?: string;
+    }>;
+    resolvedAlertIds?: string[];
+  }
+
+  const recommendations: RuleRecommendation[] = [];
 
   interface ParsedAct {
     id: string;
@@ -345,7 +368,7 @@ export function buildRuleBasedScheduleOptimization(payload: any): any {
       const earlierStart = 11 * 60 + 30 - noonAct.duration;
       const minStart = prev ? prev.end + buffer : rules.dayStartMinutes;
 
-      if (earlierStart >= minStart && !recommendations.some((r) => r.scheduleChanges.some((c: any) => c.activityId === noonAct.id))) {
+      if (earlierStart >= minStart && !recommendations.some((r) => r.scheduleChanges.some((c: { activityId?: string }) => c.activityId === noonAct.id))) {
         recommendations.push({
           id: `rec-rule-noon-sun-${noonAct.id}`,
           actionTitle: `Tránh nắng gắt buổi trưa: Dời sớm hoạt động "${noonAct.title}"`,

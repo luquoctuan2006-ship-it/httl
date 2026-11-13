@@ -22,12 +22,26 @@ export interface ConflictChecks {
   hotelCheckinConflict: boolean;
 }
 
+export const ALLOWED_CONFLICT_CHECK_KEYS = [
+  'overlapTime',
+  'openingHoursMismatch',
+  'impossibleTransit',
+  'hotelCheckinConflict',
+] as const;
+
 export interface OptimizationPriorities {
   costSaving: boolean;
   transitTimeMinimization: boolean;
   avoidHotNoonSun: boolean;
   elderlyPacing: boolean;
 }
+
+export const ALLOWED_PRIORITY_KEYS = [
+  'costSaving',
+  'transitTimeMinimization',
+  'avoidHotNoonSun',
+  'elderlyPacing',
+] as const;
 
 export interface ScheduleRules {
   bufferMinutes: number;

@@ -18,11 +18,14 @@ import {
   Gauge,
   Phone,
   Clock,
-  Car
+  Car,
+  Radio,
+  AlertCircle
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Waypoint, TripData } from '../types/travel';
+import { authenticatedFetch, safeJsonResponse } from '../api';
 
 interface LiveRouteMapProps {
   trip: TripData;
@@ -75,15 +78,61 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   const [isRefreshingWeather, setIsRefreshingWeather] = useState(false);
   const [weatherNotice, setWeatherNotice] = useState<string | null>(null);
   const [isEditTelematicsOpen, setIsEditTelematicsOpen] = useState(false);
+  const [isGpsTracking, setIsGpsTracking] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const gpsWatchIdRef = useRef<number | null>(null);
+  const latestTripRef = useRef<TripData>(trip);
+  latestTripRef.current = trip;
+
+  interface FleetVehicleOption {
+    id: string;
+    type: string;
+    capacity: string;
+    status: string;
+  }
+  const [fleetVehicles, setFleetVehicles] = useState<FleetVehicleOption[]>([]);
 
   // Telematics Form State
   const [telDriver, setTelDriver] = useState(trip.telematics.driver || '');
   const [telDriverPhone, setTelDriverPhone] = useState(trip.telematics.driverPhone || '');
+  const [telDriverMemberId, setTelDriverMemberId] = useState(trip.telematics.driverMemberId || '');
   const [telVehicleType, setTelVehicleType] = useState(trip.telematics.vehicleType || '');
+  const [telVehicleId, setTelVehicleId] = useState(trip.telematics.vehicleId || '');
   const [telPlate, setTelPlate] = useState(trip.telematics.licensePlate || '');
   const [telFrom, setTelFrom] = useState(trip.telematics.from || '');
   const [telTo, setTelTo] = useState(trip.telematics.to || '');
   const [telPassengers, setTelPassengers] = useState<number>(trip.telematics.passengerCount || 1);
+
+  // Dọn GPS watcher khi unmount
+  useEffect(() => {
+    return () => {
+      if (gpsWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      }
+    };
+  }, []);
+
+  // Tải danh sách xe từ Admin Catalog khi mở modal chỉnh sửa xe
+  useEffect(() => {
+    if (!isEditTelematicsOpen) return;
+    let cancelled = false;
+    const loadVehicles = async () => {
+      try {
+        const res = await authenticatedFetch('/api/vehicles');
+        if (!res.ok) return;
+        const data = await safeJsonResponse(res);
+        if (!cancelled && Array.isArray(data?.vehicles)) {
+          setFleetVehicles(data.vehicles);
+        }
+      } catch {
+        // Bỏ qua khi offline
+      }
+    };
+    void loadVehicles();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditTelematicsOpen]);
 
   // Waypoints lấy trực tiếp từ chuyến đi hiện tại (không còn viết cứng)
   const waypoints = React.useMemo(
@@ -94,14 +143,27 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     [trip.waypoints],
   );
 
-  // Vị trí xe: điểm đang diễn ra -> điểm hoàn tất gần nhất -> điểm đầu tiên
+  // Ưu tiên tọa độ GPS thực tế nếu có; nếu chưa bật GPS thì fallback theo điểm dừng hiện tại
+  const hasRealGps =
+    typeof trip.telematics.currentLat === 'number' &&
+    typeof trip.telematics.currentLng === 'number' &&
+    Number.isFinite(trip.telematics.currentLat) &&
+    Number.isFinite(trip.telematics.currentLng);
+
   const busPos = React.useMemo(() => {
+    if (hasRealGps) {
+      return {
+        lat: trip.telematics.currentLat as number,
+        lng: trip.telematics.currentLng as number,
+        isLiveGps: true,
+      };
+    }
     const wp =
       waypoints.find((w) => w.status === 'current') ||
       [...waypoints].reverse().find((w) => w.status === 'completed') ||
       waypoints[0];
-    return wp ? { lat: wp.lat, lng: wp.lng } : null;
-  }, [waypoints]);
+    return wp ? { lat: wp.lat, lng: wp.lng, isLiveGps: false } : null;
+  }, [hasRealGps, trip.telematics.currentLat, trip.telematics.currentLng, waypoints]);
 
   // Initialize or update Leaflet Map
   useEffect(() => {
@@ -254,11 +316,15 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     busMarkerRef.current = null;
     if (busPos) {
       const busMarker = L.marker([busPos.lat, busPos.lng], { icon: busIcon }).addTo(map);
+      const sourceLabel = busPos.isLiveGps
+        ? `GPS trực tiếp (${trip.telematics.gpsUpdatedAt || 'Vừa cập nhật'})${typeof trip.telematics.speedKmh === 'number' ? ` • ${trip.telematics.speedKmh} km/h` : ''}`
+        : 'Ước tính theo điểm dừng (Chưa bật GPS thiết bị)';
       busMarker.bindPopup(`
         <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
           <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(trip.telematics.vehicleType)}${trip.telematics.licensePlate ? ` (${escapeHtml(trip.telematics.licensePlate)})` : ''}</strong><br/>
           <span style="color: #0D9488; font-weight: 700;">Tài xế: ${escapeHtml(trip.telematics.driver)}</span><br/>
-          <span style="color: #64748B;">Chặng: ${escapeHtml(trip.telematics.from)} → ${escapeHtml(trip.telematics.to)}</span>
+          <span style="color: #64748B;">Chặng: ${escapeHtml(trip.telematics.from)} → ${escapeHtml(trip.telematics.to)}</span><br/>
+          <span style="color: ${busPos.isLiveGps ? '#059669' : '#D97706'}; font-size: 11px; font-weight: 700;">${escapeHtml(sourceLabel)}</span>
         </div>
       `);
       busMarkerRef.current = busMarker;
@@ -351,12 +417,86 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     busMarkerRef.current?.openPopup();
   };
 
+  // Bật / Tắt chia sẻ tọa độ GPS thực tế từ thiết bị (trình duyệt)
+  const handleToggleGpsTracking = () => {
+    setGpsError(null);
+    if (isGpsTracking) {
+      if (gpsWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+        gpsWatchIdRef.current = null;
+      }
+      setIsGpsTracking(false);
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsError('Trình duyệt hoặc thiết bị này không hỗ trợ định vị GPS.');
+      return;
+    }
+
+    setIsGpsTracking(true);
+    let lastCommittedAt = 0;
+
+    gpsWatchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const now = Date.now();
+        if (now - lastCommittedAt < 5000 && lastCommittedAt !== 0) return;
+        lastCommittedAt = now;
+
+        const currentLat = Number(position.coords.latitude.toFixed(6));
+        const currentLng = Number(position.coords.longitude.toFixed(6));
+        const speedKmh =
+          typeof position.coords.speed === 'number' && Number.isFinite(position.coords.speed) && position.coords.speed >= 0
+            ? Math.round(position.coords.speed * 3.6)
+            : undefined;
+        const gpsUpdatedAt = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        const latestTrip = latestTripRef.current;
+        const updatedTrip: TripData = {
+          ...latestTrip,
+          telematics: {
+            ...latestTrip.telematics,
+            currentLat,
+            currentLng,
+            gpsUpdatedAt,
+            gpsSource: 'gps',
+            ...(speedKmh !== undefined ? { speedKmh } : {}),
+          },
+        };
+
+        mapInstanceRef.current?.flyTo([currentLat, currentLng], 13, { duration: 0.8 });
+        onUpdateTrip?.(updatedTrip, `Đã đồng bộ tọa độ GPS thực tế (${currentLat}, ${currentLng})`);
+      },
+      (err) => {
+        setIsGpsTracking(false);
+        if (gpsWatchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+          gpsWatchIdRef.current = null;
+        }
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? 'Bạn đã từ chối quyền truy cập vị trí GPS trên trình duyệt.'
+            : err.code === err.POSITION_UNAVAILABLE
+              ? 'Thiết bị không xác định được tín hiệu GPS hiện tại.'
+              : 'Quá thời gian chờ tín hiệu GPS.';
+        setGpsError(msg);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10_000,
+        timeout: 15_000,
+      },
+    );
+  };
+
   // Mở form sửa thông tin xe với dữ liệu mới nhất của chuyến đi hiện tại
   const openTelematicsEditor = () => {
     const t = trip.telematics;
     setTelDriver(t.driver || '');
     setTelDriverPhone(t.driverPhone || '');
+    setTelDriverMemberId(t.driverMemberId || '');
     setTelVehicleType(t.vehicleType || '');
+    setTelVehicleId(t.vehicleId || '');
     setTelPlate(t.licensePlate || '');
     setTelFrom(t.from || '');
     setTelTo(t.to || '');
@@ -367,11 +507,11 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   // Save Telematics
   const handleSaveTelematics = (e: React.FormEvent) => {
     e.preventDefault();
-    // Nếu đổi tên tài xế khác với tài xế đã liên kết thì gỡ liên kết để không bị đồng bộ ghi đè lại
-    const { driverMemberId, ...baseTelematics } = trip.telematics;
+    const { driverMemberId: _oldDriverMemberId, vehicleId: _oldVehicleId, ...baseTelematics } = trip.telematics;
     const updatedTelematics = {
       ...baseTelematics,
-      ...(driverMemberId && telDriver.trim() === trip.telematics.driver ? { driverMemberId } : {}),
+      ...(telDriverMemberId ? { driverMemberId: telDriverMemberId } : {}),
+      ...(telVehicleId ? { vehicleId: telVehicleId } : {}),
       driver: telDriver.trim(),
       driverPhone: telDriverPhone.trim(),
       vehicleType: telVehicleType.trim(),
@@ -383,6 +523,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
 
     const updatedTrip: TripData = {
       ...trip,
+      vehicle: telVehicleType.trim() || trip.vehicle,
       telematics: updatedTelematics,
     };
 
@@ -413,8 +554,22 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
           </div>
         </div>
 
-        {/* Right Map Controls: Layer Selector & Weather Live Button */}
+        {/* Right Map Controls: GPS Live, Layer Selector & Weather Live Button */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleToggleGpsTracking}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-2xs ${
+              isGpsTracking
+                ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700'
+                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+            }`}
+            title="Chia sẻ vị trí GPS thực tế từ thiết bị lên bản đồ chuyến đi"
+          >
+            <Radio className={`w-3.5 h-3.5 ${isGpsTracking ? 'animate-pulse' : 'text-teal-600'}`} />
+            <span>{isGpsTracking ? 'Đang phát GPS' : 'Bật GPS thiết bị'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleFetchLiveWeather}
@@ -470,11 +625,20 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         </div>
       </div>
 
-      {/* Weather toast notification if updated */}
+      {/* Weather or GPS toast notification */}
       {weatherNotice && (
         <div className="bg-teal-600 text-white text-xs px-4 py-2 flex items-center justify-between z-20">
           <span>{weatherNotice}</span>
           <button type="button" onClick={() => setWeatherNotice(null)} className="font-bold">✕</button>
+        </div>
+      )}
+      {gpsError && (
+        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 text-xs px-4 py-2 flex items-center justify-between z-20">
+          <span className="flex items-center gap-1.5 font-semibold">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            {gpsError}
+          </span>
+          <button type="button" onClick={() => setGpsError(null)} className="font-bold">✕</button>
         </div>
       )}
 
@@ -537,6 +701,19 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
               <div className="text-[11px] text-slate-300 mt-0.5">
                 Tài xế {trip.telematics.driver}{trip.telematics.driverPhone ? ` (${trip.telematics.driverPhone})` : ''} • {trip.telematics.passengerCount} khách
               </div>
+              <div className="text-[10px] mt-1 flex items-center gap-1.5">
+                <span
+                  className={`px-1.5 py-0.5 rounded font-bold ${
+                    hasRealGps
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  }`}
+                >
+                  {hasRealGps
+                    ? `GPS thực tế (${trip.telematics.gpsUpdatedAt || 'Live'})${typeof trip.telematics.speedKmh === 'number' ? ` • ${trip.telematics.speedKmh} km/h` : ''}`
+                    : 'Vị trí ước tính theo điểm dừng (Chưa bật GPS)'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -589,6 +766,59 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
             </div>
 
             <form onSubmit={handleSaveTelematics} className="p-6 space-y-3.5 text-xs">
+              {fleetVehicles.length > 0 && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Chọn nhanh từ đội xe hệ thống</label>
+                  <select
+                    value={telVehicleId}
+                    onChange={(e) => {
+                      const pickedId = e.target.value;
+                      setTelVehicleId(pickedId);
+                      const picked = fleetVehicles.find((v) => v.id === pickedId);
+                      if (picked) {
+                        setTelVehicleType(picked.type);
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 outline-none"
+                  >
+                    <option value="">— Nhập thủ công hoặc chọn xe đội —</option>
+                    {fleetVehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.type} ({v.capacity}) — {v.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {trip.members.some((m) => m.role === 'Tài xế') && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Chọn tài xế từ thành viên đoàn</label>
+                  <select
+                    value={telDriverMemberId}
+                    onChange={(e) => {
+                      const memberId = e.target.value;
+                      setTelDriverMemberId(memberId);
+                      const m = trip.members.find((item) => item.id === memberId);
+                      if (m) {
+                        setTelDriver(m.name);
+                        setTelDriverPhone(m.phone || '');
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 outline-none"
+                  >
+                    <option value="">— Chọn tài xế hoặc nhập tay bên dưới —</option>
+                    {trip.members
+                      .filter((m) => m.role === 'Tài xế')
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}{m.phone ? ` (${m.phone})` : ''}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Tài xế phụ trách *</label>
@@ -596,7 +826,10 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                     type="text"
                     required
                     value={telDriver}
-                    onChange={(e) => setTelDriver(e.target.value)}
+                    onChange={(e) => {
+                      setTelDriver(e.target.value);
+                      setTelDriverMemberId('');
+                    }}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
                   />
                 </div>
@@ -618,7 +851,10 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
                   <input
                     type="text"
                     value={telVehicleType}
-                    onChange={(e) => setTelVehicleType(e.target.value)}
+                    onChange={(e) => {
+                      setTelVehicleType(e.target.value);
+                      setTelVehicleId('');
+                    }}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
                   />
                 </div>

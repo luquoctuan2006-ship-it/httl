@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Clock, MapPin, Tag, Edit3, Trash2, CheckCircle2, DollarSign, FileText } from 'lucide-react';
 import { Activity } from '../types/travel';
+import { validateActivityTimeRange } from '../utils/tripSyncHelpers';
 
 interface ActivityDetailModalProps {
   activity: Activity | null;
@@ -27,6 +28,8 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   const [cost, setCost] = useState(activity?.cost || 0);
   const [type, setType] = useState<Activity['type']>(activity?.type || 'sightseeing');
   const [details, setDetails] = useState(activity?.details || '');
+  const [timeError, setTimeError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   React.useEffect(() => {
     if (activity) {
@@ -38,6 +41,8 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
       setType(activity.type);
       setDetails(activity.details);
       setIsEditing(false);
+      setTimeError(null);
+      setConfirmingDelete(false);
     }
   }, [activity]);
 
@@ -46,6 +51,12 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !onEditActivity) return;
+    const rangeErr = validateActivityTimeRange(timeStart, timeEnd);
+    if (rangeErr) {
+      setTimeError(rangeErr);
+      return;
+    }
+    setTimeError(null);
     const updated: Activity = {
       ...activity,
       title: title.trim(),
@@ -63,10 +74,9 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
 
   const handleDelete = () => {
     if (!onDeleteActivity) return;
-    if (window.confirm(`Bạn có chắc muốn xóa hoạt động "${activity.title}" khỏi lịch trình?`)) {
-      onDeleteActivity(activity.id);
-      onClose();
-    }
+    onDeleteActivity(activity.id);
+    setConfirmingDelete(false);
+    onClose();
   };
 
   return (
@@ -114,9 +124,13 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   <Clock className="w-3 h-3 text-teal-600" /> Giờ bắt đầu
                 </label>
                 <input
-                  type="text"
+                  type="time"
+                  required
                   value={timeStart}
-                  onChange={(e) => setTimeStart(e.target.value)}
+                  onChange={(e) => {
+                    setTimeStart(e.target.value);
+                    setTimeError(null);
+                  }}
                   className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono outline-none"
                 />
               </div>
@@ -125,13 +139,23 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   <Clock className="w-3 h-3 text-teal-600" /> Giờ kết thúc
                 </label>
                 <input
-                  type="text"
+                  type="time"
+                  required
                   value={timeEnd}
-                  onChange={(e) => setTimeEnd(e.target.value)}
+                  onChange={(e) => {
+                    setTimeEnd(e.target.value);
+                    setTimeError(null);
+                  }}
                   className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono outline-none"
                 />
               </div>
             </div>
+
+            {timeError && (
+              <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                {timeError}
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
@@ -278,16 +302,36 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
               </div>
             )}
 
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
               {canEdit && onDeleteActivity ? (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Xóa hoạt động</span>
-                </button>
+                confirmingDelete ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-rose-700">Xóa hoạt động này?</span>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      className="px-2.5 py-1 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition"
+                    >
+                      Xác nhận xóa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(false)}
+                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa hoạt động</span>
+                  </button>
+                )
               ) : <span />}
 
               <button

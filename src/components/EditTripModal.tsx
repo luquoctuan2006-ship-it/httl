@@ -6,6 +6,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, Calendar, DollarSign, MapPin, Truck, CheckCircle2 } from 'lucide-react';
 import { TripData } from '../types/travel';
+import {
+  formatTripDatesRange,
+  parseTripDatesRange,
+  validateTripDateRange,
+} from '../utils/tripSyncHelpers';
 
 interface EditTripModalProps {
   isOpen: boolean;
@@ -20,32 +25,48 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
   trip,
   onSave,
 }) => {
+  const initialRange = parseTripDatesRange(trip.dates, trip.totalDays);
   const [title, setTitle] = useState(trip.title);
   const [code, setCode] = useState(trip.code);
-  const [dates, setDates] = useState(trip.dates);
+  const [startDate, setStartDate] = useState(initialRange.startDate);
+  const [endDate, setEndDate] = useState(initialRange.endDate);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [status, setStatus] = useState(trip.status);
   const [originFull, setOriginFull] = useState(trip.originFull);
   const [destinationFull, setDestinationFull] = useState(trip.destinationFull);
-  const [budgetMillions, setBudgetMillions] = useState(
-    Math.round((trip.budgetTotal || 0) / 1_000_000)
+  const [budgetTotalInput, setBudgetTotalInput] = useState(
+    String(Math.round(trip.budgetTotal ?? 0))
   );
-  const [vehicle, setVehicle] = useState(trip.vehicle || 'Xe 29 chỗ');
-  const [driver, setDriver] = useState(trip.telematics?.driver || 'Trần Bình');
-  const [driverPhone, setDriverPhone] = useState(trip.telematics?.driverPhone || '0905 123 456');
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [vehicle, setVehicle] = useState(trip.vehicle || '');
+  const [driver, setDriver] = useState(
+    trip.telematics?.driver && trip.telematics.driver !== 'Chưa phân công'
+      ? trip.telematics.driver
+      : '',
+  );
+  const [driverPhone, setDriverPhone] = useState(trip.telematics?.driverPhone || '');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
+      const range = parseTripDatesRange(trip.dates, trip.totalDays);
       setTitle(trip.title);
       setCode(trip.code);
-      setDates(trip.dates);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setDateError(null);
       setStatus(trip.status);
       setOriginFull(trip.originFull);
       setDestinationFull(trip.destinationFull);
-      setBudgetMillions(Math.round((trip.budgetTotal || 0) / 1_000_000));
-      setVehicle(trip.vehicle || 'Xe 29 chỗ');
-      setDriver(trip.telematics?.driver || 'Trần Bình');
-      setDriverPhone(trip.telematics?.driverPhone || '0905 123 456');
+      setBudgetTotalInput(String(Math.round(trip.budgetTotal ?? 0)));
+      setBudgetError(null);
+      setVehicle(trip.vehicle || '');
+      setDriver(
+        trip.telematics?.driver && trip.telematics.driver !== 'Chưa phân công'
+          ? trip.telematics.driver
+          : '',
+      );
+      setDriverPhone(trip.telematics?.driverPhone || '');
     }
   }, [isOpen, trip]);
 
@@ -53,28 +74,46 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const rangeErr = validateTripDateRange(startDate, endDate);
+    if (rangeErr) {
+      setDateError(rangeErr);
+      return;
+    }
+
+    const trimmedBudget = budgetTotalInput.trim();
+    const parsedBudget = trimmedBudget === '' ? NaN : Number(trimmedBudget);
+    if (!Number.isFinite(parsedBudget) || parsedBudget < 0) {
+      setBudgetError('Vui lòng nhập ngân sách hợp lệ (số VNĐ không âm).');
+      return;
+    }
+
+    setDateError(null);
+    setBudgetError(null);
     setIsSaving(true);
     try {
-      const budgetTotal = Math.max(1, budgetMillions) * 1_000_000;
+      const budgetTotal = Math.round(parsedBudget);
       const budgetUsed = trip.budgetUsed || 0;
       const budgetRemaining = Math.max(0, budgetTotal - budgetUsed);
-      const budgetUsedPercent = Math.min(100, Math.round((budgetUsed / budgetTotal) * 100));
+      const budgetUsedPercent = budgetTotal > 0 ? Math.min(100, Math.round((budgetUsed / budgetTotal) * 100)) : 0;
+      const formattedDates = formatTripDatesRange(startDate, endDate) || trip.dates;
+      const cleanVehicle = vehicle.trim() || trip.vehicle || '';
+      const cleanDriver = driver.trim() || 'Chưa phân công';
 
       await onSave({
         title: title.trim() || trip.title,
         code: code.trim().toUpperCase() || trip.code,
-        dates: dates.trim() || trip.dates,
+        dates: formattedDates,
         status,
         originFull: originFull.trim() || trip.originFull,
         destinationFull: destinationFull.trim() || trip.destinationFull,
         budgetTotal,
         budgetRemaining,
         budgetUsedPercent,
-        vehicle,
+        vehicle: cleanVehicle,
         telematics: {
           ...trip.telematics,
-          vehicleType: vehicle,
-          driver: driver.trim(),
+          vehicleType: cleanVehicle,
+          driver: cleanDriver,
           driverPhone: driverPhone.trim(),
         },
       });
@@ -108,7 +147,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 max-h-[78dvh] overflow-y-auto">
           {/* Title & Code */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-2">
@@ -140,19 +179,42 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           </div>
 
           {/* Dates & Status */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-teal-600" />
-                <span>Thời gian diễn ra *</span>
+                <span>Ngày khởi hành *</span>
               </label>
               <input
-                type="text"
+                type="date"
                 required
-                value={dates}
-                onChange={(e) => setDates(e.target.value)}
+                value={startDate}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+                  setStartDate(nextStart);
+                  if (endDate && nextStart > endDate) {
+                    setEndDate(nextStart);
+                  }
+                  setDateError(null);
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
-                placeholder="12–18 THG 10, 2026"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                <span>Ngày kết thúc *</span>
+              </label>
+              <input
+                type="date"
+                required
+                min={startDate}
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setDateError(null);
+                }}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
               />
             </div>
             <div>
@@ -170,6 +232,12 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
               </select>
             </div>
           </div>
+
+          {dateError && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+              {dateError}
+            </div>
+          )}
 
           {/* Origin & Destination */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -205,21 +273,28 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
               <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Tổng ngân sách dự trù (Triệu VNĐ)</span>
+              <span>Tổng ngân sách dự trù (VNĐ) *</span>
             </label>
             <div className="relative">
               <input
                 type="number"
-                min={1}
-                max={500}
-                value={budgetMillions}
-                onChange={(e) => setBudgetMillions(Number(e.target.value))}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-bold text-slate-900"
+                min={0}
+                step={100000}
+                required
+                value={budgetTotalInput}
+                onChange={(e) => {
+                  setBudgetTotalInput(e.target.value);
+                  setBudgetError(null);
+                }}
+                className="w-full px-3 py-2 pr-14 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-mono font-bold text-slate-900"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 pointer-events-none">
-                triệu VNĐ
+                VNĐ
               </span>
             </div>
+            {budgetError && (
+              <p className="mt-1 text-[11px] font-semibold text-rose-600">{budgetError}</p>
+            )}
           </div>
 
           {/* Vehicle & Driver */}
@@ -236,7 +311,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                   value={vehicle}
                   onChange={(e) => setVehicle(e.target.value)}
                   className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
-                  placeholder="Xe 29 chỗ"
+                  placeholder="VD: Xe 29 chỗ"
                 />
               </div>
               <div>
@@ -246,7 +321,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                   value={driver}
                   onChange={(e) => setDriver(e.target.value)}
                   className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
-                  placeholder="Trần Bình"
+                  placeholder="Chưa phân công"
                 />
               </div>
               <div>
@@ -256,7 +331,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                   value={driverPhone}
                   onChange={(e) => setDriverPhone(e.target.value)}
                   className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
-                  placeholder="0905 123 456"
+                  placeholder="VD: 09xx xxx xxx"
                 />
               </div>
             </div>

@@ -39,7 +39,7 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
     ) || targetDay?.activities?.[0];
 
     const alertLocation = outdoorOrPassAct ? outdoorOrPassAct.location : trip.destinationFull || 'Khu vực tour';
-    const alertId = `alert-weather-${Date.now()}`;
+    const alertId = `alert-weather-${trip.id}-day-${trip.currentDay || 1}`;
     
     alerts.push({
       id: alertId,

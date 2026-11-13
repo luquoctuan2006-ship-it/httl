@@ -11,7 +11,8 @@ import {
   MapPin,
   CheckCircle2,
   AlertCircle,
-  Pin
+  Pin,
+  Sparkles,
 } from 'lucide-react';
 import { DaySchedule, Activity } from '../types/travel';
 
@@ -32,6 +33,7 @@ interface TimelineScheduleProps {
   onAddDay?: () => void;
   onDeleteDay?: (dayIndex: number) => void;
   onUpdateDayNote?: (dayIndex: number, note: string) => void;
+  onOpenAutoArrange?: () => void;
 }
 
 export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
@@ -51,6 +53,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   onAddDay,
   onDeleteDay,
   onUpdateDayNote,
+  onOpenAutoArrange,
 }) => {
   const currentDay = days.find((d) => d.dayIndex === currentDayIndex) || days[0] || {
     dayIndex: 1,
@@ -233,8 +236,21 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2">
+          {/* Action Buttons: Traditional and Automatic Scheduling */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 1. Tự động xếp lịch (Auto-Arrange) */}
+            {onOpenAutoArrange && (
+              <button
+                type="button"
+                onClick={onOpenAutoArrange}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                title="Tự động xếp lịch: loại bỏ trùng giờ và chèn khoảng đệm di chuyển an toàn"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>⚡ Tự động xếp lịch</span>
+              </button>
+            )}
+
             <button
               onClick={onToggleFilterMode}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs transition"

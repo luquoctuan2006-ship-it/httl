@@ -13,13 +13,14 @@ import {
   Database,
   Edit2,
   Trash2,
+  Menu,
 } from 'lucide-react';
 import { TripData, Activity, TripMember } from '../types/travel';
 
 type AppRole = 'user' | 'admin';
 
 interface HeaderProps {
-  trip: TripData;
+  trip: TripData | null;
   role: AppRole;
   onOpenCreateTripModal: () => void;
   onOpenEditTripModal?: () => void;
@@ -31,6 +32,7 @@ interface HeaderProps {
   onSelectMember?: (memberId: string) => void;
   onToggleAttendance?: (memberId: string) => void;
   firebaseStatus?: 'loading' | 'connected' | 'error';
+  onOpenMobileMenu?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectMember,
   onToggleAttendance,
   firebaseStatus = 'connected',
+  onOpenMobileMenu,
 }) => {
   const isAdminMode = role === 'admin';
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   // 1. Matching activities across all days
   const matchingActivities: { activity: Activity; dayIndex: number; dayName: string }[] = [];
-  if (normalizedQuery) {
+  if (normalizedQuery && trip) {
     trip.days.forEach((day) => {
       day.activities.forEach((activity) => {
         const matchesTitle = activity.title.toLowerCase().includes(normalizedQuery);
@@ -100,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   // 2. Matching unique locations / waypoints
   const matchingLocations: { name: string; type: 'waypoint' | 'activity'; subtext?: string }[] = [];
-  if (normalizedQuery) {
+  if (normalizedQuery && trip) {
     const seenLocations = new Set<string>();
     // Check waypoints
     trip.waypoints.forEach((wp) => {
@@ -129,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({
   }
 
   // 3. Matching members
-  const matchingMembers = normalizedQuery
+  const matchingMembers = normalizedQuery && trip
     ? trip.members.filter(
         (m) =>
           m.name.toLowerCase().includes(normalizedQuery) ||
@@ -143,72 +146,91 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className={`px-6 py-4 sticky top-0 z-30 transition-colors backdrop-blur-md ${
+      className={`px-4 py-3 sm:px-6 sm:py-4 lg:sticky lg:top-0 z-30 transition-colors backdrop-blur-md ${
         isAdminMode
           ? 'bg-slate-900/95 border-b border-slate-800 text-slate-200 shadow-md shadow-slate-950/40'
           : 'bg-white/95 border-b border-slate-200/90 text-slate-800'
       }`}
     >
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        {/* Left: Breadcrumbs & Title */}
-        <div>
-          <div
-            className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-1 ${
-              isAdminMode ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            <span className={isAdminMode ? 'text-teal-400 font-bold' : ''}>{isAdminMode ? 'ADMIN OPS' : 'USER PORTAL'}</span>
-            <ChevronRight className={`w-3.5 h-3.5 ${isAdminMode ? 'text-slate-600' : 'text-slate-400'}`} />
-            <span className={isAdminMode ? 'text-teal-300 font-bold font-mono' : 'text-teal-700 font-bold'}>{trip.code}</span>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className={`text-2xl font-black tracking-tight ${isAdminMode ? 'text-white' : 'text-slate-900'}`}>
-              {trip.title}
-            </h1>
-
-            {/* Quick Actions: Sửa & Xóa chuyến đi */}
-            <div className="flex items-center gap-1">
-              {onOpenEditTripModal && (
-                <button
-                  type="button"
-                  onClick={onOpenEditTripModal}
-                  title="Chỉnh sửa thông tin chuyến đi (tên, mã tour, thời gian, ngân sách)"
-                  className={`p-1.5 rounded-xl border transition ${
-                    isAdminMode
-                      ? 'text-slate-400 hover:text-teal-300 hover:bg-slate-800 border-slate-700'
-                      : 'text-slate-500 hover:text-teal-700 hover:bg-teal-50 border-slate-200'
-                  }`}
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {onDeleteCurrentTrip && (
-                <button
-                  type="button"
-                  onClick={onDeleteCurrentTrip}
-                  title="Xóa chuyến đi hiện tại"
-                  className={`p-1.5 rounded-xl border transition ${
-                    isAdminMode
-                      ? 'text-slate-400 hover:text-rose-400 hover:bg-slate-800 border-slate-700'
-                      : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50 border-slate-200'
-                  }`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
+        {/* Left: Mobile Menu + Breadcrumbs & Title */}
+        <div className="flex items-start gap-3 min-w-0">
+          {onOpenMobileMenu && (
+            <button
+              type="button"
+              onClick={onOpenMobileMenu}
+              aria-label="Mở menu điều hướng"
+              className={`lg:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border transition shrink-0 ${
                 isAdminMode
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  ? 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              {trip.status}
-            </span>
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1">
+            <div
+              className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-1 ${
+                isAdminMode ? 'text-slate-400' : 'text-slate-500'
+              }`}
+            >
+              <span className={isAdminMode ? 'text-teal-400 font-bold' : ''}>{isAdminMode ? 'ADMIN OPS' : 'USER PORTAL'}</span>
+              <ChevronRight className={`w-3.5 h-3.5 ${isAdminMode ? 'text-slate-600' : 'text-slate-400'}`} />
+              <span className={`truncate ${isAdminMode ? 'text-teal-300 font-bold font-mono' : 'text-teal-700 font-bold'}`}>{trip ? trip.code : 'CHƯA CÓ CHUYẾN ĐI'}</span>
+            </div>
+
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              <h1 className={`text-lg sm:text-2xl font-black tracking-tight truncate max-w-full ${isAdminMode ? 'text-white' : 'text-slate-900'}`}>
+                {trip ? trip.title : 'Không gian làm việc Voyager'}
+              </h1>
+
+            {/* Quick Actions: Sửa & Xóa chuyến đi */}
+            {trip && (
+              <div className="flex items-center gap-1">
+                {onOpenEditTripModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenEditTripModal}
+                    title="Chỉnh sửa thông tin chuyến đi (tên, mã tour, thời gian, ngân sách)"
+                    className={`p-1.5 rounded-xl border transition ${
+                      isAdminMode
+                        ? 'text-slate-400 hover:text-teal-300 hover:bg-slate-800 border-slate-700'
+                        : 'text-slate-500 hover:text-teal-700 hover:bg-teal-50 border-slate-200'
+                    }`}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {onDeleteCurrentTrip && (
+                  <button
+                    type="button"
+                    onClick={onDeleteCurrentTrip}
+                    title="Xóa chuyến đi hiện tại"
+                    className={`p-1.5 rounded-xl border transition ${
+                      isAdminMode
+                        ? 'text-slate-400 hover:text-rose-400 hover:bg-slate-800 border-slate-700'
+                        : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50 border-slate-200'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {trip && (
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                  isAdminMode
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                {trip.status}
+              </span>
+            )}
 
             {/* Firestore live indicator */}
             <span
@@ -235,12 +257,13 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </span>
           </div>
+          </div>
         </div>
 
         {/* Right: Search, Notifications & Action Buttons */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full lg:w-auto">
           {/* Global Search Bar with Live Instant Dropdown */}
-          <div ref={containerRef} className="relative w-72 md:w-80">
+          <div ref={containerRef} className="relative flex-1 min-w-[180px] sm:flex-none sm:w-72 md:w-80">
             <Search className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${isAdminMode ? 'text-slate-400' : 'text-slate-400'}`} />
             <input
               ref={inputRef}
@@ -487,7 +510,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onOpenCreateTripModal}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-900/30 transition active:scale-95 shrink-0"
+            className="flex items-center gap-2 min-h-[40px] px-3.5 sm:px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-900/30 transition active:scale-95 shrink-0 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span>{isAdminMode ? 'Tạo tour (AI)' : 'Tạo chuyến đi'}</span>

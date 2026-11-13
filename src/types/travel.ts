@@ -76,6 +76,9 @@ export interface ExpenseInvoice {
   invoiceNumber?: string;
   dayIndex?: number;
   note?: string;
+  receiptId?: string;
+  receiptImage?: string;
+  updatedAt?: string;
 }
 
 export interface TripMember {
@@ -130,11 +133,17 @@ export interface TripData {
     from: string; // "Sơn Trà"
     to: string; // "Bà Nà Hills"
     vehicleType: string; // "Xe 29 chỗ"
+    vehicleId?: string;
     licensePlate?: string;
     driver: string; // "Trần Bình"
     driverPhone?: string; // "0905 123 456"
     driverMemberId?: string; // id thành viên (vai trò "Tài xế") đang phụ trách xe
     passengerCount: number; // 18
+    currentLat?: number;
+    currentLng?: number;
+    gpsUpdatedAt?: string;
+    gpsSource?: 'gps' | 'manual' | 'route';
+    speedKmh?: number;
   };
   waypoints: Waypoint[];
   alerts: OperationalAlert[];
@@ -142,6 +151,7 @@ export interface TripData {
   aiSavingsEstimate: string; // "640.000đ"
   aiConfidence: string; // "94%"
   days: DaySchedule[];
+  version?: number;
   invoices?: ExpenseInvoice[];
   customCategoryAllocations?: {
     transport?: number;
