@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
-  Sparkles,
+  Route,
   Calendar,
   MapPin,
   Clock,
@@ -30,8 +30,8 @@ import {
 } from 'lucide-react';
 import { TripData, TripMember, Waypoint, Activity, DaySchedule } from '../types/travel';
 import { authenticatedFetch, safeJsonResponse } from '../api';
-import { detectScheduleAndWeatherAlerts } from '../utils/alertDetector';
-import { buildDynamicWaypoints } from '../utils/vietnamGeo';
+import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../utils/alertDetector';
+import { buildAIPlanWaypoints, buildDynamicWaypoints } from '../utils/vietnamGeo';
 import { autoArrangeDayActivities, detectDayScheduleConflicts } from '../utils/scheduleAutoArranger';
 
 interface TripPlannerModalProps {
@@ -65,6 +65,11 @@ function buildMembers(count: number): TripMember[] {
 function getStartLocation(destination: string): string {
   const first = destination.split(/\s*(?:-|–|—|→|>)\s*/)[0]?.trim();
   return first || 'Hà Nội';
+}
+
+function getEndLocation(destination: string): string {
+  const parts = destination.split(/\s*(?:-|–|—|→|>)\s*/).map((part) => part.trim()).filter(Boolean);
+  return parts[parts.length - 1] || 'Hà Nội';
 }
 
 function formatDateDisplay(dateStr: string): string {
@@ -551,7 +556,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
   const pollAiJob = async (jobId: string, runId: number, startedAt: number) => {
     if (aiPollRunIdRef.current !== runId) return;
     if (Date.now() - startedAt > 90_000) {
-      setErrorMsg('Quá thời gian chờ Gemini AI (90 giây). Vui lòng thử lại.');
+      setErrorMsg('Quá thời gian chờ tạo lịch trình (90 giây). Vui lòng thử lại.');
       setAiIsLoading(false);
       return;
     }
@@ -562,7 +567,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
       const job = await safeJsonResponse(response);
       if (aiPollRunIdRef.current !== runId) return;
       if (!response.ok || !job.success) {
-        throw new Error(job.error || 'Không thể kiểm tra tiến trình Gemini AI');
+        throw new Error(job.error || 'Không thể kiểm tra tiến độ lập lịch');
       }
       setAiJobStatus(job.job.progress);
       if (job.job.status === 'completed') {
@@ -571,7 +576,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
         return;
       }
       if (job.job.status === 'failed') {
-        throw new Error(job.job.error || 'Gemini AI xử lý yêu cầu thất bại');
+        throw new Error(job.job.error || 'Không thể hoàn tất lịch trình');
       }
       clearAiPolling();
       aiPollTimerRef.current = window.setTimeout(() => {
@@ -599,7 +604,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
     const runId = ++aiPollRunIdRef.current;
     const startedAt = Date.now();
     setAiIsLoading(true);
-    setAiJobStatus('Đang gửi yêu cầu khởi tạo lịch trình tới Gemini AI...');
+    setAiJobStatus('Đang gửi yêu cầu lập lịch trình...');
 
     try {
       const response = await authenticatedFetch('/api/gemini/generate-itinerary', {
@@ -632,7 +637,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
       await pollAiJob(result.jobId, runId, startedAt);
     } catch (error) {
       if (aiPollRunIdRef.current !== runId) return;
-      setErrorMsg(error instanceof Error ? error.message : 'Không thể tạo lịch trình bằng Gemini AI');
+      setErrorMsg(error instanceof Error ? error.message : 'Không thể tạo lịch trình');
       setAiIsLoading(false);
     }
   };
@@ -644,16 +649,22 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
     try {
       const memberCount = parseGroupSize(aiGroupType);
       const generatedDays = Array.isArray(aiGeneratedPlan.days) ? aiGeneratedPlan.days : [];
-      const totalActs = generatedDays.reduce((acc: number, d: any) => acc + (d.activities?.length || 0), 0);
-      const allActivityLocations = generatedDays
-        .flatMap((d: any) => (Array.isArray(d.activities) ? d.activities.map((a: any) => a.location) : []))
-        .filter(Boolean);
+      const generatedActivities = generatedDays.flatMap((day: any) =>
+        Array.isArray(day?.activities) ? day.activities : [],
+      );
+      if (generatedActivities.length === 0) {
+        throw new Error('Gemini chưa tạo hoạt động nào cho lịch trình. Vui lòng tạo lại.');
+      }
+      const totalActs = generatedActivities.length;
 
-      const startName = aiGeneratedPlan.routeSummary?.origin || getStartLocation(aiDestination);
-      const endName = aiGeneratedPlan.routeSummary?.destination || aiDestination;
+      const startName = typeof aiGeneratedPlan.routeSummary?.origin === 'string' && aiGeneratedPlan.routeSummary.origin.trim()
+        ? aiGeneratedPlan.routeSummary.origin.trim()
+        : getStartLocation(aiDestination);
+      const endName = typeof aiGeneratedPlan.routeSummary?.destination === 'string' && aiGeneratedPlan.routeSummary.destination.trim()
+        ? aiGeneratedPlan.routeSummary.destination.trim()
+        : getEndLocation(aiDestination);
 
-      // Xây dựng Waypoints động từ các điểm dừng thực tế
-      const aiWaypoints = buildDynamicWaypoints(startName, endName, allActivityLocations);
+      const aiWaypoints = buildAIPlanWaypoints(startName, endName, generatedActivities);
 
       const totalKm = aiGeneratedPlan.routeSummary?.totalKm || aiDays * 80;
       const vehicleType = aiGeneratedPlan.routeSummary?.vehicle || (memberCount > 16 ? 'Xe 29 chỗ' : 'Xe 16 chỗ');
@@ -727,8 +738,8 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
         aiSuggestions: aiGeneratedPlan.aiOperationalSuggestions || [
           {
             id: `sug-${Date.now()}`,
-            title: 'Lịch trình tối ưu hóa bởi Gemini AI',
-            badge: 'Gemini AI',
+            title: 'Lịch trình được sắp xếp tự động',
+            badge: 'Tự động',
             description: 'Lộ trình và các chặng đã được tính toán cân bằng thời gian tham quan và di chuyển.',
           },
         ],
@@ -738,15 +749,13 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
         days: formattedDays,
       };
 
-      const autoAlerts = detectScheduleAndWeatherAlerts(newTrip);
-      if (autoAlerts.length > 0) {
-        newTrip.alerts = autoAlerts;
-      }
+      newTrip.alerts = createAiRiskAlerts(newTrip.id, aiGeneratedPlan.potentialRisks);
+      newTrip.alerts = detectScheduleAndWeatherAlerts(newTrip);
 
       await onApplyPlan(newTrip);
       onClose();
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Không thể lưu chuyến đi AI.');
+      setErrorMsg(err instanceof Error ? err.message : 'Không thể lưu chuyến đi.');
     } finally {
       setIsSaving(false);
     }
@@ -796,7 +805,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
             <div>
               <h3 className="text-lg font-black tracking-tight">Hoạch định Lịch trình Chuyến đi</h3>
               <p className="text-xs text-teal-100 font-medium">
-                Tạo chuyến đi theo phương thức truyền thống (thủ công) hoặc tự động hóa với Gemini AI
+                Tạo chuyến đi thủ công hoặc sắp xếp lịch trình tự động
               </p>
             </div>
           </div>
@@ -842,15 +851,15 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>✨ Lập lịch tự động (Gemini AI)</span>
+              <Route className="w-4 h-4 text-amber-300" />
+              <span>Lập lịch tự động</span>
             </button>
           </div>
 
           <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
             {activeTab === 'traditional'
               ? 'Tự thiết lập từng ngày & hoạt động'
-              : 'Tối ưu lộ trình thông minh bằng AI'}
+              : 'Sắp xếp lộ trình và hoạt động theo chuyến đi'}
           </span>
         </div>
 
@@ -1099,7 +1108,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200 transition flex items-center gap-1 cursor-pointer"
                       title="Tự động kiểm tra và sắp xếp lại khung giờ của ngày này nếu có xung đột"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      <Clock className="w-3.5 h-3.5 text-blue-600" />
                       <span>⚡ Tự động xếp lịch ngày này</span>
                     </button>
 
@@ -1377,14 +1386,14 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
           )}
 
           {/* ==================================================== */}
-          {/* TAB 2: LẬP LỊCH TỰ ĐỘNG BẰNG GEMINI AI */}
+          {/* TAB 2: LẬP LỊCH TỰ ĐỘNG */}
           {/* ==================================================== */}
           {activeTab === 'ai' && (
             <div className="space-y-4 text-xs">
               <div className="p-3 bg-teal-50/80 rounded-2xl border border-teal-200/80 flex items-start gap-2.5">
-                <Sparkles className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                <Route className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-teal-900 font-medium">
-                  Gemini AI sẽ tự động phân tích lộ trình di chuyển, phân bổ các điểm tham quan tối ưu theo giờ mở cửa, tính toán thời gian dùng bữa và tạo kế hoạch trọn gói cho bạn.
+                  Hệ thống sẽ phân tích lộ trình, giờ mở cửa và thời gian di chuyển để đề xuất lịch trình phù hợp.
                 </p>
               </div>
 
@@ -1488,10 +1497,8 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
               <div>
                 <label className="block font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                     <span>Yêu cầu điều phối & Tối ưu hóa đặc biệt</span>
                   </span>
-                  <span className="text-[11px] text-teal-600 font-bold">Gemini API Powered</span>
                 </label>
                 <textarea
                   rows={2}
@@ -1513,12 +1520,12 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
                   {aiIsLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{aiJobStatus || 'Gemini AI đang tự động phân tích & lập lịch...'}</span>
+                      <span>{aiJobStatus || 'Đang phân tích và sắp xếp lịch trình...'}</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Khởi tạo & Tự động Lập lịch trình bằng Gemini AI</span>
+                      <Calendar className="w-4 h-4 text-amber-300" />
+                      <span>Tạo lịch trình tự động</span>
                     </>
                   )}
                 </button>

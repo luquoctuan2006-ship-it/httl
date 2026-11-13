@@ -104,7 +104,7 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-900/20 transition active:scale-95"
           >
             <Sparkles className="w-4 h-4" />
-            <span>{isAdmin ? 'Tạo tour cùng Gemini AI' : 'Tạo tour mới'}</span>
+            <span>{isAdmin ? 'Tạo tour tự động' : 'Tạo tour mới'}</span>
           </button>
         )}
       </div>

@@ -125,7 +125,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
   const pollJob = async (jobId: string, runId: number, startedAt: number) => {
     if (pollRunIdRef.current !== runId) return;
     if (Date.now() - startedAt > MAX_POLL_DURATION_MS) {
-      failAnalysis('Quá thời gian chờ phân tích AI (90 giây). Vui lòng thử phân tích lại.');
+      failAnalysis('Quá thời gian chờ phân tích chuyến đi (90 giây). Vui lòng thử lại.');
       return;
     }
 
@@ -135,7 +135,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
       const job = await safeJsonResponse(response);
       if (pollRunIdRef.current !== runId) return;
       if (!response.ok || !job.success) {
-        throw new Error(job.error || 'Không thể kiểm tra tiến trình AI');
+        throw new Error(job.error || 'Không thể kiểm tra tiến độ tối ưu');
       }
       setJobStatus(job.job.progress);
       if (job.job.status === 'completed') {
@@ -289,14 +289,14 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-extrabold text-white">
-                  {isFallback ? 'Bộ Điều Phối Tối Ưu Quy Tắc Vận Hành' : 'Phương án Tối ưu Điều phối Gemini AI'}
+                  {isFallback ? 'Điều phối theo quy tắc vận hành' : 'Phương án tối ưu chuyến đi'}
                 </h3>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                   isFallback
                     ? 'bg-amber-950/70 text-amber-300 border-amber-700/60'
                     : 'bg-teal-900/60 text-teal-300 border-teal-700/60'
                 }`}>
-                  {isFallback ? '⚡ Dự phòng quy tắc' : trip.aiConfidence ? `${trip.aiConfidence} Tin cậy` : 'Gemini AI'}
+                  {isFallback ? 'Dự phòng quy tắc' : trip.aiConfidence ? `${trip.aiConfidence} Tin cậy` : 'Tự động'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
@@ -326,7 +326,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                   Thông báo chế độ dự phòng (Fallback Active):
                 </p>
                 <p className="text-amber-800 leading-relaxed font-medium">
-                  Kết nối Gemini AI không khả dụng hoặc chưa có khóa API. Hệ thống đã kích hoạt <strong>bộ tối ưu hóa theo quy tắc vận hành nội bộ</strong>, chạy trực tiếp trên dữ liệu thật của chuyến đi (khung giờ, thời gian đệm an toàn, tránh chồng giờ) và đã vượt qua kiểm tra khả thi 100%.
+                  Dịch vụ lập lịch không khả dụng. Hệ thống đã chuyển sang <strong>bộ tối ưu theo quy tắc vận hành</strong>, sử dụng dữ liệu chuyến đi thật để kiểm tra khung giờ, thời gian đệm và xung đột.
                 </p>
               </div>
             </div>
@@ -407,7 +407,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
             {validation && validation.checked > 0 && (
               <p className="text-[11px] text-slate-500">
                 Kiểm tra khả thi: <strong>{validation.accepted}/{validation.checked}</strong> phương án đạt tiêu chuẩn
-                {validation.repaired ? ' (AI đã tự động sửa 1 lần theo luật)' : ''}.
+                {validation.repaired ? ' (Hệ thống đã tự điều chỉnh một lần theo quy tắc)' : ''}.
                 {isFallback && ' Nguồn dữ liệu: Quy tắc vận hành nội bộ (Fallback).'}
               </p>
             )}
@@ -465,7 +465,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded border border-teal-300">
-                              Gemini AI
+                              Phương án tự động
                             </span>
                           )}
                           <span className="text-xs font-mono font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300">

@@ -12,11 +12,10 @@ import { ActivityDetailModal } from "./ActivityDetailModal";
 import { TripsListView } from "./TripsListView";
 import { MembersView } from "./MembersView";
 import { BudgetView } from "./BudgetView";
-import { AIPlannerModal } from "./AIPlannerModal";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { TripData, Activity, TripMember, DaySchedule, Waypoint } from "../types/travel";
 import { AuthUser } from "../types/auth";
-import { Compass, RotateCcw, Sparkles } from "lucide-react";
+import { Calendar, Clock, Compass, RotateCcw } from "lucide-react";
 
 export function UserDashboard({
   trip,
@@ -56,7 +55,6 @@ export function UserDashboard({
   setIsAlertsModalOpen,
   handleDismissAlert,
   isAIApplied,
-  handleApplyGeneratedTrip,
   handleApplyAIOptimization,
   handleAddActivity,
   handleUpdateTripBudget,
@@ -115,7 +113,6 @@ export function UserDashboard({
   setIsAlertsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleDismissAlert: (id: string) => void;
   isAIApplied: boolean;
-  handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
   handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string, recommendationData?: any) => void;
   handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
   handleUpdateTripBudget: (updated: TripData) => Promise<void>;
@@ -163,8 +160,8 @@ export function UserDashboard({
           onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
           className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 font-bold text-xs border border-slate-700 transition flex items-center gap-2 cursor-pointer"
         >
-          <Sparkles className="w-4 h-4" />
-          <span>Lập lịch tự động cùng AI</span>
+          <Calendar className="w-4 h-4" />
+          <span>Lập lịch tự động</span>
         </button>
       </div>
     </div>
@@ -316,10 +313,10 @@ export function UserDashboard({
                           <button
                             onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
                             className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/25 flex items-center gap-1.5 cursor-pointer"
-                            title="Tự động lập toàn bộ hành trình bằng Gemini AI"
+                            title="Tự động lập toàn bộ hành trình"
                           >
-                            <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                            <span>✨ Lập lịch tự động (AI)</span>
+                            <Calendar className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Lập lịch tự động</span>
                           </button>
 
                           {onOpenAutoArrange && (
@@ -328,7 +325,7 @@ export function UserDashboard({
                               className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs border border-amber-400/30 transition flex items-center gap-1.5 cursor-pointer"
                               title="Tự động xếp lịch: loại bỏ chồng chéo thời gian và cân bằng đệm di chuyển"
                             >
-                              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                              <Clock className="w-3.5 h-3.5 text-amber-300" />
                               <span>⚡ Tự động xếp lịch</span>
                             </button>
                           )}
@@ -336,9 +333,9 @@ export function UserDashboard({
                           <button
                             onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                             className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-teal-400/30 transition flex items-center gap-1.5 cursor-pointer"
-                            title="Tối ưu hóa các điểm tham quan và cảnh báo với Gemini AI"
+                            title="Sắp xếp lại các điểm tham quan và cảnh báo trong chuyến đi"
                           >
-                            <span>Tối ưu AI</span>
+                            <span>Tối ưu chuyến đi</span>
                           </button>
 
                           {canUndo && onUndo && (
@@ -444,9 +441,9 @@ export function UserDashboard({
                         <button
                           onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                           className="px-3.5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                          title="Phân tích và tối ưu lại lịch trình thông minh với Gemini AI"
+                          title="Phân tích và tối ưu lại lịch trình chuyến đi"
                         >
-                          <span>✨ Tối ưu AI</span>
+                          <span>Tối ưu chuyến đi</span>
                         </button>
                         <button
                           onClick={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
@@ -524,11 +521,6 @@ export function UserDashboard({
           </main>
         </div>
 
-        <AIPlannerModal
-          isOpen={isAIPlannerOpen}
-          onClose={() => setIsAIPlannerOpen(false)}
-          onApplyPlan={handleApplyGeneratedTrip}
-        />
         {trip && (
           <>
             <AIOptimizeModal

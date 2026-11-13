@@ -56,10 +56,10 @@ export default defineConfig(() => {
           navigateFallbackDenylist: [/^\/api\//],
           runtimeCaching: [
             {
-              urlPattern: /^https:\/\/[abc]\.tile\.openstreetmap\.org\/.*/i,
+              urlPattern: /^https:\/\/[abc]\.basemaps\.cartocdn\.com\/light_all\/.*/i,
               handler: 'CacheFirst',
               options: {
-                cacheName: 'osm-tiles-cache',
+                cacheName: 'carto-street-tiles-cache',
                 expiration: {
                   maxEntries: 250,
                   maxAgeSeconds: 60 * 60 * 24 * 7,

@@ -7,7 +7,8 @@ import {
   Users,
   Wallet,
   Sliders,
-  Sparkles,
+  Plus,
+  Cpu,
   ShieldAlert,
   Settings,
   UserCog,
@@ -51,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'users', label: 'Quản lý người dùng', icon: Users },
         { id: 'planning', label: 'Dữ liệu hoạch định', icon: MapPin },
         { id: 'rules', label: 'Quy tắc điều phối', icon: Sliders },
-        { id: 'ai', label: 'Quản lý AI Engine', icon: Sparkles },
+        { id: 'ai', label: 'Cấu hình tự động hóa', icon: Cpu },
         { id: 'monitoring', label: 'Giám sát lịch trình', icon: ShieldAlert, badge: alertCount },
         { id: 'system', label: 'Hệ thống', icon: Settings },
       ]
@@ -83,9 +84,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="min-w-0">
             <div className="text-white font-extrabold text-lg tracking-tight flex items-center gap-1.5">
               <span>Voyager</span>
-              <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                AI
-              </span>
             </div>
             <p className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase">
               TRAVEL OPS
@@ -153,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Quick AI Planner & Offline Install Buttons */}
+      {/* Quick trip planner and offline install buttons */}
       <div className="px-3 pb-3 space-y-2 shrink-0">
         <button
           type="button"
@@ -167,8 +165,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               : 'bg-gradient-to-r from-sky-500 to-teal-400 hover:from-sky-400 hover:to-teal-300 text-white shadow-sky-950/40'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Tạo tour mới (AI)</span>
+          <Plus className="w-3.5 h-3.5" />
+          <span>Tạo chuyến đi</span>
         </button>
 
         <PWAInstallButton />

@@ -307,7 +307,7 @@ export const AdminDispatchRulesView: React.FC = () => {
         <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
           <div className="flex items-center gap-2 text-white font-black text-base pb-3 border-b border-slate-800">
             <ShieldAlert className="w-4 h-4 text-purple-400" />
-            <h3>4. Động cơ Phát hiện Xung đột & Ưu tiên AI</h3>
+            <h3>4. Động cơ Phát hiện Xung đột & Ưu tiên Điều phối</h3>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer">

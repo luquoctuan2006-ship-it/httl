@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   CloudRain,
   Clock,
-  Sparkles,
   ArrowRight,
   Shuffle,
   ShieldCheck,
@@ -12,6 +11,7 @@ import {
   RefreshCw,
   Bell,
   BellOff,
+  Route,
 } from 'lucide-react';
 import { TripData } from '../types/travel';
 
@@ -132,7 +132,7 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
         </div>
       </div>
 
-      {/* Box 2: Voyager AI (Dark Theme) */}
+      {/* Trip planning suggestions */}
       <div className="bg-[#0B1320] text-white rounded-2xl p-5 border border-slate-800 shadow-md relative overflow-hidden flex flex-col justify-between">
         {/* Subtle background glow */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
@@ -142,10 +142,10 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-lg bg-teal-500/20 border border-teal-500/30 text-teal-400 flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5" />
+                <Route className="w-3.5 h-3.5" />
               </div>
               <h3 className="text-sm font-bold text-white tracking-tight">
-                Voyager AI
+                Điều phối chuyến đi
               </h3>
             </div>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-950/60 text-teal-300 border border-teal-800/80">
@@ -160,7 +160,7 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
               : `${trip.aiSuggestions?.length || 0} đề xuất ưu tiên`}
           </p>
 
-          {/* AI Suggestions List */}
+          {/* Planning suggestions */}
           <div className="space-y-2.5">
             {trip.aiSuggestions && trip.aiSuggestions.length > 0 ? (
               trip.aiSuggestions.map((sug, idx) => (

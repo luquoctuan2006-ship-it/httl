@@ -513,7 +513,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2 min-h-[40px] px-3.5 sm:px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-900/30 transition active:scale-95 shrink-0 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            <span>{isAdminMode ? 'Tạo tour (AI)' : 'Tạo chuyến đi'}</span>
+            <span>{isAdminMode ? 'Tạo tour tự động' : 'Tạo chuyến đi'}</span>
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Wallet,
   TrendingDown,
@@ -27,78 +27,7 @@ import {
 import { TripData, Activity, ExpenseInvoice } from '../types/travel';
 import { buildExpenseReportCsv } from '../utils/tripHelpers';
 import { authenticatedFetch, safeJsonResponse } from '../api';
-
-// Cache ảnh chứng từ đã tải / mới upload trong phiên để hiển thị tức thì không cần gọi lại API
-const receiptImageCache = new Map<string, string>();
-
-const ReceiptImage: React.FC<{
-  tripId: string;
-  receiptId?: string;
-  receiptImage?: string;
-  alt: string;
-  className?: string;
-}> = ({ tripId, receiptId, receiptImage, alt, className = '' }) => {
-  const cacheKey = receiptId ? `${tripId}:${receiptId}` : '';
-  const [src, setSrc] = useState<string | undefined>(
-    () => receiptImage || (cacheKey ? receiptImageCache.get(cacheKey) : undefined),
-  );
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (receiptImage) {
-      setSrc(receiptImage);
-      setFailed(false);
-      return;
-    }
-    if (!receiptId || !tripId) {
-      setSrc(undefined);
-      return;
-    }
-    const key = `${tripId}:${receiptId}`;
-    const cached = receiptImageCache.get(key);
-    if (cached) {
-      setSrc(cached);
-      setFailed(false);
-      return;
-    }
-
-    let cancelled = false;
-    setFailed(false);
-    void (async () => {
-      try {
-        const res = await authenticatedFetch(
-          `/api/trips/${encodeURIComponent(tripId)}/receipts/${encodeURIComponent(receiptId)}`,
-        );
-        if (!res.ok) throw new Error('Không thể tải ảnh');
-        const payload = await safeJsonResponse(res);
-        if (!cancelled && typeof payload?.dataUrl === 'string') {
-          receiptImageCache.set(key, payload.dataUrl);
-          setSrc(payload.dataUrl);
-        } else if (!cancelled) {
-          setFailed(true);
-        }
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tripId, receiptId, receiptImage]);
-
-  if (src) {
-    return <img src={src} alt={alt} className={className} />;
-  }
-  if (failed) {
-    return (
-      <div className={`flex items-center justify-center bg-slate-100 text-slate-400 text-[10px] font-bold ${className}`}>
-        Không tải được ảnh
-      </div>
-    );
-  }
-  return <div className={`bg-slate-200/80 animate-pulse ${className}`} />;
-};
+import { ReceiptImage, ReceiptPreviewModal, receiptImageCache } from './budget/ReceiptImage';
 
 interface BudgetViewProps {
   trip: TripData;
@@ -1138,38 +1067,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         </div>
       )}
 
-      {/* Modal: Xem ảnh chứng từ phóng to */}
-      {previewReceiptInvoice && (previewReceiptInvoice.receiptImage || previewReceiptInvoice.receiptId) && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 overflow-hidden shadow-2xl">
-            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between text-xs">
-              <div>
-                <h3 className="font-extrabold">{previewReceiptInvoice.title}</h3>
-                <p className="text-slate-400">
-                  {previewReceiptInvoice.invoiceNumber ? `Số HD: ${previewReceiptInvoice.invoiceNumber} • ` : ''}
-                  {previewReceiptInvoice.amount.toLocaleString('vi-VN')} ₫ ({previewReceiptInvoice.date})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewReceiptInvoice(null)}
-                className="p-1.5 rounded-full hover:bg-white/10"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 bg-slate-100 flex items-center justify-center max-h-[75vh] overflow-auto">
-              <ReceiptImage
-                tripId={trip.id}
-                receiptId={previewReceiptInvoice.receiptId}
-                receiptImage={previewReceiptInvoice.receiptImage}
-                alt={previewReceiptInvoice.title}
-                className="max-w-full max-h-[68vh] rounded-xl shadow-md object-contain"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <ReceiptPreviewModal
+        tripId={trip.id}
+        invoice={previewReceiptInvoice}
+        onClose={() => setPreviewReceiptInvoice(null)}
+      />
 
       {/* Modal: Báo cáo chi tiêu & In quyết toán */}
       {isReportPreviewOpen && (

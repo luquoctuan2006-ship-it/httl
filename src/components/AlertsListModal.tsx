@@ -103,7 +103,7 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
               onClick={onTriggerAI}
               className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
             >
-              <span>Kích hoạt Gemini AI tái lập trình tuyến</span>
+              <span>Tối ưu lại lịch trình</span>
             </button>
           </div>
           <button

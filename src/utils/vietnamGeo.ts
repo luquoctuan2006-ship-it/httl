@@ -192,3 +192,103 @@ export function buildDynamicWaypoints(
     };
   });
 }
+
+export function buildAIPlanWaypoints(
+  origin: string,
+  destination: string,
+  activities: readonly {
+    location?: unknown;
+    title?: unknown;
+    timeStart?: unknown;
+    coordinates?: unknown;
+  }[] = [],
+): Waypoint[] {
+  const points = new Map<string, { name: string; lat: number; lng: number; arrivalTime?: string }>();
+
+  const addPoint = (
+    name: string,
+    coordinates: { lat: number; lng: number },
+    arrivalTime?: string,
+    preferCoordinates = false,
+  ) => {
+    const key = name.trim().toLocaleLowerCase();
+    const existing = points.get(key);
+    if (existing) {
+      if (preferCoordinates) {
+        existing.lat = coordinates.lat;
+        existing.lng = coordinates.lng;
+      }
+      if (!existing.arrivalTime && arrivalTime) existing.arrivalTime = arrivalTime;
+      return;
+    }
+    points.set(key, { name, ...coordinates, ...(arrivalTime ? { arrivalTime } : {}) });
+  };
+
+  const cleanOrigin = origin.trim() || 'Điểm khởi hành';
+  const cleanDestination = destination.trim() || 'Điểm đến';
+  addPoint(cleanOrigin, lookupCoordinates(cleanOrigin));
+
+  for (const activity of activities) {
+    if (!activity || typeof activity !== 'object') continue;
+    const location = typeof activity.location === 'string' ? activity.location.trim() : '';
+    const title = typeof activity.title === 'string' ? activity.title.trim() : '';
+    const name = location || title;
+    if (!name) continue;
+
+    const rawCoordinates = activity.coordinates;
+    const coords = rawCoordinates && typeof rawCoordinates === 'object'
+      ? rawCoordinates as { lat?: unknown; lng?: unknown }
+      : {};
+    const lat = Number(coords.lat);
+    const lng = Number(coords.lng);
+    const hasValidCoordinates =
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= 8 &&
+      lat <= 24 &&
+      lng >= 102 &&
+      lng <= 110;
+    const arrivalTime = typeof activity.timeStart === 'string' ? activity.timeStart : undefined;
+
+    addPoint(
+      name,
+      hasValidCoordinates ? { lat, lng } : lookupCoordinates(name),
+      arrivalTime,
+      hasValidCoordinates,
+    );
+    if (points.size >= 49) break;
+  }
+
+  addPoint(cleanDestination, lookupCoordinates(cleanDestination));
+  const entries = Array.from(points.values());
+  const lats = entries.map((point) => point.lat);
+  const lngs = entries.map((point) => point.lng);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const latSpan = maxLat - minLat || 0.1;
+  const lngSpan = maxLng - minLng || 0.1;
+
+  return entries.map((point, index) => ({
+    id: `wp-${index + 1}`,
+    code: String(index + 1).padStart(2, '0'),
+    name: point.name,
+    status: index === 0 ? 'current' : 'pending',
+    lat: Number(point.lat.toFixed(4)),
+    lng: Number(point.lng.toFixed(4)),
+    xPercent: Math.max(10, Math.min(90, Math.round(15 + (70 * (point.lng - minLng)) / lngSpan))),
+    yPercent: Math.max(10, Math.min(90, Math.round(15 + (70 * (maxLat - point.lat)) / latSpan))),
+    ...(point.arrivalTime ? { arrivalTime: point.arrivalTime } : {}),
+  }));
+}
+
+export function dedupeWaypointsForMap(waypoints: readonly Waypoint[]): Waypoint[] {
+  const seenCoordinates = new Set<string>();
+  return waypoints.filter((waypoint) => {
+    const key = `${waypoint.lat.toFixed(4)},${waypoint.lng.toFixed(4)}`;
+    if (seenCoordinates.has(key)) return false;
+    seenCoordinates.add(key);
+    return true;
+  });
+}

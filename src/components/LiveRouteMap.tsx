@@ -20,12 +20,13 @@ import {
   Clock,
   Car,
   Radio,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Waypoint, TripData } from '../types/travel';
 import { authenticatedFetch, safeJsonResponse } from '../api';
+import { dedupeWaypointsForMap } from '../utils/vietnamGeo';
 
 interface LiveRouteMapProps {
   trip: TripData;
@@ -142,6 +143,10 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       ),
     [trip.waypoints],
   );
+  const markerWaypoints = React.useMemo(
+    () => dedupeWaypointsForMap(waypoints),
+    [waypoints],
+  );
 
   // Ưu tiên tọa độ GPS thực tế nếu có; nếu chưa bật GPS thì fallback theo điểm dừng hiện tại
   const hasRealGps =
@@ -188,18 +193,29 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       }
     });
 
+
     // Add Tile Layer
     if (mapLayer === 'satellite') {
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '&copy; Esri &mdash; Satellite Imagery',
-        maxZoom: 18,
-      }).addTo(map);
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: '&copy; Esri &mdash; Satellite Imagery',
+          maxZoom: 18,
+        },
+      ).addTo(map);
     } else {
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(map);
+      const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY;
+      L.tileLayer(
+        `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(cartoApiKey)}`,
+        {
+          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19,
+          referrerPolicy: 'strict-origin-when-cross-origin',
+        },
+      ).addTo(map);
     }
+
 
     // Polyline connecting the route
     if (polylineRef.current) {
@@ -218,7 +234,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     Object.values(markersRef.current).forEach((m) => map.removeLayer(m));
     markersRef.current = {};
 
-    waypoints.forEach((wp) => {
+    markerWaypoints.forEach((wp) => {
       const isCurrent = wp.status === 'current';
       const isCompleted = wp.status === 'completed';
       const timeLabel = [wp.arrivalTime, wp.departureTime].filter(Boolean).join(' - ') || '—';
@@ -333,7 +349,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     return () => {
       // Map stays attached or is cleaned up on unmount
     };
-  }, [mapLayer, trip, waypoints, busPos]);
+  }, [mapLayer, trip, waypoints, markerWaypoints, busPos]);
 
   // Tự động zoom vừa khít tuyến mỗi khi đổi chuyến đi / đổi waypoints
   useEffect(() => {
@@ -545,7 +561,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-extrabold text-slate-900 leading-tight">
-                Bản đồ tuyến đường số tương tác (Leaflet &amp; OpenStreetMap)
+                Bản đồ tuyến đường tương tác
               </h2>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">

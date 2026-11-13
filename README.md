@@ -12,6 +12,7 @@
 6. In Firebase Console, enable **Authentication > Email/Password**, register a Web app, and copy its `apiKey`, `authDomain`, `projectId`, and `appId` into the matching `VITE_FIREBASE_*` variables in `.env`.
 7. Place the Firebase Admin service-account JSON at `secrets/firebase-service-account.json`, or set `FIREBASE_SERVICE_ACCOUNT_PATH` in `.env`. Keep this file private and server-side.
 8. Enable Cloud Firestore in the Firebase project. Each signed-in user owns and can edit their own trips and call Gemini APIs; admins manage and monitor the system (users, rules, AI config, logs, all trips).
+   AI jobs, per-user job slots, AI rate limits, and audit/AI logs are stored in Firestore so every server instance shares the same state. Configure all instances with the same Firebase project and Firestore database.
 9. Register an account in the app, find its Firebase Authentication UID, and grant the admin claim from this trusted server environment:
    `npm run set:role -- <firebase-user-uid> admin`
    Use `npm run set:role -- <firebase-user-uid> user` to revoke admin access. The user must sign out and sign in again for the updated role to take effect.
@@ -19,4 +20,12 @@
     `npm run dev`
     Or build and run in production:
     `npm run build && npm start`
+
+## Tests
+
+- Run unit tests with `npm test`.
+- Route and Firestore synchronization integration tests require the Firestore emulator and run with:
+  `firebase emulators:exec --project demo-httl-server-tests --only firestore "npm run test:emulator"`
+
+The emulator tests create and remove their own test documents. They are skipped when `FIRESTORE_EMULATOR_HOST` is not set.
 

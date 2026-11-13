@@ -1825,7 +1825,6 @@ export default function App() {
           setIsAlertsModalOpen={setIsAlertsModalOpen}
           handleDismissAlert={handleDismissAlert}
           isAIApplied={isAIApplied}
-          handleApplyGeneratedTrip={handleApplyGeneratedTrip}
           handleApplyAIOptimization={handleApplyAIOptimization}
           handleAddActivity={handleAddActivity}
           handleUpdateTripBudget={handleUpdateTripBudget}

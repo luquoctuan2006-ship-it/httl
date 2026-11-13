@@ -15,6 +15,44 @@ function parseClock(timeStr: string): number | null {
   return hours * 60 + minutes;
 }
 
+export function createAiRiskAlerts(tripId: string, value: unknown): OperationalAlert[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.slice(0, 20).flatMap((item, index) => {
+    if (!item || typeof item !== 'object') return [];
+    const risk = item as Record<string, unknown>;
+    const title = typeof risk.title === 'string' ? risk.title.trim().slice(0, 160) : '';
+    if (!title) return [];
+
+    const level = typeof risk.level === 'string' ? risk.level.trim().toLowerCase() : '';
+    const severity: OperationalAlert['severity'] =
+      ['error', 'critical', 'high', 'cao', 'nghiêm trọng'].includes(level)
+        ? 'error'
+        : ['info', 'low', 'thấp'].includes(level)
+          ? 'info'
+          : 'warning';
+    const details = `${title} ${typeof risk.advice === 'string' ? risk.advice : ''}`.toLowerCase();
+    const category: OperationalAlert['category'] =
+      /mưa|dông|bão|nắng|thời tiết|weather|storm/.test(details)
+        ? 'weather'
+        : /khách sạn|nhận phòng|check.?in|hotel/.test(details)
+          ? 'hotel'
+          : /giao thông|kẹt xe|ùn tắc|di chuyển|đường|traffic/.test(details)
+            ? 'traffic'
+            : 'schedule';
+    const advice = typeof risk.advice === 'string' ? risk.advice.trim().slice(0, 500) : '';
+
+    return [{
+      id: `alert-ai-risk-${tripId}-${index + 1}`,
+      title,
+      timeAgo: 'Phân tích AI',
+      description: advice || 'Gemini nhận diện rủi ro tiềm ẩn cần được điều phối viên kiểm tra.',
+      severity,
+      category,
+    }];
+  });
+}
+
 /**
  * Tự động phân tích lịch trình và dữ liệu khí tượng thời gian thực
  * để phát hiện các xung đột, rủi ro thời tiết, giao thông và đệm thời gian.

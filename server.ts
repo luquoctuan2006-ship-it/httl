@@ -10,6 +10,16 @@ import { Auth as FirebaseAdminAuth, DecodedIdToken, getAuth, UserRecord } from '
 import { FieldValue, Firestore, getFirestore } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
 import rateLimit from 'express-rate-limit';
+import { FirestoreRateLimitStore } from './src/server/middleware/firestoreRateLimitStore';
+import { createGeminiJobsRouter } from './src/server/routes/geminiJobs';
+import { createTripSyncRouter } from './src/server/routes/trips';
+import {
+  listAILogs,
+  listAuditLogs,
+  recordAIErrorLog,
+  recordAIRequestLog,
+  recordAuditLog as persistAuditLog,
+} from './src/server/services/systemLogs';
 import { normalizeTripData } from './src/data/normalizeTripData';
 import type { ManagedUserRecord } from './src/types/auth';
 import { TripData, TripMember, OperationalAlert } from './src/types/travel';
@@ -23,7 +33,6 @@ import {
   estimateTripByteSize,
   isAdminUser,
   MAX_TRIP_DOC_BYTES,
-  upsertTripForUser,
 } from './src/utils/tripRepository';
 
 dotenv.config();
@@ -63,7 +72,7 @@ app.use(
           "'self'",
           'data:',
           'blob:',
-          'https://*.tile.openstreetmap.org',
+          'https://*.basemaps.cartocdn.com',
           'https://server.arcgisonline.com',
           'https://*.googleusercontent.com',
           'https://unpkg.com',
@@ -74,6 +83,7 @@ app.use(
           "'self'",
           'https://*.googleapis.com',
           'https://*.firebaseio.com',
+          'https://*.basemaps.cartocdn.com',
           'https://api.open-meteo.com',
           'https://identitytoolkit.googleapis.com',
           'https://securetoken.googleapis.com',
@@ -98,6 +108,7 @@ app.use(express.json({ limit: '2mb' }));
 const aiRateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   limit: 10,
+  store: new FirestoreRateLimitStore(() => requireFirestore()),
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: {
@@ -239,7 +250,6 @@ let activeSystemConfig: SystemConfig = {
 };
 
 const SYSTEM_CONFIG_SYNC_TTL_MS = 15_000;
-const AUDIT_LOG_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Tự động dọn audit logs sau 30 ngày
 let lastSystemConfigSyncAt = 0;
 
 function applySystemConfigSnapshot(data: Partial<SystemConfig>): void {
@@ -367,41 +377,15 @@ async function saveSystemConfig(config: SystemConfig): Promise<void> {
   lastSystemConfigSyncAt = Date.now();
 }
 
-export interface AuditLogEntry {
-  id: string;
-  time: string;
-  timestamp: string;
-  user: string;
-  action: string;
-  status: 'Thành công' | 'Cảnh báo' | 'Thất bại';
-  expiresAt?: number;
-}
-
-const auditLogs: AuditLogEntry[] = [];
-
 async function recordAuditLog(user: string, action: string, status: 'Thành công' | 'Cảnh báo' | 'Thất bại' = 'Thành công') {
-  const now = new Date();
-  const entry: AuditLogEntry = {
-    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    time: now.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }),
-    timestamp: now.toISOString(),
-    user,
-    action,
-    status,
-    expiresAt: Date.now() + AUDIT_LOG_TTL_MS,
-  };
-  auditLogs.unshift(entry);
-  if (auditLogs.length > 50) auditLogs.pop();
-
-  if (firestore) {
-    try {
-      await firestore.collection('audit_logs').doc(entry.id).set({
-        ...entry,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn('[Audit Log] Failed to save to Firestore:', err);
-    }
+  if (!firestore) {
+    console.error('[Audit Log] Firestore chưa sẵn sàng; không thể ghi nhật ký.');
+    return;
+  }
+  try {
+    await persistAuditLog(firestore, user, action, status);
+  } catch (error) {
+    console.error('[Audit Log] Không thể ghi nhật ký vào Firestore:', error);
   }
 }
 
@@ -589,46 +573,11 @@ const getActiveTripHandler = async (req: AuthenticatedRequest, res: Response) =>
 };
 app.get('/api/trips/active', requireAuth, getActiveTripHandler);
 
-const saveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
-  const trip = normalizeTripData(req.body);
-  const routeId = req.params.tripId;
-  if (routeId && routeId !== 'active') trip.id = routeId;
-
-  if (typeof trip.id !== 'string' || trip.id === 'active' || !TRIP_ID_PATTERN.test(trip.id) || !Array.isArray(trip.days)) {
-    return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
-  }
-
-  try {
-    const db = requireFirestore();
-    const result = await upsertTripForUser(db, trip, req.authUser!, () => FieldValue.serverTimestamp());
-    if (result.status === 'forbidden') {
-      return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
-    }
-    if (result.status === 'too_large') {
-      return res.status(413).json({
-        success: false,
-        error: 'Dung lượng dữ liệu chuyến đi vượt giới hạn 900KB của một tài liệu Firestore. Vui lòng bớt ảnh chứng từ hoặc chia nhỏ dữ liệu.',
-      });
-    }
-    if (result.status === 'conflict') {
-      return res.status(409).json({
-        success: false,
-        error: 'Chuyến đi đã được cập nhật từ phiên bản mới hơn hoặc thiếu mã phiên bản (version). Vui lòng tải lại dữ liệu.',
-        currentVersion: result.currentVersion,
-      });
-    }
-    if (result.status === 'ok') {
-      void cleanupOrphanReceiptsForTrip(db, result.trip).catch(() => {});
-      return res.json({ success: true, version: result.version, trip: result.trip });
-    }
-    return res.status(500).json({ success: false, error: 'Không thể lưu chuyến đi' });
-  } catch (error) {
-    console.error('Error saving trip:', error);
-    return res.status(503).json({ success: false, error: 'Không thể lưu chuyến đi' });
-  }
-};
-app.put('/api/trips/active', requireAuth, saveTripHandler);
-app.put('/api/trips/:tripId', requireAuth, saveTripHandler);
+app.use('/api/trips', createTripSyncRouter({
+  requireAuth,
+  getFirestore: requireFirestore,
+  cleanupOrphanReceiptsForTrip,
+}));
 
 app.post('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
   const body = normalizeTripData(req.body);
@@ -1166,20 +1115,6 @@ const geminiRequestTimeoutMs = Math.max(30_000, Number.parseInt(process.env.GEMI
 const GEMINI_JOB_TTL_MS = 15 * 60 * 1000;
 
 
-interface AIRequestLog {
-  id: string;
-  time: string;
-  user: string;
-  model: string;
-  prompt: string;
-  status: 'Hoàn thành' | 'Thất bại';
-  latency: string;
-}
-
-const aiRequestLogs: AIRequestLog[] = [];
-const aiErrorLogs: Array<{ id: string; time: string; code: string; detail: string; resolved: boolean }> = [];
-
-
 const ai = geminiApiKey
   ? new GoogleGenAI({
       apiKey: geminiApiKey,
@@ -1207,6 +1142,7 @@ type GeminiJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 type GeminiJob = {
   id: string;
   ownerUid: string;
+  slotIndex: number;
   status: GeminiJobStatus;
   progress: string;
   createdAt: number;
@@ -1215,30 +1151,27 @@ type GeminiJob = {
   error?: string;
 };
 
-const geminiJobs = new Map<string, GeminiJob>();
-
 // Tự động dọn dẹp gemini_jobs (15 phút) và audit_logs (30 ngày) tránh phình dữ liệu Firestore
 const jobCleanupInterval = setInterval(async () => {
   const now = Date.now();
-  for (const [id, job] of geminiJobs.entries()) {
-    if (now - job.createdAt > GEMINI_JOB_TTL_MS) {
-      geminiJobs.delete(id);
-    }
-  }
-
   if (firestore) {
     try {
-      const cutoff = now - GEMINI_JOB_TTL_MS;
       const snap = await firestore.collection('gemini_jobs')
-        .where('createdAt', '<', cutoff)
+        .where('createdAt', '<=', now - GEMINI_JOB_TTL_MS)
         .limit(25)
         .get();
       if (!snap.empty) {
-        const batch = firestore.batch();
-        snap.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
+        for (const doc of snap.docs) {
+          const job = doc.data() as GeminiJob;
+          if (job.ownerUid && Number.isInteger(job.slotIndex)) {
+            await releaseGeminiJobSlot(job);
+          }
+          await doc.ref.delete();
+        }
       }
-    } catch { /* ignored */ }
+    } catch (error) {
+      console.error('[Gemini Job] Không thể dọn job hết hạn:', error);
+    }
 
     try {
       const expiredLogsSnap = await firestore.collection('audit_logs')
@@ -1250,42 +1183,67 @@ const jobCleanupInterval = setInterval(async () => {
         expiredLogsSnap.docs.forEach((doc) => batch.delete(doc.ref));
         await batch.commit();
       }
-    } catch { /* ignored */ }
+    } catch (error) {
+      console.error('[Audit Log] Không thể dọn nhật ký hết hạn:', error);
+    }
+
+    for (const collectionName of ['rate_limits', 'ai_request_logs', 'ai_error_logs']) {
+      try {
+        const expired = await firestore.collection(collectionName)
+          .where('expiresAt', '<=', new Date(now))
+          .limit(100)
+          .get();
+        if (!expired.empty) {
+          const batch = firestore.batch();
+          expired.docs.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      } catch (error) {
+        console.error(`[${collectionName}] Không thể dọn dữ liệu hết hạn:`, error);
+      }
+    }
   }
 }, 60_000);
 jobCleanupInterval.unref();
 
-function countActiveUserJobs(uid: string): number {
-  let count = 0;
-  for (const job of geminiJobs.values()) {
-    if (job.ownerUid === uid && (job.status === 'queued' || job.status === 'running')) {
-      count++;
-    }
-  }
-  return count;
+function geminiJobSlotRef(uid: string, slotIndex: number) {
+  return requireFirestore().collection('gemini_job_slots').doc(`${uid}_${slotIndex}`);
 }
 
-async function syncJobToFirestore(job: GeminiJob): Promise<void> {
-  if (!firestore) return;
-  try {
-    await firestore.collection('gemini_jobs').doc(job.id).set({
-      id: job.id,
-      ownerUid: job.ownerUid,
-      status: job.status,
-      progress: job.progress,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
-      // Chỉ lưu result khi job đã hoàn tất để tránh ghi payload lớn nhiều lần
-      result: job.status === 'completed' ? (job.result ?? null) : null,
-      error: job.error ?? null,
-    });
-  } catch (err) {
-    console.warn('[Gemini Job] Lỗi đồng bộ Firestore:', err);
-  }
+async function releaseGeminiJobSlot(job: Pick<GeminiJob, 'id' | 'ownerUid' | 'slotIndex'>): Promise<void> {
+  const db = requireFirestore();
+  const slotRef = db.collection('gemini_job_slots').doc(`${job.ownerUid}_${job.slotIndex}`);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(slotRef);
+    if (snapshot.exists && snapshot.data()?.jobId === job.id) {
+      transaction.delete(slotRef);
+    }
+  });
+}
+
+async function updateGeminiJob(job: GeminiJob, updates: Partial<GeminiJob>, terminal = false): Promise<GeminiJob> {
+  const db = requireFirestore();
+  const jobRef = db.collection('gemini_jobs').doc(job.id);
+  const slotRef = geminiJobSlotRef(job.ownerUid, job.slotIndex);
+
+  return db.runTransaction(async (transaction) => {
+    const [jobSnapshot, slotSnapshot] = await Promise.all([transaction.get(jobRef), transaction.get(slotRef)]);
+    if (!jobSnapshot.exists) throw new Error(`Gemini job ${job.id} không còn tồn tại`);
+    const currentJob = jobSnapshot.data() as GeminiJob;
+    const updatedJob = { ...currentJob, ...updates, updatedAt: Date.now() };
+    transaction.set(jobRef, updatedJob);
+
+    if (terminal && slotSnapshot.exists && slotSnapshot.data()?.jobId === job.id) {
+      transaction.delete(slotRef);
+    } else if (!terminal && slotSnapshot.exists && slotSnapshot.data()?.jobId === job.id) {
+      transaction.set(slotRef, { jobId: job.id, leaseUntil: Date.now() + 5 * 60 * 1000 });
+    }
+    return updatedJob;
+  });
 }
 
 function createJobId(): string {
-  return `gemini-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `gemini-${randomUUID()}`;
 }
 
 // Cache được định danh chính xác theo User UID
@@ -1351,16 +1309,15 @@ async function generateWithGemini(prompt: string, userWhoInvoked = 'Hệ thống
       });
 
       const latency = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-      aiRequestLogs.unshift({
-        id: `req-${Date.now()}`,
+      void recordAIRequestLog(requireFirestore(), {
+        id: `req-${randomUUID()}`,
         time: `${new Date().getHours().toString().padStart(2, '0')}:${new Date().getMinutes().toString().padStart(2, '0')} Hôm nay`,
         user: userWhoInvoked,
         model: models[index],
         prompt: prompt.slice(0, 80) + '...',
         status: 'Hoàn thành',
         latency,
-      });
-      if (aiRequestLogs.length > 50) aiRequestLogs.pop();
+      }).catch((logError) => console.error('[AI Log] Không thể ghi yêu cầu AI:', logError));
 
       return result;
     } catch (error: unknown) {
@@ -1373,14 +1330,13 @@ async function generateWithGemini(prompt: string, userWhoInvoked = 'Hệ thống
       console.error('[Gemini]', models[index], status || '', message.slice(0, 500));
 
       if (isRateLimit || !retryable || index === models.length - 1) {
-        aiErrorLogs.unshift({
-          id: `err-${Date.now()}`,
+        void recordAIErrorLog(requireFirestore(), {
+          id: `err-${randomUUID()}`,
           time: `${new Date().getHours().toString().padStart(2, '0')}:${new Date().getMinutes().toString().padStart(2, '0')} Hôm nay`,
           code: `ERR_${status || 500}`,
           detail: message.slice(0, 100) || 'Lỗi gọi Gemini API',
           resolved: false,
-        });
-        if (aiErrorLogs.length > 30) aiErrorLogs.pop();
+        }).catch((logError) => console.error('[AI Log] Không thể ghi lỗi AI:', logError));
         throw error;
       }
 
@@ -1407,53 +1363,74 @@ function buildFallbackScheduleOptimization(payload: Parameters<typeof buildRuleB
   return buildRuleBasedScheduleOptimization(payload);
 }
 
-function createGeminiJob(
+class ActiveGeminiJobLimitError extends Error {}
+
+async function createGeminiJob(
   operation: string,
   payload: unknown,
   ownerUid: string,
   userActor = 'Hệ thống',
   cacheKey?: string,
-): GeminiJob {
-  if (countActiveUserJobs(ownerUid) >= 2) {
-    throw new Error('Bạn đang có 2 tác vụ AI đang được xử lý. Vui lòng chờ hoàn tất trước khi tạo mới.');
-  }
-
+): Promise<GeminiJob> {
+  const db = requireFirestore();
   const now = Date.now();
   const job: GeminiJob = {
     id: createJobId(),
     ownerUid,
+    slotIndex: -1,
     status: 'queued',
     progress: 'Đang chuẩn bị yêu cầu',
     createdAt: now,
     updatedAt: now,
   };
-  geminiJobs.set(job.id, job);
-  void syncJobToFirestore(job);
 
-  void Promise.resolve().then(() => {
-    job.status = 'running';
-    job.progress = 'Gemini đang xử lý';
-    job.updatedAt = Date.now();
-    void syncJobToFirestore(job);
+  const jobRef = db.collection('gemini_jobs').doc(job.id);
+  const slotRefs = [0, 1].map((slotIndex) => db.collection('gemini_job_slots').doc(`${ownerUid}_${slotIndex}`));
+  const reservedJob = await db.runTransaction(async (transaction) => {
+    const first = await transaction.get(slotRefs[0]);
+    const second = await transaction.get(slotRefs[1]);
+    const snapshots = [first, second];
+    const slotIndex = snapshots.findIndex((snapshot) =>
+      !snapshot.exists || Number(snapshot.data()?.leaseUntil || 0) <= now,
+    );
+    if (slotIndex < 0) {
+      throw new ActiveGeminiJobLimitError('Bạn đang có 2 tác vụ AI đang được xử lý. Vui lòng chờ hoàn tất trước khi tạo mới.');
+    }
+
+    const reserved = { ...job, slotIndex };
+    transaction.set(jobRef, reserved);
+    transaction.set(slotRefs[slotIndex], { jobId: job.id, leaseUntil: now + 5 * 60 * 1000 });
+    return reserved;
   });
+
   void (async () => {
     try {
-      job.result = await executeGeminiOperation(operation, payload, userActor);
-      job.status = 'completed';
-      job.progress = 'Đã hoàn tất';
-      if (cacheKey && job.result) {
-        setCachedGeminiResult(cacheKey, job.result);
-      }
+      await updateGeminiJob(reservedJob, {
+        status: 'running',
+        progress: 'Gemini đang xử lý',
+      });
+      const result = await executeGeminiOperation(operation, payload, userActor);
+      await updateGeminiJob(reservedJob, {
+        status: 'completed',
+        progress: 'Đã hoàn tất',
+        result,
+        error: undefined,
+      }, true);
+      if (cacheKey && result) setCachedGeminiResult(cacheKey, result);
     } catch (error) {
-      job.status = 'failed';
-      job.progress = 'Xảy ra lỗi';
-      job.error = error instanceof Error ? error.message : 'Lỗi xử lý Gemini';
-    } finally {
-      job.updatedAt = Date.now();
-      void syncJobToFirestore(job);
+      const message = error instanceof Error ? error.message : 'Lỗi xử lý Gemini';
+      try {
+        await updateGeminiJob(reservedJob, {
+          status: 'failed',
+          progress: 'Xảy ra lỗi',
+          error: message,
+        }, true);
+      } catch (storageError) {
+        console.error('[Gemini Job] Không thể lưu trạng thái lỗi:', storageError);
+      }
     }
   })();
-  return job;
+  return reservedJob;
 }
 
 // Lấy text JSON từ phản hồi Gemini, báo lỗi rõ ràng nếu bị cắt cụt hoặc rỗng
@@ -1531,7 +1508,7 @@ async function executeGeminiOperation(operation: string, payload: unknown, userA
     const startLocation = typeof raw.startLocation === 'string' ? raw.startLocation.trim().slice(0, 50) : 'Đà Nẵng';
     const preferences = typeof raw.preferences === 'string' ? raw.preferences.trim().slice(0, 150) : 'Tránh nắng gắt buổi trưa';
 
-    const prompt = `Lập kế hoạch du lịch Việt Nam dưới đây. Chỉ trả về JSON hợp lệ, không markdown.
+    const prompt = `Lập kế hoạch du lịch Việt Nam dưới đây. Chỉ trả về một JSON hợp lệ, không markdown hoặc văn bản ngoài JSON.
 Điểm đến: ${destination}
 Số ngày: ${normalizedDays}
 Ngân sách: ${budget}
@@ -1539,15 +1516,30 @@ Phong cách: ${travelStyle}
 Đối tượng: ${groupType}
 Xuất phát: ${startLocation}
 Sở thích: ${preferences}
-Lộ trình phải bắt đầu từ điểm xuất phát và đi đúng các điểm đến người dùng yêu cầu, không tự thay bằng địa điểm khác. Mỗi hoạt động BẮT BUỘC có coordinates {lat,lng} là tọa độ thực của địa điểm tại Việt Nam (số thập phân, không dùng chuỗi). Mỗi chuỗi mô tả tối đa 15 từ. Trả về tối đa ${normalizedDays * 3} hoạt động và mỗi ngày tối đa 3 hoạt động. Schema: {tripCode,title,routeSummary:{origin,destination,totalKm,vehicle,destinationsCount},budget:{total,used,unit,breakdown},days:[{dayIndex,dateLabel,fullDate,summary,activities:[{id,timeStart,timeEnd,title,location,status,type,details,cost,coordinates:{lat,lng}}]}],aiOperationalSuggestions:[{id,title,impact,description,savingEstimate,confidence}],potentialRisks:[{title,level,advice}]}.`;
+Lộ trình phải bắt đầu từ điểm xuất phát, đi đúng các điểm đến người dùng yêu cầu và không tự thay bằng địa điểm khác.
+Trả về chính xác ${normalizedDays} ngày liên tiếp; mỗi ngày phải có từ 1 đến 3 hoạt động, không được để days hoặc activities rỗng.
+Mỗi hoạt động phải có giờ HH:mm, title, location, status, type, details, cost và coordinates {lat,lng}. Tọa độ phải là số thập phân WGS84 thực tế tại đúng địa điểm ở Việt Nam; không dùng chuỗi, null, tọa độ mặc định hoặc tự bịa. Nếu không xác định được tọa độ điểm cụ thể, dùng tọa độ trung tâm đã biết của địa danh gần nhất.
+Mỗi chuỗi mô tả tối đa 15 từ. status chỉ nhận "Đã xác nhận"; type chỉ nhận "transport", "meal", "sightseeing", "hotel", "checkin" hoặc "briefing".
+Chỉ nêu rủi ro có căn cứ trong potentialRisks; level chỉ nhận "error", "warning" hoặc "info", advice nêu cách xử lý ngắn gọn; nếu không có rủi ro rõ ràng thì trả mảng rỗng.
+Schema: {tripCode,title,routeSummary:{origin,destination,totalKm,vehicle,destinationsCount},budget:{total,used,unit,breakdown},days:[{dayIndex,dateLabel,fullDate,summary,activities:[{id,timeStart,timeEnd,title,location,status,type,details,cost,coordinates:{lat,lng}}]}],aiOperationalSuggestions:[{id,title,impact,description,savingEstimate,confidence}],potentialRisks:[{title,level,advice}]}.`;
 
-    const sanitizedKey = { destination, days: normalizedDays, budget, travelStyle, groupType, preferences, startLocation };
+    const sanitizedKey = { promptVersion: 2, destination, days: normalizedDays, budget, travelStyle, groupType, preferences, startLocation };
     const response = await getOrCreateGeminiRequest(`generate-itinerary:${JSON.stringify(sanitizedKey)}`, () => generateWithGemini(prompt, userActor));
     const parsed = parseGeminiJson(extractJsonText(response));
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as Record<string, unknown>).days)) {
-      throw new Error('Định dạng lịch trình AI trả về không đúng cấu trúc yêu cầu.');
+    const parsedPlan = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+    const generatedDays = parsedPlan?.days;
+    if (
+      !Array.isArray(generatedDays) ||
+      generatedDays.length !== normalizedDays ||
+      generatedDays.some((day) => {
+        if (!day || typeof day !== 'object') return true;
+        const activities = (day as Record<string, unknown>).activities;
+        return !Array.isArray(activities) || activities.length === 0;
+      })
+    ) {
+      throw new Error('Gemini trả về lịch trình thiếu ngày hoặc hoạt động. Vui lòng tạo lại.');
     }
-    return parsed;
+    return parsedPlan;
   }
 
   return runScheduleOptimization(payload as Parameters<typeof runOptimization>[0], userActor);
@@ -1572,6 +1564,7 @@ app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (re
   }
 
   const cacheKey = createGeminiCacheKey('generate-itinerary', {
+    promptVersion: 2,
     destination,
     days: normalizedDays,
     budget,
@@ -1588,11 +1581,14 @@ app.post('/api/gemini/generate-itinerary', requireAuth, aiRateLimiter, async (re
 
   const userActor = req.authUser?.email || 'Người dùng';
   try {
-    const job = createGeminiJob('generate-itinerary', req.body, req.authUser!.uid, userActor, cacheKey);
+    const job = await createGeminiJob('generate-itinerary', req.body, req.authUser!.uid, userActor, cacheKey);
     return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Quá nhiều yêu cầu đang xử lý';
-    return res.status(429).json({ success: false, error: msg });
+    if (err instanceof ActiveGeminiJobLimitError) {
+      return res.status(429).json({ success: false, error: err.message });
+    }
+    console.error('[Gemini Job] Không thể tạo job:', err);
+    return res.status(503).json({ success: false, error: 'Không thể tạo job AI lúc này' });
   }
 });
 
@@ -1628,33 +1624,21 @@ app.post('/api/gemini/optimize-schedule', requireAuth, aiRateLimiter, async (req
   }
 
   try {
-    const job = createGeminiJob('optimize-schedule', payload, req.authUser!.uid, userActor, cacheKey);
+    const job = await createGeminiJob('optimize-schedule', payload, req.authUser!.uid, userActor, cacheKey);
     return res.status(202).json({ success: true, jobId: job.id, job: { id: job.id, status: job.status, progress: job.progress } });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Quá nhiều yêu cầu đang xử lý';
-    return res.status(429).json({ success: false, error: msg });
-  }
-});
-
-app.get('/api/gemini/jobs/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
-  let job = geminiJobs.get(req.params.jobId);
-  if (!job && firestore) {
-    try {
-      const snap = await firestore.collection('gemini_jobs').doc(req.params.jobId).get();
-      if (snap.exists) {
-        job = snap.data() as GeminiJob;
-      }
-    } catch (err) {
-      console.warn('[Gemini Job] Lỗi đọc từ Firestore:', err);
+    if (err instanceof ActiveGeminiJobLimitError) {
+      return res.status(429).json({ success: false, error: err.message });
     }
+    console.error('[Gemini Job] Không thể tạo job:', err);
+    return res.status(503).json({ success: false, error: 'Không thể tạo job AI lúc này' });
   }
-
-  if (!job || (job.ownerUid !== req.authUser!.uid && !isAdminUser(req.authUser))) {
-    return res.status(404).json({ success: false, error: 'Không tìm thấy job AI' });
-  }
-  const { ownerUid: _ownerUid, ...publicJob } = job;
-  return res.json({ success: true, job: publicJob });
 });
+
+app.use('/api/gemini/jobs', createGeminiJobsRouter({
+  requireAuth,
+  getFirestore: requireFirestore,
+}));
 
 // ==========================================
 // ADMIN API ENDPOINTS: Dynamic Models, Config, Users, Logs
@@ -1974,34 +1958,32 @@ app.post('/api/admin/config', requireAuth, requireAdmin, async (req: Authenticat
 });
 
 // Get AI Logs & Error Monitor
-app.get('/api/admin/ai-logs', requireAuth, requireAdmin, (_req, res) => {
-  return res.json({
-    success: true,
-    requests: aiRequestLogs,
-    errors: aiErrorLogs,
-    currentModel: dynamicGeminiModel,
-    temperature: dynamicGeminiTemperature,
-    maxTokens: dynamicGeminiMaxTokens,
-  });
+app.get('/api/admin/ai-logs', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const { requests, errors } = await listAILogs(requireFirestore());
+    return res.json({
+      success: true,
+      requests,
+      errors,
+      currentModel: dynamicGeminiModel,
+      temperature: dynamicGeminiTemperature,
+      maxTokens: dynamicGeminiMaxTokens,
+    });
+  } catch (error) {
+    console.error('[AI Logs] Không thể đọc nhật ký từ Firestore:', error);
+    return res.status(503).json({ success: false, error: 'Không thể tải nhật ký AI' });
+  }
 });
 
 // Get Audit Logs
 app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (_req, res) => {
-  if (firestore) {
-    try {
-      const snap = await firestore.collection('audit_logs').orderBy('createdAt', 'desc').limit(50).get();
-      if (!snap.empty) {
-        const logs = snap.docs.map((doc) => doc.data() as AuditLogEntry);
-        return res.json({ success: true, logs });
-      }
-    } catch (err) {
-      console.warn('[Audit Logs] Lỗi đọc từ Firestore, dùng bộ nhớ RAM:', err);
-    }
+  try {
+    const logs = await listAuditLogs(requireFirestore());
+    return res.json({ success: true, logs });
+  } catch (error) {
+    console.error('[Audit Logs] Không thể đọc nhật ký từ Firestore:', error);
+    return res.status(503).json({ success: false, error: 'Không thể tải nhật ký hoạt động' });
   }
-  return res.json({
-    success: true,
-    logs: auditLogs,
-  });
 });
 
 // Test AI Connection & Latency
