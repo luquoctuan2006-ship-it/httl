@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Download, Share, X } from 'lucide-react';
-import { usePWAInstall } from '../hooks/usePWAInstall';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 export const PWAInstallButton: React.FC = () => {
   const { canInstall, isIOS, hasNativePrompt, promptInstall } = usePWAInstall();

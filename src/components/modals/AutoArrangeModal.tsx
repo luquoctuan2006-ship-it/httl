@@ -15,13 +15,13 @@ import {
   Layers,
   Sliders,
 } from 'lucide-react';
-import { DaySchedule, TripData } from '../types/travel';
+import { DaySchedule, TripData } from '../../types/travel';
 import {
   autoArrangeDay,
   autoArrangeEntireTrip,
   detectDayScheduleConflicts,
   ActivityTimeAdjustment,
-} from '../utils/scheduleAutoArranger';
+} from '../../utils/scheduleAutoArranger';
 
 interface AutoArrangeModalProps {
   isOpen: boolean;

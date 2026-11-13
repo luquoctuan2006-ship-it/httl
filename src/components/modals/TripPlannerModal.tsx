@@ -28,11 +28,11 @@ import {
   Sun,
   ShieldCheck,
 } from 'lucide-react';
-import { TripData, TripMember, Waypoint, Activity, DaySchedule } from '../types/travel';
-import { authenticatedFetch, safeJsonResponse } from '../api';
-import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../utils/alertDetector';
-import { buildAIPlanWaypoints, buildDynamicWaypoints } from '../utils/vietnamGeo';
-import { autoArrangeDayActivities, detectDayScheduleConflicts } from '../utils/scheduleAutoArranger';
+import { TripData, TripMember, Waypoint, Activity, DaySchedule } from '../../types/travel';
+import { authenticatedFetch, safeJsonResponse } from '../../api';
+import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';
+import { buildAIPlanWaypoints, buildDynamicWaypoints } from '../../utils/vietnamGeo';
+import { autoArrangeDayActivities, detectDayScheduleConflicts } from '../../utils/scheduleAutoArranger';
 
 interface TripPlannerModalProps {
   isOpen: boolean;

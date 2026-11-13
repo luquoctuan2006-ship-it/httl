@@ -5,16 +5,16 @@ import { MetricCards } from "./MetricCards";
 import { LiveRouteMap } from "./LiveRouteMap";
 import { OperationsPanel } from "./OperationsPanel";
 import { TimelineSchedule } from "./TimelineSchedule";
-import { AIOptimizeModal } from "./AIOptimizeModal";
-import { AddActivityModal } from "./AddActivityModal";
-import { AlertsListModal } from "./AlertsListModal";
-import { ActivityDetailModal } from "./ActivityDetailModal";
-import { TripsListView } from "./TripsListView";
-import { MembersView } from "./MembersView";
-import { BudgetView } from "./BudgetView";
+import { AIOptimizeModal } from "../modals/AIOptimizeModal";
+import { AddActivityModal } from "../modals/AddActivityModal";
+import { AlertsListModal } from "../modals/AlertsListModal";
+import { ActivityDetailModal } from "../modals/ActivityDetailModal";
+import { TripsListView } from "../trips/TripsListView";
+import { MembersView } from "../trips/MembersView";
+import { BudgetView } from "../trips/BudgetView";
 import { OfflineIndicator } from "./OfflineIndicator";
-import { TripData, Activity, TripMember, DaySchedule, Waypoint } from "../types/travel";
-import { AuthUser } from "../types/auth";
+import { TripData, Activity, TripMember, DaySchedule, Waypoint } from "../../types/travel";
+import { AuthUser } from "../../types/auth";
 import { Calendar, Clock, Compass, RotateCcw } from "lucide-react";
 
 export function UserDashboard({
@@ -326,7 +326,7 @@ export function UserDashboard({
                               title="Tự động xếp lịch: loại bỏ chồng chéo thời gian và cân bằng đệm di chuyển"
                             >
                               <Clock className="w-3.5 h-3.5 text-amber-300" />
-                              <span>⚡ Tự động xếp lịch</span>
+                              <span>Tự động xếp lịch</span>
                             </button>
                           )}
 
@@ -435,7 +435,7 @@ export function UserDashboard({
                             className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                             title="Tự động kiểm tra xung đột thời gian, sắp xếp lại thứ tự và chèn khoảng đệm di chuyển"
                           >
-                            <span>⚡ Tự động xếp lịch</span>
+                            <span>Tự động xếp lịch</span>
                           </button>
                         )}
                         <button

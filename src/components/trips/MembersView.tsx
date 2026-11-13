@@ -15,7 +15,7 @@ import {
   Shield,
   Award
 } from 'lucide-react';
-import { TripMember } from '../types/travel';
+import { TripMember } from '../../types/travel';
 
 interface MembersViewProps {
   members: TripMember[];

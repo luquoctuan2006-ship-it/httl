@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ExpenseInvoice } from '../../types/travel';
-import { authenticatedFetch, safeJsonResponse } from '../../api';
+import type { ExpenseInvoice } from '../../../types/travel';
+import { authenticatedFetch, safeJsonResponse } from '../../../api';
 
 export const receiptImageCache = new Map<string, string>();
 

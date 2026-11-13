@@ -1,18 +1,18 @@
 import React, { useState } from "react";
-import { Sidebar } from "./Sidebar";
-import { Header } from "./Header";
-import { MetricCards } from "./MetricCards";
-import { LiveRouteMap } from "./LiveRouteMap";
-import { OperationsPanel } from "./OperationsPanel";
-import { TimelineSchedule } from "./TimelineSchedule";
-import { AIOptimizeModal } from "./AIOptimizeModal";
-import { AddActivityModal } from "./AddActivityModal";
-import { AlertsListModal } from "./AlertsListModal";
-import { ActivityDetailModal } from "./ActivityDetailModal";
-import { TripsListView } from "./TripsListView";
-import { MembersView } from "./MembersView";
-import { BudgetView } from "./BudgetView";
-import { OfflineIndicator } from "./OfflineIndicator";
+import { Sidebar } from "../dashboard/Sidebar";
+import { Header } from "../dashboard/Header";
+import { MetricCards } from "../dashboard/MetricCards";
+import { LiveRouteMap } from "../dashboard/LiveRouteMap";
+import { OperationsPanel } from "../dashboard/OperationsPanel";
+import { TimelineSchedule } from "../dashboard/TimelineSchedule";
+import { AIOptimizeModal } from "../modals/AIOptimizeModal";
+import { AddActivityModal } from "../modals/AddActivityModal";
+import { AlertsListModal } from "../modals/AlertsListModal";
+import { ActivityDetailModal } from "../modals/ActivityDetailModal";
+import { TripsListView } from "../trips/TripsListView";
+import { MembersView } from "../trips/MembersView";
+import { BudgetView } from "../trips/BudgetView";
+import { OfflineIndicator } from "../dashboard/OfflineIndicator";
 import {
   AdminDashboardView,
   AdminUsersManagementView,
@@ -22,8 +22,8 @@ import {
   AdminScheduleMonitoringView,
   AdminSystemManagementView,
 } from "./AdminManagementViews";
-import { TripData, Activity, TripMember, Waypoint } from "../types/travel";
-import { AuthUser } from "../types/auth";
+import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
+import { AuthUser } from "../../types/auth";
 import { Compass } from "lucide-react";
 
 export function AdminDashboard({

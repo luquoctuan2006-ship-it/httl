@@ -10,8 +10,8 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth';
-import { firebaseAuth } from '../firebase';
-import { mapFirebaseAuthError, setPendingRegisteredDisplayName } from '../utils/tripSyncHelpers';
+import { firebaseAuth } from '../../firebase';
+import { mapFirebaseAuthError, setPendingRegisteredDisplayName } from '../../utils/tripSyncHelpers';
 
 export function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');

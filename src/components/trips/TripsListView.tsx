@@ -5,7 +5,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Calendar, MapPin, Sparkles, Edit2, Trash2, AlertTriangle, Copy, ArrowUpDown, Filter } from 'lucide-react';
-import { TripData } from '../types/travel';
+import { TripData } from '../../types/travel';
 
 interface TripsListViewProps {
   trips: TripData[];

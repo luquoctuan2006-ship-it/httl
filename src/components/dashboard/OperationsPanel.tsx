@@ -13,7 +13,7 @@ import {
   BellOff,
   Route,
 } from 'lucide-react';
-import { TripData } from '../types/travel';
+import { TripData } from '../../types/travel';
 
 interface OperationsPanelProps {
   trip: TripData;

@@ -15,7 +15,7 @@ import {
   Trash2,
   Menu,
 } from 'lucide-react';
-import { TripData, Activity, TripMember } from '../types/travel';
+import { TripData, Activity, TripMember } from '../../types/travel';
 
 type AppRole = 'user' | 'admin';
 
@@ -274,7 +274,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onSearchChange(e.target.value);
                 setIsDropdownOpen(true);
               }}
-              placeholder="Tìm hoạt động, địa điểm, thành viên... ⌘K"
+              placeholder="Tìm hoạt động, địa điểm, thành viên..."
               className={`w-full pl-9 pr-14 py-2 text-xs rounded-xl transition ${
                 isAdminMode
                   ? 'bg-slate-800/90 hover:bg-slate-800 focus:bg-slate-800 text-white placeholder-slate-400 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 shadow-inner'

@@ -13,10 +13,10 @@ import {
   Eye,
   RotateCcw,
 } from 'lucide-react';
-import { TripData } from '../types/travel';
-import { authenticatedFetch, safeJsonResponse } from '../api';
-import { computeOptimizationDiff, OptimizationDiff } from '../utils/applyOptimization';
-import { buildTripScheduleSignature } from '../utils/tripSyncHelpers';
+import { TripData } from '../../types/travel';
+import { authenticatedFetch, safeJsonResponse } from '../../api';
+import { computeOptimizationDiff, OptimizationDiff } from '../../utils/applyOptimization';
+import { buildTripScheduleSignature } from '../../utils/tripSyncHelpers';
 
 const MAX_POLL_DURATION_MS = 90_000;
 

@@ -7,9 +7,9 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { X, User, KeyRound, Mail, CheckCircle2, AlertCircle, Shield, Trash2 } from 'lucide-react';
-import { authenticatedFetch, safeJsonResponse } from '../api';
-import { firebaseAuth } from '../firebase';
-import { AuthUser } from '../types/auth';
+import { authenticatedFetch, safeJsonResponse } from '../../api';
+import { firebaseAuth } from '../../firebase';
+import { AuthUser } from '../../types/auth';
 
 interface AccountModalProps {
   isOpen: boolean;

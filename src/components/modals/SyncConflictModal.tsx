@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle, Cloud, Download, HardDrive, RefreshCw, X } from 'lucide-react';
-import type { TripData } from '../types/travel';
+import type { TripData } from '../../types/travel';
 
 interface SyncConflictModalProps {
   localTrip: TripData | null;

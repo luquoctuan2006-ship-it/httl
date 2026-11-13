@@ -1,6 +1,6 @@
 import React from 'react';
 import { Calendar, Wallet, CheckCircle2, Bus } from 'lucide-react';
-import { TripData } from '../types/travel';
+import { TripData } from '../../types/travel';
 
 interface MetricCardsProps {
   trip: TripData;

@@ -14,7 +14,7 @@ import {
   Pin,
   Sparkles,
 } from 'lucide-react';
-import { DaySchedule, Activity } from '../types/travel';
+import { DaySchedule, Activity } from '../../types/travel';
 
 interface TimelineScheduleProps {
   days: DaySchedule[];
@@ -247,7 +247,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                 title="Tự động xếp lịch: loại bỏ trùng giờ và chèn khoảng đệm di chuyển an toàn"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>⚡ Tự động xếp lịch</span>
+                <span>Tự động xếp lịch</span>
               </button>
             )}
 

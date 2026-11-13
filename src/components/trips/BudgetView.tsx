@@ -24,9 +24,9 @@ import {
   ImagePlus,
   Eye
 } from 'lucide-react';
-import { TripData, Activity, ExpenseInvoice } from '../types/travel';
-import { buildExpenseReportCsv } from '../utils/tripHelpers';
-import { authenticatedFetch, safeJsonResponse } from '../api';
+import { TripData, Activity, ExpenseInvoice } from '../../types/travel';
+import { buildExpenseReportCsv } from '../../utils/tripHelpers';
+import { authenticatedFetch, safeJsonResponse } from '../../api';
 import { ReceiptImage, ReceiptPreviewModal, receiptImageCache } from './budget/ReceiptImage';
 
 interface BudgetViewProps {

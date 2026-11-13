@@ -24,9 +24,9 @@ import {
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Waypoint, TripData } from '../types/travel';
-import { authenticatedFetch, safeJsonResponse } from '../api';
-import { dedupeWaypointsForMap } from '../utils/vietnamGeo';
+import { Waypoint, TripData } from '../../types/travel';
+import { authenticatedFetch, safeJsonResponse } from '../../api';
+import { dedupeWaypointsForMap } from '../../utils/vietnamGeo';
 
 interface LiveRouteMapProps {
   trip: TripData;

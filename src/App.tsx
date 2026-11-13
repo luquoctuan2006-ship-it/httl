@@ -5,13 +5,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { TripPlannerModal } from "./components/TripPlannerModal";
-import { AutoArrangeModal } from "./components/AutoArrangeModal";
-import { EditTripModal } from "./components/EditTripModal";
-import { AccountModal } from "./components/AccountModal";
-import { AuthScreen } from "./components/AuthScreen";
-import { AdminDashboard } from "./components/AdminDashboard";
-import { UserDashboard } from "./components/UserDashboard";
+import { TripPlannerModal } from "./components/modals/TripPlannerModal";
+import { AutoArrangeModal } from "./components/modals/AutoArrangeModal";
+import { EditTripModal } from "./components/modals/EditTripModal";
+import { AccountModal } from "./components/modals/AccountModal";
+import { AuthScreen } from "./components/auth/AuthScreen";
+import { AdminDashboard } from "./components/admin/AdminDashboard";
+import { UserDashboard } from "./components/dashboard/UserDashboard";
 import { detectScheduleAndWeatherAlerts } from "./utils/alertDetector";
 import { normalizeTripData } from "./data/normalizeTripData";
 import { TripData, Activity, TripMember, DaySchedule, Waypoint } from "./types/travel";
@@ -38,7 +38,7 @@ import {
   mergeAlertScanIntoTrip,
   offloadTripReceipts,
 } from "./utils/tripSyncHelpers";
-import { SyncConflictModal } from "./components/SyncConflictModal";
+import { SyncConflictModal } from "./components/modals/SyncConflictModal";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { firebaseAuth } from "./firebase";
 

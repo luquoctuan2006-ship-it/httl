@@ -1,6 +1,6 @@
 import React from 'react';
 import { WifiOff, RefreshCw, Cloud } from 'lucide-react';
-import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 
 interface OfflineIndicatorProps {
   pendingSyncCount?: number;

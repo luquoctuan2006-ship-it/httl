@@ -5,12 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, Calendar, DollarSign, MapPin, Truck, CheckCircle2 } from 'lucide-react';
-import { TripData } from '../types/travel';
+import { TripData } from '../../types/travel';
 import {
   formatTripDatesRange,
   parseTripDatesRange,
   validateTripDateRange,
-} from '../utils/tripSyncHelpers';
+} from '../../utils/tripSyncHelpers';
 
 interface EditTripModalProps {
   isOpen: boolean;
