@@ -93,7 +93,6 @@ app.use(
         frameAncestors: [
           "'self'",
           'https://*.google.com',
-          'https://aistudio.google.com',
           'https://*.run.app',
           ...(isProduction ? [] : ['http://localhost:*']),
         ],
@@ -137,10 +136,10 @@ if (existsSync(serviceAccountPath)) {
     try { firestore.settings({ ignoreUndefinedProperties: true }); } catch { /* đã được khởi tạo */ }
     firebaseAuth = getAuth(firebaseApp);
   } catch (err) {
-    console.warn('[AI Studio] Firebase Admin could not be initialized:', err);
+    console.warn('[Firebase Admin] Could not be initialized:', err);
   }
 } else {
-  console.warn('[AI Studio] Firebase service account not found — API routes requiring auth will return 503');
+  console.warn('[Firebase Admin] Service account not found — API routes requiring auth will return 503');
 }
 
 export const ALLOWED_AI_MODELS = [
@@ -1121,9 +1120,6 @@ const ai = geminiApiKey
       httpOptions: {
         timeout: geminiRequestTimeoutMs,
         retryOptions: { attempts: 1 },
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
       },
     })
   : null;
