@@ -96,44 +96,68 @@ export const VIETNAM_LOCATIONS: Record<string, { lat: number; lng: number }> = {
 };
 
 /**
- * Tra cứu tọa độ địa lý cho tên địa điểm tiếng Việt
+ * Tra cứu tọa độ địa lý cho tên địa điểm tiếng Việt.
+ * Trả về null nếu không xác định được địa điểm để tránh tạo tọa độ giả.
  */
-export function lookupCoordinates(placeName: string): { lat: number; lng: number } {
+export function lookupCoordinates(placeName: string): { lat: number; lng: number } | null {
   if (!placeName || typeof placeName !== 'string') {
-    return { lat: 16.0544, lng: 108.2022 };
+    return null;
   }
 
   const clean = placeName.trim().toLowerCase();
+  if (!clean) {
+    return null;
+  }
 
   // 1. Khớp trực tiếp
   if (VIETNAM_LOCATIONS[clean]) {
     return VIETNAM_LOCATIONS[clean];
   }
 
-  // 2. Khớp chuỗi con
+  // 2. Khớp chuỗi con an toàn (tránh chuỗi quá ngắn khớp nhầm)
   for (const [key, coords] of Object.entries(VIETNAM_LOCATIONS)) {
-    if (clean.includes(key) || key.includes(clean)) {
+    if (clean.includes(key) || (clean.length >= 4 && key.includes(clean))) {
       return coords;
     }
   }
 
-  // 3. Fallback: hash tên địa điểm tạo offset nhẹ trong bản đồ Việt Nam
+  return null;
+}
+
+/**
+ * Tính lại tọa độ giả lập theo công thức hash cũ để nhận diện dữ liệu cũ bị băm ngẫu nhiên.
+ */
+export function computeLegacyHashedCoordinate(placeName: string): { lat: number; lng: number } | null {
+  const clean = typeof placeName === 'string' ? placeName.trim().toLowerCase() : '';
+  if (!clean) return null;
+
   let hash = 0;
   for (let i = 0; i < clean.length; i++) {
     hash = (hash << 5) - hash + clean.charCodeAt(i);
     hash |= 0;
   }
-  const latOffset = ((Math.abs(hash) % 1000) / 1000) * 8; // 10.0 to 18.0
-  const lngOffset = ((Math.abs(hash >> 3) % 1000) / 1000) * 4; // 104.0 to 108.0
+  const latOffset = ((Math.abs(hash) % 1000) / 1000) * 8;
+  const lngOffset = ((Math.abs(hash >> 3) % 1000) / 1000) * 4;
 
   return {
-    lat: 10.5 + latOffset,
-    lng: 104.5 + lngOffset,
+    lat: Number((10.5 + latOffset).toFixed(4)),
+    lng: Number((104.5 + lngOffset).toFixed(4)),
   };
 }
 
 /**
- * Xây dựng danh sách Waypoints động cho chuyến đi từ điểm đi, điểm đến và các hoạt động
+ * Kiểm tra xem cặp tọa độ đã lưu có phải do thuật toán hash cũ tạo ra khi không tìm thấy địa danh hay không.
+ */
+export function isLegacyHashedCoordinate(placeName: string, lat: number, lng: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lookupCoordinates(placeName) !== null) return false;
+  const hashed = computeLegacyHashedCoordinate(placeName);
+  if (!hashed) return false;
+  return Math.abs(lat - hashed.lat) < 0.0005 && Math.abs(lng - hashed.lng) < 0.0005;
+}
+
+/**
+ * Xây dựng danh sách Waypoints động cho chuyến đi từ điểm đi, điểm đến và các hoạt động có tọa độ xác thực
  */
 export function buildDynamicWaypoints(
   origin: string,
@@ -142,23 +166,32 @@ export function buildDynamicWaypoints(
 ): Waypoint[] {
   const pointsMap = new Map<string, { lat: number; lng: number }>();
 
-  // Thêm điểm xuất phát
+  // Thêm điểm xuất phát nếu xác định được tọa độ
   const origName = origin.trim() || 'Điểm khởi hành';
-  pointsMap.set(origName, lookupCoordinates(origName));
+  const origCoords = lookupCoordinates(origName);
+  if (origCoords) {
+    pointsMap.set(origName, origCoords);
+  }
 
-  // Thêm các điểm hoạt động thực tế
+  // Thêm các điểm hoạt động có tọa độ xác thực
   for (const loc of activityLocations) {
     const trimmed = loc.trim();
     if (trimmed && !pointsMap.has(trimmed)) {
-      pointsMap.set(trimmed, lookupCoordinates(trimmed));
-      if (pointsMap.size >= 8) break; // Tối đa 8 điểm chính trên bản đồ
+      const coords = lookupCoordinates(trimmed);
+      if (coords) {
+        pointsMap.set(trimmed, coords);
+        if (pointsMap.size >= 8) break; // Tối đa 8 điểm chính trên bản đồ
+      }
     }
   }
 
-  // Thêm điểm đến nếu chưa có
+  // Thêm điểm đến nếu chưa có và xác định được tọa độ
   const destName = destination.trim() || 'Điểm đến';
   if (!pointsMap.has(destName)) {
-    pointsMap.set(destName, lookupCoordinates(destName));
+    const destCoords = lookupCoordinates(destName);
+    if (destCoords) {
+      pointsMap.set(destName, destCoords);
+    }
   }
 
   const entries = Array.from(pointsMap.entries());
@@ -226,7 +259,10 @@ export function buildAIPlanWaypoints(
 
   const cleanOrigin = origin.trim() || 'Điểm khởi hành';
   const cleanDestination = destination.trim() || 'Điểm đến';
-  addPoint(cleanOrigin, lookupCoordinates(cleanOrigin));
+  const originCoords = lookupCoordinates(cleanOrigin);
+  if (originCoords) {
+    addPoint(cleanOrigin, originCoords);
+  }
 
   for (const activity of activities) {
     if (!activity || typeof activity !== 'object') continue;
@@ -248,19 +284,29 @@ export function buildAIPlanWaypoints(
       lat <= 24 &&
       lng >= 102 &&
       lng <= 110;
+    const resolvedCoords = hasValidCoordinates ? { lat, lng } : lookupCoordinates(name);
+    if (!resolvedCoords) continue;
+
     const arrivalTime = typeof activity.timeStart === 'string' ? activity.timeStart : undefined;
 
     addPoint(
       name,
-      hasValidCoordinates ? { lat, lng } : lookupCoordinates(name),
+      resolvedCoords,
       arrivalTime,
       hasValidCoordinates,
     );
     if (points.size >= 49) break;
   }
 
-  addPoint(cleanDestination, lookupCoordinates(cleanDestination));
+  const destCoords = lookupCoordinates(cleanDestination);
+  if (destCoords) {
+    addPoint(cleanDestination, destCoords);
+  }
+
   const entries = Array.from(points.values());
+  if (entries.length === 0) {
+    return [];
+  }
   const lats = entries.map((point) => point.lat);
   const lngs = entries.map((point) => point.lng);
   const minLat = Math.min(...lats);

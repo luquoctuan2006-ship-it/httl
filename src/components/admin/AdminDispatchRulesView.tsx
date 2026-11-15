@@ -1,56 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard,
-  Users,
-  MapPin,
   Sliders,
-  Sparkles,
   ShieldAlert,
-  Settings,
-  Database,
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
   CheckCircle2,
-  AlertTriangle,
-  X,
   Clock,
   Car,
   Wallet,
-  Calendar,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
-  Filter,
-  Download,
-  Upload,
-  ArrowRight,
-  TrendingUp,
-  Cpu,
   RefreshCw,
-  Activity,
   Check,
   AlertCircle,
-  FileText,
-  Compass,
-  Navigation,
-  DollarSign,
-  Flag,
-  ChevronRight,
-  Zap,
 } from 'lucide-react';
-import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../../types/travel';
 import { authenticatedFetch } from '../../api';
+import { DarkCheckboxTile, DarkSectionCard, Field, TextInput } from '../common/Field';
 
-
-// 6. QUẢN LÝ QUY TẮC ĐIỀU PHỐI (DISPATCH RULE ENGINE)
-// - Quy tắc thời gian đệm (buffer minutes).
-// - Giới hạn ngân sách và ngưỡng cảnh báo.
-// - Tốc độ di chuyển theo địa hình.
-// - Kiểm tra xung đột lịch trình và điều kiện tối ưu.
-// ============================================================================
 export const AdminDispatchRulesView: React.FC = () => {
   const [bufferMinutes, setBufferMinutes] = useState('20');
   const [startHour, setStartHour] = useState('07:30');
@@ -188,166 +150,148 @@ export const AdminDispatchRulesView: React.FC = () => {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Quy tắc 1: Thời gian */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
-          <div className="flex items-center gap-2 text-white font-black text-base pb-3 border-b border-slate-800">
-            <Clock className="w-4 h-4 text-teal-400" />
-            <h3>1. Quy tắc Thời gian (Time Buffer)</h3>
-          </div>
+        <DarkSectionCard
+          title="1. Quy tắc Thời gian (Time Buffer)"
+          icon={<Clock className="w-4 h-4 text-teal-400" />}
+        >
           <div className="space-y-3 text-xs">
-            <div>
-              <label className="text-slate-300 block mb-1 font-bold">Thời gian đệm tối thiểu giữa 2 hoạt động</label>
-              <input
+            <Field
+              variant="dark"
+              label="Thời gian đệm tối thiểu giữa 2 hoạt động"
+              hint="Phút chuẩn bị lên xuống xe và tập trung đoàn"
+            >
+              <TextInput
+                variant="dark"
                 type="text"
                 value={bufferMinutes}
                 onChange={(e) => setBufferMinutes(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
-              <span className="text-[10px] text-slate-500">Phút chuẩn bị lên xuống xe và tập trung đoàn</span>
-            </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-slate-300 block mb-1 font-bold">Giờ khởi hành sớm nhất</label>
-                <input
+              <Field variant="dark" label="Giờ khởi hành sớm nhất">
+                <TextInput
+                  variant="dark"
                   type="text"
                   value={startHour}
                   onChange={(e) => setStartHour(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
                 />
-              </div>
-              <div>
-                <label className="text-slate-300 block mb-1 font-bold">Giờ kết thúc tour muộn nhất</label>
-                <input
+              </Field>
+              <Field variant="dark" label="Giờ kết thúc tour muộn nhất">
+                <TextInput
+                  variant="dark"
                   type="text"
                   value={endHour}
                   onChange={(e) => setEndHour(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
                 />
-              </div>
+              </Field>
             </div>
           </div>
-        </div>
+        </DarkSectionCard>
 
         {/* Quy tắc 2: Giới hạn ngân sách */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
-          <div className="flex items-center gap-2 text-white font-black text-base pb-3 border-b border-slate-800">
-            <Wallet className="w-4 h-4 text-amber-400" />
-            <h3>2. Giới hạn Ngân sách (Budget Thresholds)</h3>
-          </div>
+        <DarkSectionCard
+          title="2. Giới hạn Ngân sách (Budget Thresholds)"
+          icon={<Wallet className="w-4 h-4 text-amber-400" />}
+        >
           <div className="space-y-3 text-xs">
-            <div>
-              <label className="text-slate-300 block mb-1 font-bold">Hạn mức chi phí trần mỗi ngày</label>
-              <input
+            <Field variant="dark" label="Hạn mức chi phí trần mỗi ngày">
+              <TextInput
+                variant="dark"
                 type="text"
                 value={budgetCapDaily}
                 onChange={(e) => setBudgetCapDaily(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-amber-300 font-bold"
+                className="text-amber-300 font-bold"
               />
-            </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-slate-300 block mb-1 font-bold">Ngưỡng cảnh báo chi tiêu</label>
-                <input
+              <Field variant="dark" label="Ngưỡng cảnh báo chi tiêu">
+                <TextInput
+                  variant="dark"
                   type="text"
                   value={budgetAlertThreshold}
                   onChange={(e) => setBudgetAlertThreshold(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
                 />
-              </div>
-              <div>
-                <label className="text-slate-300 block mb-1 font-bold">Dự phòng rủi ro</label>
-                <input
+              </Field>
+              <Field variant="dark" label="Dự phòng rủi ro">
+                <TextInput
+                  variant="dark"
                   type="text"
                   value={contingencyPercent}
                   onChange={(e) => setContingencyPercent(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white"
                 />
-              </div>
+              </Field>
             </div>
           </div>
-        </div>
+        </DarkSectionCard>
 
         {/* Quy tắc 3: Tốc độ di chuyển */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
-          <div className="flex items-center gap-2 text-white font-black text-base pb-3 border-b border-slate-800">
-            <Car className="w-4 h-4 text-sky-400" />
-            <h3>3. Định mức Tốc độ Di chuyển Thực tế</h3>
-          </div>
+        <DarkSectionCard
+          title="3. Định mức Tốc độ Di chuyển Thực tế"
+          icon={<Car className="w-4 h-4 text-sky-400" />}
+        >
           <div className="grid grid-cols-3 gap-3 text-xs">
-            <div>
-              <label className="text-slate-300 block mb-1 font-bold">Đô thị nội thành</label>
-              <input
+            <Field variant="dark" label="Đô thị nội thành">
+              <TextInput
+                variant="dark"
                 type="text"
                 value={citySpeedLimit}
                 onChange={(e) => setCitySpeedLimit(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-teal-300 font-bold"
+                className="text-teal-300 font-bold"
               />
-            </div>
-            <div>
-              <label className="text-slate-300 block mb-1 font-bold">Quốc lộ / Cao tốc</label>
-              <input
+            </Field>
+            <Field variant="dark" label="Quốc lộ / Cao tốc">
+              <TextInput
+                variant="dark"
                 type="text"
                 value={highwaySpeedLimit}
                 onChange={(e) => setHighwaySpeedLimit(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-teal-300 font-bold"
+                className="text-teal-300 font-bold"
               />
-            </div>
-            <div>
-              <label className="text-slate-300 block mb-1 font-bold">Đèo dốc nguy hiểm</label>
-              <input
+            </Field>
+            <Field variant="dark" label="Đèo dốc nguy hiểm">
+              <TextInput
+                variant="dark"
                 type="text"
                 value={passSpeedLimit}
                 onChange={(e) => setPassSpeedLimit(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-amber-300 font-bold"
+                className="text-amber-300 font-bold"
               />
-            </div>
+            </Field>
           </div>
-        </div>
+        </DarkSectionCard>
 
         {/* Quy tắc 4: Xung đột lịch trình & Điều kiện tối ưu */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
-          <div className="flex items-center gap-2 text-white font-black text-base pb-3 border-b border-slate-800">
-            <ShieldAlert className="w-4 h-4 text-purple-400" />
-            <h3>4. Động cơ Phát hiện Xung đột & Ưu tiên Điều phối</h3>
-          </div>
+        <DarkSectionCard
+          title="4. Động cơ Phát hiện Xung đột & Ưu tiên Điều phối"
+          icon={<ShieldAlert className="w-4 h-4 text-purple-400" />}
+        >
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={conflictChecks.overlapTime}
-                onChange={(e) => setConflictChecks({ ...conflictChecks, overlapTime: e.target.checked })}
-                className="rounded accent-teal-500"
-              />
-              <span className="text-slate-200">Trùng giờ hoạt động</span>
-            </label>
-            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={conflictChecks.openingHoursMismatch}
-                onChange={(e) => setConflictChecks({ ...conflictChecks, openingHoursMismatch: e.target.checked })}
-                className="rounded accent-teal-500"
-              />
-              <span className="text-slate-200">Đến khi điểm đóng cửa</span>
-            </label>
-            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={optimizationPriorities.transitTimeMinimization}
-                onChange={(e) => setOptimizationPriorities({ ...optimizationPriorities, transitTimeMinimization: e.target.checked })}
-                className="rounded accent-teal-500"
-              />
-              <span className="text-slate-200">Tối thiểu thời gian di chuyển</span>
-            </label>
-            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={optimizationPriorities.avoidHotNoonSun}
-                onChange={(e) => setOptimizationPriorities({ ...optimizationPriorities, avoidHotNoonSun: e.target.checked })}
-                className="rounded accent-teal-500"
-              />
-              <span className="text-slate-200">Tránh nắng nóng 11h-14h</span>
-            </label>
+            <DarkCheckboxTile
+              label="Trùng giờ hoạt động"
+              checked={conflictChecks.overlapTime}
+              onChange={(checked) => setConflictChecks({ ...conflictChecks, overlapTime: checked })}
+            />
+            <DarkCheckboxTile
+              label="Đến khi điểm đóng cửa"
+              checked={conflictChecks.openingHoursMismatch}
+              onChange={(checked) => setConflictChecks({ ...conflictChecks, openingHoursMismatch: checked })}
+            />
+            <DarkCheckboxTile
+              label="Tối thiểu thời gian di chuyển"
+              checked={optimizationPriorities.transitTimeMinimization}
+              onChange={(checked) =>
+                setOptimizationPriorities({ ...optimizationPriorities, transitTimeMinimization: checked })
+              }
+            />
+            <DarkCheckboxTile
+              label="Tránh nắng nóng 11h-14h"
+              checked={optimizationPriorities.avoidHotNoonSun}
+              onChange={(checked) =>
+                setOptimizationPriorities({ ...optimizationPriorities, avoidHotNoonSun: checked })
+              }
+            />
           </div>
-        </div>
+        </DarkSectionCard>
       </div>
     </div>
   );

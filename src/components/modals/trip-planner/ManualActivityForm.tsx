@@ -1,4 +1,3 @@
-import React from 'react';
 import { Edit2, Plus, X } from 'lucide-react';
 import type { ManualPlannerTabProps } from './ManualPlannerTab';
 

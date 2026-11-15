@@ -1,5 +1,4 @@
-import type { Activity, ExpenseInvoice, TripData } from '../../../types/travel';
-import type { BudgetCategory } from './types';
+import type { ExpenseInvoice, TripData } from '../../../types/travel';
 
 export function useBudgetCalculations(trip: TripData, searchQuery: string) {
   const currentAllocations = trip.customCategoryAllocations || {

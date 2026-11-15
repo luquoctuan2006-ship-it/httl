@@ -55,6 +55,59 @@ export function cloneTripForTemplate(source: TripData, ownerUid?: string): TripD
   return normalizeTripData(cloned);
 }
 
+function hasNonZeroCoordinatePair(lat: unknown, lng: unknown): lat is number {
+  return (
+    typeof lat === 'number' &&
+    typeof lng === 'number' &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180 &&
+    (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)
+  );
+}
+
+/**
+ * Quy tắc khớp duy nhất giữa hoạt động và điểm dừng (theo tên địa điểm/tiêu đề hoặc tọa độ thực).
+ */
+export function doesActivityMatchWaypoint(activity: Activity, waypoint: Waypoint): boolean {
+  const wpName = (waypoint.name || '').trim().toLowerCase();
+  const loc = (activity.location || '').trim().toLowerCase();
+  const title = (activity.title || '').trim().toLowerCase();
+
+  if (
+    wpName &&
+    ((loc && (loc.includes(wpName) || wpName.includes(loc))) ||
+      (title && title.includes(wpName)))
+  ) {
+    return true;
+  }
+
+  if (
+    hasNonZeroCoordinatePair(waypoint.lat, waypoint.lng) &&
+    activity.coordinates &&
+    hasNonZeroCoordinatePair(activity.coordinates.lat, activity.coordinates.lng) &&
+    Math.abs(activity.coordinates.lat - waypoint.lat) < 0.01 &&
+    Math.abs(activity.coordinates.lng - waypoint.lng) < 0.01
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Tìm điểm dừng tương ứng với một hoạt động.
+ */
+export function findMatchingWaypointForActivity(
+  waypoints: readonly Waypoint[],
+  activity: Activity,
+): Waypoint | undefined {
+  return waypoints.find((wp) => doesActivityMatchWaypoint(activity, wp));
+}
+
 /**
  * Tìm hoạt động và ngày tương ứng khi người dùng bấm vào một điểm dừng (waypoint) trên bản đồ.
  */
@@ -64,18 +117,11 @@ export function findMatchingActivityForWaypoint(
 ): { activity: Activity; dayIndex: number } | null {
   const wpName = (waypoint.name || '').trim().toLowerCase();
   const wpCode = (waypoint.code || '').trim().toLowerCase();
-  if (!wpName && !wpCode) return null;
+  if (!wpName && !wpCode && !hasNonZeroCoordinatePair(waypoint.lat, waypoint.lng)) return null;
 
   for (const day of trip.days || []) {
     for (const act of day.activities || []) {
-      const loc = (act.location || '').trim().toLowerCase();
-      const title = (act.title || '').trim().toLowerCase();
-      if (
-        (wpName && (loc.includes(wpName) || wpName.includes(loc) || title.includes(wpName))) ||
-        (act.coordinates &&
-          Math.abs(act.coordinates.lat - waypoint.lat) < 0.01 &&
-          Math.abs(act.coordinates.lng - waypoint.lng) < 0.01)
-      ) {
+      if (doesActivityMatchWaypoint(act, waypoint)) {
         return { activity: act, dayIndex: day.dayIndex };
       }
     }

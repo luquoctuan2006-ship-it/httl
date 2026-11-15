@@ -1,0 +1,799 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { signOut } from 'firebase/auth';
+import { authenticatedFetch, safeJsonResponse } from '../api';
+import { normalizeTripData } from '../data/normalizeTripData';
+import { firebaseAuth } from '../firebase';
+import type { TripData } from '../types/travel';
+import {
+  clearTripPendingOfflineSync,
+  getOfflineCacheKey,
+  loadOfflineTripsCache,
+  markTripPendingOfflineSyncDetailed,
+  saveOfflineTripsCacheDetailed,
+} from '../utils/offlineStorage';
+import { getTripComparableJson } from '../utils/tripRepository';
+import {
+  AuthSessionError,
+  offloadTripReceipts,
+  PayloadTooLargeError,
+  SingleFlightQueue,
+} from '../utils/tripSyncHelpers';
+
+interface UseTripPersistenceOptions {
+  authUserId: string | null;
+  isOnline: boolean;
+  onClearAuthUser: () => void;
+  setCurrentDayIndex: (dayIndex: number) => void;
+  showToast: (
+    text: string,
+    type?: 'success' | 'error' | 'info',
+    actionLabel?: string,
+    onAction?: () => void,
+  ) => void;
+}
+
+export function useTripPersistence({
+  authUserId,
+  isOnline,
+  onClearAuthUser,
+  setCurrentDayIndex,
+  showToast,
+}: UseTripPersistenceOptions) {
+  const [trip, setTrip] = useState<TripData | null>(null);
+  const [trips, setTrips] = useState<TripData[]>([]);
+  const [tripsLoaded, setTripsLoaded] = useState<boolean>(false);
+  const [loadedTripUserId, setLoadedTripUserId] = useState<string | null>(null);
+  const [firebaseStatus, setFirebaseStatus] = useState<'loading' | 'connected' | 'error'>('loading');
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [conflictState, setConflictState] = useState<{
+    localTrip: TripData;
+    serverTrip: TripData;
+  } | null>(null);
+  const [isResolvingConflict, setIsResolvingConflict] = useState<boolean>(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState<boolean>(false);
+  const [isSyncingBeforeLogout, setIsSyncingBeforeLogout] = useState<boolean>(false);
+
+  const lastSavedContentByTripIdRef = useRef<Record<string, string>>({});
+  const latestServerVersionByTripIdRef = useRef<Record<string, number>>({});
+  const latestTripRef = useRef<TripData | null>(trip);
+  const saveQueueRef = useRef<SingleFlightQueue>(new SingleFlightQueue());
+  const isSyncingOfflineRef = useRef<boolean>(false);
+  const lastQuotaWarnAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    latestTripRef.current = trip;
+  }, [trip]);
+
+  const warnIfQuotaExceeded = useCallback((quotaExceeded: boolean) => {
+    if (!quotaExceeded) return;
+    const now = Date.now();
+    if (now - lastQuotaWarnAtRef.current < 10_000) return;
+    lastQuotaWarnAtRef.current = now;
+    showToast(
+      'Bộ nhớ trình duyệt đã đầy nên không thể lưu bản sao ngoại tuyến. Vui lòng giữ kết nối mạng hoặc dọn bớt dữ liệu cũ.',
+      'error',
+    );
+  }, [showToast]);
+
+  const performSignOutAndClearCache = useCallback(async (uidOverride?: string | null) => {
+    const uid = uidOverride ?? authUserId;
+    if (uid && typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(getOfflineCacheKey(uid));
+    }
+    setIsLogoutConfirmOpen(false);
+    setConflictState(null);
+    setPendingSyncCount(0);
+    setCachedAt(null);
+    setTrips([]);
+    setTrip(null);
+    lastSavedContentByTripIdRef.current = {};
+    latestServerVersionByTripIdRef.current = {};
+
+    try {
+      if (firebaseAuth && firebaseAuth.currentUser) {
+        await signOut(firebaseAuth);
+      }
+    } catch (err) {
+      console.warn('SignOut error:', err);
+    } finally {
+      onClearAuthUser();
+    }
+  }, [authUserId, onClearAuthUser]);
+
+  // Luôn đồng bộ danh sách trips theo state trip hiện hành để chuyển chuyến qua lại không bị dữ liệu cũ
+  useEffect(() => {
+    if (!trip?.id) return;
+    setTrips((prev) => {
+      const idx = prev.findIndex((t) => t.id === trip.id);
+      if (idx === -1 || prev[idx] === trip) return prev;
+      const next = [...prev];
+      next[idx] = trip;
+      return next;
+    });
+  }, [trip]);
+
+  // Luôn lưu cache cục bộ mỗi khi trips hoặc trip đang chọn thay đổi sau khi đã tải
+  useEffect(() => {
+    if (!authUserId || !tripsLoaded || loadedTripUserId !== authUserId) return;
+    const result = saveOfflineTripsCacheDetailed(authUserId, trips, trip?.id || null);
+    warnIfQuotaExceeded(result.quotaExceeded);
+    if (result.cache) {
+      setCachedAt(result.cache.cachedAt);
+      setPendingSyncCount(result.cache.pendingSyncIds.length);
+    }
+  }, [authUserId, tripsLoaded, loadedTripUserId, trips, trip, warnIfQuotaExceeded]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!authUserId) {
+      setTrips([]);
+      setTrip(null);
+      setTripsLoaded(false);
+      setLoadedTripUserId(null);
+      setPendingSyncCount(0);
+      setCachedAt(null);
+      return;
+    }
+
+    setFirebaseStatus('loading');
+    setTripsLoaded(false);
+    // Đổi tài khoản: bỏ ngay dữ liệu của người trước và chặn autosave cho tới khi nạp xong
+    setTrips([]);
+    setTrip(null);
+    lastSavedContentByTripIdRef.current = {};
+    setLoadedTripUserId(null);
+
+    const existingCache = loadOfflineTripsCache(authUserId);
+    if (existingCache) {
+      setCachedAt(existingCache.cachedAt);
+      setPendingSyncCount(existingCache.pendingSyncIds.length);
+    }
+
+    const loadFromApi = async () => {
+      try {
+        const response = await authenticatedFetch('/api/trips');
+        if (response.status === 401 || response.status === 403) {
+          throw new AuthSessionError(response.status);
+        }
+        if (!response.ok) throw new Error('Không thể tải dữ liệu chuyến đi');
+        const { activeTrip, trips: savedTrips } = await safeJsonResponse(response);
+        if (cancelled) return;
+
+        const correctedTrips = Array.isArray(savedTrips)
+          ? savedTrips.map((item: unknown) => normalizeTripData(item))
+          : activeTrip
+            ? [normalizeTripData(activeTrip)]
+            : [];
+
+        const primaryTrip =
+          (activeTrip ? normalizeTripData(activeTrip) : null) || correctedTrips[0] || null;
+
+        const savedMap: Record<string, string> = {};
+        const versionMap: Record<string, number> = {};
+        for (const item of correctedTrips) {
+          savedMap[item.id] = getTripComparableJson(item);
+          if (typeof item.version === 'number') {
+            versionMap[item.id] = item.version;
+          }
+        }
+        lastSavedContentByTripIdRef.current = savedMap;
+        latestServerVersionByTripIdRef.current = versionMap;
+
+        setTrips(correctedTrips);
+        setTrip(primaryTrip);
+        setCurrentDayIndex(primaryTrip?.currentDay || 1);
+        setFirebaseStatus('connected');
+        setLoadedTripUserId(authUserId);
+        setTripsLoaded(true);
+
+        const cachedResult = saveOfflineTripsCacheDetailed(
+          authUserId,
+          correctedTrips,
+          primaryTrip?.id || null,
+          existingCache?.pendingSyncIds,
+        );
+        warnIfQuotaExceeded(cachedResult.quotaExceeded);
+        if (cachedResult.cache) {
+          setCachedAt(cachedResult.cache.cachedAt);
+          setPendingSyncCount(cachedResult.cache.pendingSyncIds.length);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Trip loading error:', error);
+
+        if (error instanceof AuthSessionError) {
+          await performSignOutAndClearCache(authUserId);
+          showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+          return;
+        }
+
+        const offlineCache = loadOfflineTripsCache(authUserId);
+        if (offlineCache) {
+          const restoredTrips = offlineCache.trips;
+          const restoredActive =
+            restoredTrips.find((t) => t.id === offlineCache.activeTripId) || restoredTrips[0] || null;
+          setTrips(restoredTrips);
+          setTrip(restoredActive);
+          setCurrentDayIndex(restoredActive?.currentDay || 1);
+          setCachedAt(offlineCache.cachedAt);
+          setPendingSyncCount(offlineCache.pendingSyncIds.length);
+          setLoadedTripUserId(authUserId);
+          setTripsLoaded(true);
+          setFirebaseStatus('error');
+          if (restoredTrips.length > 0) {
+            showToast('Đang dùng dữ liệu ngoại tuyến lưu trên thiết bị.', 'info');
+          }
+          return;
+        }
+
+        setFirebaseStatus('error');
+        setTripsLoaded(true);
+      }
+    };
+
+    void loadFromApi();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUserId, performSignOutAndClearCache, setCurrentDayIndex, showToast, warnIfQuotaExceeded]);
+
+  const uploadReceiptToServer = useCallback(async (tripId: string, dataUrl: string): Promise<string | null> => {
+    try {
+      const res = await authenticatedFetch(`/api/trips/${encodeURIComponent(tripId)}/receipts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl }),
+      });
+      if (!res.ok) return null;
+      const payload = await safeJsonResponse(res);
+      return typeof payload?.receiptId === 'string' ? payload.receiptId : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchServerTripSnapshot = useCallback(async (tripId: string): Promise<TripData | null> => {
+    try {
+      const freshRes = await authenticatedFetch(`/api/trips/${encodeURIComponent(tripId)}`);
+      if (!freshRes.ok) return null;
+      const freshJson = await safeJsonResponse(freshRes);
+      const freshTrip = freshJson?.trip || (freshJson?.id ? freshJson : null);
+      return freshTrip?.id ? normalizeTripData(freshTrip) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const executeTripPut = useCallback(async (
+    candidateTrip: TripData,
+    options?: {
+      forceServerVersion?: number;
+      alignWithSessionVersion?: boolean;
+      onPreparedTrip?: (prepared: TripData) => void;
+    },
+  ): Promise<
+    | { status: 'ok'; savedTrip: TripData; version?: number }
+    | { status: 'conflict'; localTrip: TripData; serverTrip: TripData | null }
+  > => {
+    const normalized = normalizeTripData(candidateTrip);
+    const alignedVersion =
+      typeof options?.forceServerVersion === 'number'
+        ? options.forceServerVersion
+        : options?.alignWithSessionVersion && typeof latestServerVersionByTripIdRef.current[normalized.id] === 'number'
+          ? latestServerVersionByTripIdRef.current[normalized.id]
+          : normalized.version;
+
+    const prepared = await offloadTripReceipts(
+      { ...normalized, ...(typeof alignedVersion === 'number' ? { version: alignedVersion } : {}) },
+      uploadReceiptToServer,
+    );
+    options?.onPreparedTrip?.(prepared);
+
+    const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(prepared.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prepared),
+    });
+    const result = await safeJsonResponse(response);
+
+    if (response.status === 401 || response.status === 403) {
+      throw new AuthSessionError(response.status, result?.error || undefined);
+    }
+
+    if (response.status === 413) {
+      throw new PayloadTooLargeError(result?.error || undefined);
+    }
+
+    if (response.status === 409) {
+      const freshServer = await fetchServerTripSnapshot(prepared.id);
+      if (freshServer) {
+        if (typeof freshServer.version === 'number') {
+          latestServerVersionByTripIdRef.current[freshServer.id] = freshServer.version;
+        }
+        if (getTripComparableJson(prepared) === getTripComparableJson(freshServer)) {
+          return { status: 'ok', savedTrip: freshServer, version: freshServer.version };
+        }
+      }
+      return { status: 'conflict', localTrip: prepared, serverTrip: freshServer };
+    }
+
+    if (!response.ok || (result && result.success === false)) {
+      throw new Error(result?.error || 'Không thể lưu dữ liệu chuyến đi');
+    }
+
+    const serverSaved = result?.trip?.id ? normalizeTripData(result.trip) : prepared;
+    const nextVersion =
+      typeof result?.version === 'number'
+        ? result.version
+        : typeof serverSaved.version === 'number'
+          ? serverSaved.version
+          : prepared.version;
+    if (typeof nextVersion === 'number') {
+      latestServerVersionByTripIdRef.current[prepared.id] = nextVersion;
+    }
+
+    const savedTrip: TripData = {
+      ...prepared,
+      ...serverSaved,
+      ...(typeof nextVersion === 'number' ? { version: nextVersion } : {}),
+    };
+
+    return {
+      status: 'ok',
+      savedTrip,
+      version: nextVersion,
+    };
+  }, [fetchServerTripSnapshot, uploadReceiptToServer]);
+
+  const syncPendingOfflineTrips = useCallback(async () => {
+    if (!authUserId || !isOnline || isSyncingOfflineRef.current || conflictState) return;
+    const cache = loadOfflineTripsCache(authUserId);
+    if (!cache || cache.pendingSyncIds.length === 0) {
+      setPendingSyncCount(0);
+      return;
+    }
+
+    isSyncingOfflineRef.current = true;
+    let syncedCount = 0;
+
+    try {
+      for (const pendingId of cache.pendingSyncIds) {
+        const queuedTrip = cache.trips.find((t) => t.id === pendingId);
+        if (!queuedTrip) {
+          clearTripPendingOfflineSync(authUserId, pendingId);
+          continue;
+        }
+
+        let preparedSnapshot = queuedTrip;
+        try {
+          const outcome = await saveQueueRef.current.enqueue(() =>
+            executeTripPut(queuedTrip, {
+              alignWithSessionVersion: false,
+              onPreparedTrip: (prepared) => {
+                preparedSnapshot = prepared;
+              },
+            }),
+          );
+
+          if (outcome.status === 'conflict') {
+            if (preparedSnapshot !== queuedTrip) {
+              const savedRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+              warnIfQuotaExceeded(savedRes.quotaExceeded);
+            }
+            if (outcome.serverTrip) {
+              setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+              showToast('Phát hiện xung đột đồng bộ ngoại tuyến — hãy chọn phiên bản muốn giữ.', 'info');
+            } else {
+              showToast('Xung đột phiên bản khi đồng bộ, vui lòng kiểm tra lại.', 'error');
+            }
+            setFirebaseStatus('error');
+            break;
+          }
+
+          const { savedTrip, version } = outcome;
+          lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+          clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          setTrip((prev) =>
+            prev?.id === savedTrip.id
+              ? {
+                  ...prev,
+                  invoices: savedTrip.invoices,
+                  budgetTotal: savedTrip.budgetTotal,
+                  budgetUsed: savedTrip.budgetUsed,
+                  budgetRemaining: savedTrip.budgetRemaining,
+                  budgetUsedPercent: savedTrip.budgetUsedPercent,
+                  ...(typeof version === 'number' ? { version } : {}),
+                }
+              : prev,
+          );
+          syncedCount += 1;
+        } catch (itemError) {
+          if (itemError instanceof AuthSessionError) {
+            await performSignOutAndClearCache(authUserId);
+            showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+            return;
+          }
+          if (preparedSnapshot !== queuedTrip) {
+            const savedRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+            warnIfQuotaExceeded(savedRes.quotaExceeded);
+          }
+          if (itemError instanceof PayloadTooLargeError) {
+            clearTripPendingOfflineSync(authUserId, pendingId);
+            setFirebaseStatus('error');
+            showToast(itemError.message, 'error');
+            continue;
+          }
+          throw itemError;
+        }
+      }
+
+      const refreshedCache = loadOfflineTripsCache(authUserId);
+      setPendingSyncCount(refreshedCache?.pendingSyncIds.length || 0);
+      if (syncedCount > 0) {
+        setFirebaseStatus('connected');
+        showToast(`Đã đồng bộ ${syncedCount} chuyến đi thay đổi khi ngoại tuyến.`, 'success');
+      }
+    } catch (error) {
+      console.warn('Offline sync retry failed:', error);
+    } finally {
+      isSyncingOfflineRef.current = false;
+    }
+  }, [authUserId, isOnline, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+
+  useEffect(() => {
+    if (isOnline && authUserId && tripsLoaded && pendingSyncCount > 0 && !conflictState) {
+      void syncPendingOfflineTrips();
+    }
+  }, [isOnline, authUserId, tripsLoaded, pendingSyncCount, conflictState, syncPendingOfflineTrips]);
+
+  // Autosave trip changes qua hàng đợi tuần tự (single-flight)
+  useEffect(() => {
+    if (!authUserId || !trip?.id || loadedTripUserId !== authUserId || conflictState) return;
+
+    const currentComparable = getTripComparableJson(trip);
+    if (!currentComparable || currentComparable === lastSavedContentByTripIdRef.current[trip.id]) return;
+
+    const tripIdSnapshot = trip.id;
+    const timeout = window.setTimeout(() => {
+      void saveQueueRef.current.enqueue(async () => {
+        const liveTrip = latestTripRef.current;
+        if (!liveTrip || liveTrip.id !== tripIdSnapshot) return;
+
+        const normalized = normalizeTripData(liveTrip);
+        const targetComparable = getTripComparableJson(normalized);
+        if (!targetComparable || targetComparable === lastSavedContentByTripIdRef.current[normalized.id]) {
+          return;
+        }
+
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          const saveRes = markTripPendingOfflineSyncDetailed(authUserId, normalized);
+          warnIfQuotaExceeded(saveRes.quotaExceeded);
+          if (saveRes.cache) {
+            setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+            setCachedAt(saveRes.cache.cachedAt);
+          }
+          setFirebaseStatus('error');
+          return;
+        }
+
+        let preparedSnapshot = normalized;
+        try {
+          const outcome = await executeTripPut(normalized, {
+            alignWithSessionVersion: true,
+            onPreparedTrip: (prepared) => {
+              preparedSnapshot = prepared;
+            },
+          });
+          if (outcome.status === 'conflict') {
+            const saveRes = markTripPendingOfflineSyncDetailed(authUserId, outcome.localTrip);
+            warnIfQuotaExceeded(saveRes.quotaExceeded);
+            if (saveRes.cache) {
+              setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+              setCachedAt(saveRes.cache.cachedAt);
+            }
+            if (outcome.serverTrip) {
+              setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+              showToast('Phát hiện xung đột phiên bản — bản sửa của bạn vẫn được giữ an toàn.', 'info');
+            } else {
+              showToast('Dữ liệu chuyến đi bị xung đột phiên bản. Vui lòng kiểm tra lại.', 'error');
+            }
+            setFirebaseStatus('error');
+            return;
+          }
+
+          const { savedTrip, version } = outcome;
+          lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+          setTrip((prev) => {
+            if (!prev || prev.id !== savedTrip.id) return prev;
+            const prevJson = getTripComparableJson(prev);
+            const prevIsSame =
+              prevJson === targetComparable || prevJson === getTripComparableJson(preparedSnapshot);
+            return {
+              ...prev,
+              ...(prevIsSame
+                ? {
+                    invoices: savedTrip.invoices,
+                    budgetTotal: savedTrip.budgetTotal,
+                    budgetUsed: savedTrip.budgetUsed,
+                    budgetRemaining: savedTrip.budgetRemaining,
+                    budgetUsedPercent: savedTrip.budgetUsedPercent,
+                  }
+                : {}),
+              ...(typeof version === 'number' ? { version } : {}),
+            };
+          });
+          setFirebaseStatus('connected');
+        } catch (error) {
+          if (error instanceof AuthSessionError) {
+            await performSignOutAndClearCache(authUserId);
+            showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+            return;
+          }
+          if (error instanceof PayloadTooLargeError) {
+            const cacheAfter = clearTripPendingOfflineSync(authUserId, preparedSnapshot.id);
+            if (cacheAfter) {
+              setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+            }
+            setFirebaseStatus('error');
+            showToast(error.message, 'error');
+            return;
+          }
+          console.error('Trip save error:', error);
+          if (preparedSnapshot !== normalized) {
+            setTrip((prev) =>
+              prev?.id === preparedSnapshot.id ? { ...prev, invoices: preparedSnapshot.invoices } : prev,
+            );
+          }
+          const saveRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+          warnIfQuotaExceeded(saveRes.quotaExceeded);
+          if (saveRes.cache) {
+            setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+            setCachedAt(saveRes.cache.cachedAt);
+          }
+          setFirebaseStatus('error');
+        }
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [trip, authUserId, loadedTripUserId, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+
+  const saveTripToFirestore = useCallback(async (updatedTrip: TripData, successMessage?: string) => {
+    const normalizedTrip = normalizeTripData(updatedTrip);
+    setTrip(normalizedTrip);
+
+    if (authUserId && typeof navigator !== 'undefined' && !navigator.onLine) {
+      const saveRes = markTripPendingOfflineSyncDetailed(authUserId, normalizedTrip);
+      warnIfQuotaExceeded(saveRes.quotaExceeded);
+      if (saveRes.cache) {
+        setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+        setCachedAt(saveRes.cache.cachedAt);
+      }
+      setFirebaseStatus('error');
+      showToast('Đang ngoại tuyến: đã lưu tạm vào bộ nhớ máy và sẽ đồng bộ khi có mạng.', 'info');
+      return;
+    }
+
+    setFirebaseStatus('loading');
+    let preparedSnapshot = normalizedTrip;
+
+    try {
+      await saveQueueRef.current.enqueue(async () => {
+        const outcome = await executeTripPut(normalizedTrip, {
+          alignWithSessionVersion: true,
+          onPreparedTrip: (prepared) => {
+            preparedSnapshot = prepared;
+          },
+        });
+        if (outcome.status === 'conflict') {
+          if (authUserId) {
+            const saveRes = markTripPendingOfflineSyncDetailed(authUserId, outcome.localTrip);
+            warnIfQuotaExceeded(saveRes.quotaExceeded);
+            if (saveRes.cache) {
+              setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+              setCachedAt(saveRes.cache.cachedAt);
+            }
+          }
+          if (preparedSnapshot !== normalizedTrip) {
+            setTrip((prev) =>
+              prev?.id === preparedSnapshot.id ? { ...prev, invoices: preparedSnapshot.invoices } : prev,
+            );
+          }
+          if (outcome.serverTrip) {
+            setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+            showToast('Phát hiện xung đột phiên bản — bản sửa của bạn vẫn được giữ nguyên.', 'info');
+          } else {
+            showToast('Xung đột phiên bản: Dữ liệu đã được cập nhật bởi phiên làm việc khác.', 'error');
+          }
+          setFirebaseStatus('error');
+          return;
+        }
+
+        const { savedTrip, version } = outcome;
+        lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+        if (authUserId) {
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+        }
+        setTrip((prev) => {
+          if (!prev || prev.id !== savedTrip.id) return prev;
+          const prevJson = getTripComparableJson(prev);
+          const isUnchangedWhileSaving =
+            prevJson === getTripComparableJson(normalizedTrip) ||
+            prevJson === getTripComparableJson(preparedSnapshot);
+          return {
+            ...prev,
+            ...(isUnchangedWhileSaving
+              ? {
+                  invoices: savedTrip.invoices,
+                  budgetTotal: savedTrip.budgetTotal,
+                  budgetUsed: savedTrip.budgetUsed,
+                  budgetRemaining: savedTrip.budgetRemaining,
+                  budgetUsedPercent: savedTrip.budgetUsedPercent,
+                }
+              : {}),
+            ...(typeof version === 'number' ? { version } : {}),
+          };
+        });
+        setFirebaseStatus('connected');
+        if (successMessage) showToast(successMessage, 'success');
+      });
+    } catch (error) {
+      if (error instanceof AuthSessionError) {
+        await performSignOutAndClearCache(authUserId);
+        showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+        return;
+      }
+      if (error instanceof PayloadTooLargeError) {
+        if (authUserId) {
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, preparedSnapshot.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+        }
+        setFirebaseStatus('error');
+        showToast(error.message, 'error');
+        return;
+      }
+      console.error('All trip save methods failed:', error);
+      if (preparedSnapshot !== normalizedTrip) {
+        setTrip((prev) =>
+          prev?.id === preparedSnapshot.id ? { ...prev, invoices: preparedSnapshot.invoices } : prev,
+        );
+      }
+      if (authUserId) {
+        const saveRes = markTripPendingOfflineSyncDetailed(authUserId, preparedSnapshot);
+        warnIfQuotaExceeded(saveRes.quotaExceeded);
+        if (saveRes.cache) {
+          setPendingSyncCount(saveRes.cache.pendingSyncIds.length);
+          setCachedAt(saveRes.cache.cachedAt);
+        }
+      }
+      setFirebaseStatus('error');
+      showToast('Không thể kết nối máy chủ — thay đổi đã được lưu tạm ngoại tuyến.', 'error');
+    }
+  }, [authUserId, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+
+  const handleKeepLocalConflict = useCallback(async () => {
+    if (!conflictState) return;
+    setIsResolvingConflict(true);
+    const { localTrip, serverTrip } = conflictState;
+    try {
+      await saveQueueRef.current.enqueue(async () => {
+        const outcome = await executeTripPut(localTrip, { forceServerVersion: serverTrip.version });
+        if (outcome.status === 'conflict') {
+          if (outcome.serverTrip) {
+            setConflictState({ localTrip: outcome.localTrip, serverTrip: outcome.serverTrip });
+          }
+          showToast('Máy chủ lại có thay đổi mới hơn trong lúc ghi đè. Vui lòng chọn lại.', 'error');
+          return;
+        }
+        const { savedTrip } = outcome;
+        lastSavedContentByTripIdRef.current[savedTrip.id] = getTripComparableJson(savedTrip);
+        if (authUserId) {
+          const cacheAfter = clearTripPendingOfflineSync(authUserId, savedTrip.id);
+          if (cacheAfter) {
+            setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+          }
+        }
+        setTrip(savedTrip);
+        setConflictState(null);
+        setFirebaseStatus('connected');
+        showToast('Đã giữ bản chỉnh sửa của bạn và cập nhật lên máy chủ!', 'success');
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'Không thể ghi đè bản cục bộ lên máy chủ', 'error');
+    } finally {
+      setIsResolvingConflict(false);
+    }
+  }, [authUserId, conflictState, executeTripPut, showToast]);
+
+  const handleUseServerConflict = useCallback(() => {
+    if (!conflictState) return;
+    const serverTrip = normalizeTripData(conflictState.serverTrip);
+    lastSavedContentByTripIdRef.current[serverTrip.id] = getTripComparableJson(serverTrip);
+    if (typeof serverTrip.version === 'number') {
+      latestServerVersionByTripIdRef.current[serverTrip.id] = serverTrip.version;
+    }
+    if (authUserId) {
+      const cacheAfter = clearTripPendingOfflineSync(authUserId, serverTrip.id);
+      if (cacheAfter) {
+        setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+      }
+    }
+    setTrip(serverTrip);
+    setConflictState(null);
+    setFirebaseStatus('connected');
+    showToast(`Đã áp dụng bản máy chủ (v${serverTrip.version ?? '?'}) thành công.`, 'info');
+  }, [authUserId, conflictState, showToast]);
+
+  const handleLogout = useCallback(async () => {
+    const hasUnsavedCurrentTrip = Boolean(
+      trip?.id && getTripComparableJson(trip) !== lastSavedContentByTripIdRef.current[trip.id],
+    );
+    if (pendingSyncCount > 0 || hasUnsavedCurrentTrip || conflictState) {
+      setIsLogoutConfirmOpen(true);
+      return;
+    }
+    await performSignOutAndClearCache();
+  }, [conflictState, pendingSyncCount, performSignOutAndClearCache, trip]);
+
+  const handleSyncAndLogout = useCallback(async () => {
+    if (!authUserId) {
+      await performSignOutAndClearCache();
+      return;
+    }
+    setIsSyncingBeforeLogout(true);
+    try {
+      await syncPendingOfflineTrips();
+      const cache = loadOfflineTripsCache(authUserId);
+      if (!cache || cache.pendingSyncIds.length === 0) {
+        await performSignOutAndClearCache();
+      } else {
+        showToast('Vẫn còn dữ liệu chưa thể đồng bộ. Vui lòng xử lý xung đột hoặc xác nhận đăng xuất.', 'info');
+      }
+    } finally {
+      setIsSyncingBeforeLogout(false);
+    }
+  }, [authUserId, performSignOutAndClearCache, showToast, syncPendingOfflineTrips]);
+
+  return {
+    trip,
+    setTrip,
+    trips,
+    setTrips,
+    tripsLoaded,
+    loadedTripUserId,
+    firebaseStatus,
+    setFirebaseStatus,
+    pendingSyncCount,
+    cachedAt,
+    conflictState,
+    setConflictState,
+    isResolvingConflict,
+    isLogoutConfirmOpen,
+    setIsLogoutConfirmOpen,
+    isSyncingBeforeLogout,
+    lastSavedContentByTripIdRef,
+    latestServerVersionByTripIdRef,
+    latestTripRef,
+    saveQueueRef,
+    fetchServerTripSnapshot,
+    executeTripPut,
+    saveTripToFirestore,
+    syncPendingOfflineTrips,
+    handleKeepLocalConflict,
+    handleUseServerConflict,
+    performSignOutAndClearCache,
+    handleLogout,
+    handleSyncAndLogout,
+  };
+}

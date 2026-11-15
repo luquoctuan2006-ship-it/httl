@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dashboard', label: 'Bảng điều phối', icon: LayoutDashboard },
         { id: 'trips', label: 'Chuyến đi', icon: Compass, badge: tripCount },
         { id: 'schedule', label: 'Lịch trình', icon: Calendar },
-        { id: 'map', label: 'Bản đồ tuyến', icon: MapPin },
+        { id: 'map', label: 'Bản đồ & Tiến độ', icon: MapPin },
         { id: 'members', label: 'Thành viên', icon: Users },
         { id: 'budget', label: 'Ngân sách', icon: Wallet },
       ];

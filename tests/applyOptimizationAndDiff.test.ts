@@ -5,7 +5,6 @@ import {
   applyScheduleChangesStrict,
   computeOptimizationDiff,
   filterAlertsByRecommendation,
-  isAlertResolvedByRecommendation,
 } from '../src/utils/applyOptimization';
 import {
   buildRuleBasedScheduleOptimization,
@@ -13,7 +12,7 @@ import {
   runOptimization,
 } from '../src/utils/scheduleOptimizer';
 import { parseRules, validateOptimizationResult } from '../src/utils/scheduleValidator';
-import { Activity, DaySchedule, OperationalAlert, TripData } from '../src/types/travel';
+import { Activity, OperationalAlert, TripData } from '../src/types/travel';
 
 const sampleAdminRules = {
   bufferMinutes: '20',

@@ -5,6 +5,7 @@ export interface Activity {
   title: string;
   location: string;
   status: 'Hoàn tất' | 'Đang diễn ra' | 'Cần xử lý' | 'Đã xác nhận' | 'Chờ duyệt';
+  previousStatus?: 'Đã xác nhận' | 'Cần xử lý' | 'Chờ duyệt';
   type: 'transport' | 'meal' | 'sightseeing' | 'hotel' | 'checkin' | 'briefing';
   details: string;
   cost?: number;

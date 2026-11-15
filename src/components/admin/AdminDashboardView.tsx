@@ -1,56 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  LayoutDashboard,
   Users,
   MapPin,
   Sliders,
   Sparkles,
-  ShieldAlert,
   Settings,
-  Database,
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
-  CheckCircle2,
-  AlertTriangle,
-  X,
-  Clock,
-  Car,
-  Wallet,
   Calendar,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
-  Filter,
-  Download,
-  Upload,
-  ArrowRight,
   TrendingUp,
   Cpu,
-  RefreshCw,
-  Activity,
-  Check,
-  AlertCircle,
-  FileText,
-  Compass,
-  Navigation,
-  DollarSign,
-  Flag,
   ChevronRight,
-  Zap,
 } from 'lucide-react';
-import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../../types/travel';
+import { TripData } from '../../types/travel';
 import { authenticatedFetch } from '../../api';
 
-
-// 1. DASHBOARD / THỐNG KÊ TỔNG QUAN
-// - Tổng số người dùng, người dùng đang hoạt động, người dùng bị khóa.
-// - Tổng số chuyến đi và lịch trình được tạo.
-// - Thống kê lượt sử dụng AI, số lần tạo lịch thất bại, tỷ lệ thành công.
-// - Biểu đồ hoạt động theo ngày, tuần, tháng.
-// ============================================================================
 interface AdminDashboardProps {
   trip: TripData;
   trips?: TripData[];
@@ -63,7 +25,7 @@ interface AdminDashboardProps {
 export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
   trip,
   trips = [],
-  firebaseStatus,
+  firebaseStatus: _firebaseStatus,
   onNavigate,
   onOpenAIPlanner,
   onOpenAIOptimize,

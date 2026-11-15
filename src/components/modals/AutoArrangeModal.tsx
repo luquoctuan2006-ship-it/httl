@@ -7,7 +7,6 @@ import React, { useState } from 'react';
 import {
   X,
   Sparkles,
-  Clock,
   ArrowRight,
   AlertTriangle,
   CheckCircle2,
@@ -20,7 +19,6 @@ import {
   autoArrangeDay,
   autoArrangeEntireTrip,
   detectDayScheduleConflicts,
-  ActivityTimeAdjustment,
 } from '../../utils/scheduleAutoArranger';
 
 interface AutoArrangeModalProps {

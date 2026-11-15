@@ -48,8 +48,8 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   searchQuery = '',
   onClearSearch,
   onUpdateStatus,
-  onDeleteActivity,
-  onEditActivity,
+  onDeleteActivity: _onDeleteActivity,
+  onEditActivity: _onEditActivity,
   onAddDay,
   onDeleteDay,
   onUpdateDayNote,
@@ -102,6 +102,10 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   ).length;
 
   const totalTripActivities = days.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
+  const totalTripCompleted = days.reduce(
+    (sum, d) => sum + (d.activities?.filter((a) => a.status === 'Hoàn tất').length || 0),
+    0
+  );
   const totalTripConfirmed = days.reduce(
     (sum, d) => sum + (d.activities?.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length || 0),
     0
@@ -609,7 +613,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
           </span>
           <span className="text-slate-300">•</span>
           <span className="text-slate-600 font-bold">
-            Toàn tour: {totalTripConfirmed}/{totalTripActivities} hoàn tất
+            Toàn tour: {totalTripCompleted}/{totalTripActivities} hoàn tất ({totalTripConfirmed} đã xác nhận)
           </span>
         </div>
       </div>

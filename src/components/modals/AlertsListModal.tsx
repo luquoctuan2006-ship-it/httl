@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertTriangle, CloudRain, Clock, Truck, CheckCircle, ShieldAlert, RefreshCw } from 'lucide-react';
+import { X, CloudRain, Clock, Truck, CheckCircle, ShieldAlert, RefreshCw } from 'lucide-react';
 import { OperationalAlert } from '../../types/travel';
 
 interface AlertsListModalProps {

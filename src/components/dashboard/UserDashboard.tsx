@@ -13,7 +13,7 @@ import { TripsListView } from "../trips/TripsListView";
 import { MembersView } from "../trips/MembersView";
 import { BudgetView } from "../trips/BudgetView";
 import { OfflineIndicator } from "./OfflineIndicator";
-import { TripData, Activity, TripMember, DaySchedule, Waypoint } from "../../types/travel";
+import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
 import { Calendar, Clock, Compass, RotateCcw } from "lucide-react";
 
@@ -45,7 +45,7 @@ export function UserDashboard({
   handleToggleMemberAttendance,
   handleUpdateMembers,
   handleUpdateTrip,
-  isAIPlannerOpen,
+  isAIPlannerOpen: _isAIPlannerOpen,
   setIsAIPlannerOpen,
   isAIOptimizeOpen,
   setIsAIOptimizeOpen,

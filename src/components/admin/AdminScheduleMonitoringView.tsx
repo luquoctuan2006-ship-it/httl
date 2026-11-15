@@ -1,49 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  LayoutDashboard,
-  Users,
-  MapPin,
-  Sliders,
-  Sparkles,
-  ShieldAlert,
-  Settings,
-  Database,
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
   CheckCircle2,
   AlertTriangle,
   X,
-  Clock,
-  Car,
-  Wallet,
-  Calendar,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
-  Filter,
-  Download,
-  Upload,
-  ArrowRight,
-  TrendingUp,
-  Cpu,
-  RefreshCw,
-  Activity,
-  Check,
-  AlertCircle,
-  FileText,
-  Compass,
-  Navigation,
-  DollarSign,
   Flag,
-  ChevronRight,
-  Zap,
 } from 'lucide-react';
-import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../../types/travel';
-import { authenticatedFetch } from '../../api';
-
+import { TripData } from '../../types/travel';
 
 interface AdminScheduleMonitoringProps {
   trip: TripData;
@@ -54,7 +16,7 @@ interface AdminScheduleMonitoringProps {
 export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps> = ({
   trip,
   trips = [],
-  onUpdateTrip,
+  onUpdateTrip: _onUpdateTrip,
 }) => {
   const [selectedTripDetails, setSelectedTripDetails] = useState<TripData | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);

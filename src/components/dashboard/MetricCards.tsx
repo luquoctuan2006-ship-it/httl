@@ -83,33 +83,54 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
       </div>
 
       {/* Card 2: Lịch trình */}
-      <div
-        onClick={onOpenSchedule}
-        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Calendar className="w-4 h-4" />
-            </div>
-            <span className="text-xs font-semibold text-slate-500">Lịch trình</span>
-          </div>
+      {(() => {
+        const allActs = (trip.days || []).flatMap((d) => d.activities || []);
+        const hasActivitiesArray = allActs.length > 0;
+        const totalCount = hasActivitiesArray ? allActs.length : trip.totalActivities;
+        const confirmedCount = hasActivitiesArray
+          ? allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length
+          : trip.confirmedActivities;
+        const pendingCount = hasActivitiesArray
+          ? allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra' || a.status === 'Chờ duyệt').length
+          : trip.pendingActivities;
+        const completedCount = hasActivitiesArray
+          ? allActs.filter((a) => a.status === 'Hoàn tất').length
+          : 0;
+        const readyPercent = totalCount > 0 ? Math.round((confirmedCount / totalCount) * 100) : 0;
+        const completedPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-900 tracking-tight">
-              {trip.totalActivities} hoạt động
+        return (
+          <div
+            onClick={onOpenSchedule}
+            className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
+          >
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-semibold text-slate-500">Lịch trình</span>
+              </div>
+
+              <div className="mt-2">
+                <div className="text-2xl font-black text-slate-900 tracking-tight">
+                  {totalCount} hoạt động
+                </div>
+                <div className="text-xs text-slate-500 mt-1 font-medium">
+                  <span className="text-blue-600 font-semibold">{readyPercent}% sẵn sàng</span> ({confirmedCount} đã xác nhận) • {pendingCount} chờ
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-slate-500 mt-1 font-medium">
-              <span className="text-emerald-600 font-semibold">{trip.confirmedActivities} đã xác nhận</span> • {trip.pendingActivities} chờ
+
+            <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+              <span>Tiến độ thực hiện</span>
+              <span className="font-semibold text-emerald-600">
+                {completedCount}/{totalCount} hoàn tất ({completedPercent}%)
+              </span>
             </div>
           </div>
-        </div>
-
-        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-          <span>Tiến độ hành trình</span>
-          <span className="font-semibold text-blue-600">88.8% sẵn sàng</span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Card 3: Ngân sách */}
       <div

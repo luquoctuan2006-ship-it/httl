@@ -1,4 +1,4 @@
-import type { Express, Request, RequestHandler, Response } from 'express';
+import type { Express, Request, RequestHandler } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { GoogleGenAI } from '@google/genai';

@@ -1,5 +1,6 @@
 import { initialTripData } from './mockData';
 import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice } from '../types/travel';
+import { isLegacyHashedCoordinate } from '../utils/vietnamGeo';
 
 const VALID_STATUSES: Activity['status'][] = ['Hoàn tất', 'Đang diễn ra', 'Cần xử lý', 'Đã xác nhận', 'Chờ duyệt'];
 const VALID_TYPES: Activity['type'][] = ['transport', 'meal', 'sightseeing', 'hotel', 'checkin', 'briefing'];
@@ -59,9 +60,22 @@ function normalizeActivity(raw: unknown, idx: number, dayIdx: number): Activity 
 
   if (typeof item.highlight === 'boolean') res.highlight = item.highlight;
   if (typeof item.notes === 'string') res.notes = item.notes.slice(0, 300);
+  if (
+    item.previousStatus === 'Đã xác nhận' ||
+    item.previousStatus === 'Cần xử lý' ||
+    item.previousStatus === 'Chờ duyệt'
+  ) {
+    res.previousStatus = item.previousStatus;
+  }
   if (item.coordinates && typeof item.coordinates === 'object') {
     const c = item.coordinates as { lat?: number; lng?: number };
-    if (typeof c.lat === 'number' && typeof c.lng === 'number' && Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
+    if (
+      typeof c.lat === 'number' &&
+      typeof c.lng === 'number' &&
+      Number.isFinite(c.lat) &&
+      Number.isFinite(c.lng) &&
+      !isLegacyHashedCoordinate(location || title, c.lat, c.lng)
+    ) {
       res.coordinates = { lat: c.lat, lng: c.lng };
     }
   }
@@ -234,7 +248,18 @@ export function normalizeTripData(value: unknown): TripData {
       };
 
   const waypoints: Waypoint[] = Array.isArray(candidate.waypoints)
-    ? (candidate.waypoints as Waypoint[]).slice(0, 50)
+    ? (candidate.waypoints as Waypoint[]).slice(0, 50).map((wp) => {
+        if (
+          wp &&
+          typeof wp === 'object' &&
+          typeof wp.lat === 'number' &&
+          typeof wp.lng === 'number' &&
+          isLegacyHashedCoordinate(wp.name || '', wp.lat, wp.lng)
+        ) {
+          return { ...wp, lat: 0, lng: 0 };
+        }
+        return wp;
+      })
     : [];
 
   const alerts: OperationalAlert[] = Array.isArray(candidate.alerts)

@@ -6,7 +6,7 @@
  * mà không cần server hay API key.
  */
 
-import { Activity, DaySchedule, OperationalAlert, TripData, Waypoint } from '../types/travel';
+import { Activity, DaySchedule, OperationalAlert, TripData } from '../types/travel';
 import {
   buildRulesPromptSection,
   effectiveBufferMinutes,

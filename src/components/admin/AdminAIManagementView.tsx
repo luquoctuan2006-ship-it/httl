@@ -1,47 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  LayoutDashboard,
-  Users,
-  MapPin,
   Sliders,
   Sparkles,
-  ShieldAlert,
-  Settings,
-  Database,
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
   CheckCircle2,
   AlertTriangle,
-  X,
-  Clock,
-  Car,
-  Wallet,
-  Calendar,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
-  Filter,
-  Download,
-  Upload,
-  ArrowRight,
-  TrendingUp,
-  Cpu,
   RefreshCw,
-  Activity,
   Check,
-  AlertCircle,
   FileText,
-  Compass,
-  Navigation,
-  DollarSign,
-  Flag,
-  ChevronRight,
   Zap,
 } from 'lucide-react';
-import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../../types/travel';
+import { TripData } from '../../types/travel';
 import { authenticatedFetch } from '../../api';
 
 
@@ -546,12 +514,3 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
     </div>
   );
 };
-
-
-// ============================================================================
-// 5. QUẢN LÝ VÀ KIỂM TRA LỊCH TRÌNH
-// - Tra cứu lịch trình khi cần hỗ trợ hoặc xử lý báo cáo.
-// - Xem lịch trình có lỗi dữ liệu, địa điểm không hợp lệ hoặc thời gian bất khả thi.
-// - Ẩn nội dung công khai vi phạm quy định nếu có chia sẻ.
-// - Modal xem chi tiết lịch trình theo từng ngày.
-// ============================================================================

@@ -1,16 +1,3 @@
-export interface FleetVehicleOption {
-  id: string;
-  type: string;
-  capacity: string;
-  status: string;
-}
-
-export interface LiveBusPosition {
-  lat: number;
-  lng: number;
-  isLiveGps: boolean;
-}
-
 export type MapLayer = 'streets' | 'satellite';
 
 export function getWeatherDescription(code: number): string {
@@ -32,7 +19,7 @@ export const escapeHtml = (value: unknown): string =>
   );
 
 export const STATUS_LABEL: Record<string, string> = {
-  completed: 'Hoàn tất',
-  current: 'Đang diễn ra',
-  pending: 'Chờ đến',
+  completed: 'Đã tham quan',
+  current: 'Đang tham quan',
+  pending: 'Sắp tới',
 };

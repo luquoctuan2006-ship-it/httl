@@ -1,4 +1,3 @@
-import React from 'react';
 import { Download, FileText, Printer, X } from 'lucide-react';
 import type { Activity, ExpenseInvoice, TripData } from '../../../types/travel';
 

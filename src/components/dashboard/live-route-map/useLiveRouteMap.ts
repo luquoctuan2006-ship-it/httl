@@ -1,58 +1,46 @@
-import React, { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
-import type { TripData, Waypoint } from '../../../types/travel';
-import { dedupeWaypointsForMap } from '../../../utils/vietnamGeo';
-import { escapeHtml, STATUS_LABEL, type MapLayer, type LiveBusPosition } from './mapHelpers';
+import { formatTravelDuration, type RouteStopItem } from '../../../utils/routeProgress';
+import { escapeHtml, STATUS_LABEL, type MapLayer } from './mapHelpers';
 
 interface UseLiveRouteMapOptions {
-  trip: TripData;
-  onSelectWaypoint?: (waypoint: Waypoint) => void;
+  tripId: string;
+  stops: RouteStopItem[];
+  selectedStopKey: string | null;
+  onSelectStop?: (stop: RouteStopItem) => void;
   mapLayer: MapLayer;
   searchQuery: string;
 }
 
-export function useLiveRouteMap({ trip, onSelectWaypoint, mapLayer, searchQuery }: UseLiveRouteMapOptions) {
-const mapContainerRef = useRef<HTMLDivElement>(null);
+type LocatedRouteStop = RouteStopItem & { lat: number; lng: number };
+
+export function getStopKey(stop: Pick<RouteStopItem, 'id' | 'order'>): string {
+  return `${stop.id}:${stop.order}`;
+}
+
+export function useLiveRouteMap({
+  tripId,
+  stops,
+  selectedStopKey,
+  onSelectStop,
+  mapLayer,
+  searchQuery,
+}: UseLiveRouteMapOptions) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<{ [key: string]: L.Marker }>({});
-  const busMarkerRef = useRef<L.Marker | null>(null);
-  const polylineRef = useRef<L.Polyline | null>(null);
-// Waypoints lấy trực tiếp từ chuyến đi hiện tại (không còn viết cứng)
-  const waypoints = React.useMemo(
+  const markersRef = useRef<Record<string, L.Marker>>({});
+  const polylinesRef = useRef<L.Polyline[]>([]);
+  const segmentLabelsRef = useRef<L.Marker[]>([]);
+
+  const locatedStops = useMemo(
     () =>
-      (trip.waypoints || []).filter(
-        (w) => !w.isHidden && Number.isFinite(Number(w.lat)) && Number.isFinite(Number(w.lng)),
+      stops.filter(
+        (s): s is LocatedRouteStop =>
+          s.hasCoordinates && typeof s.lat === 'number' && typeof s.lng === 'number',
       ),
-    [trip.waypoints],
-  );
-  const markerWaypoints = React.useMemo(
-    () => dedupeWaypointsForMap(waypoints),
-    [waypoints],
+    [stops],
   );
 
-  // Ưu tiên tọa độ GPS thực tế nếu có; nếu chưa bật GPS thì fallback theo điểm dừng hiện tại
-  const hasRealGps =
-    typeof trip.telematics.currentLat === 'number' &&
-    typeof trip.telematics.currentLng === 'number' &&
-    Number.isFinite(trip.telematics.currentLat) &&
-    Number.isFinite(trip.telematics.currentLng);
-
-  const busPos = React.useMemo(() => {
-    if (hasRealGps) {
-      return {
-        lat: trip.telematics.currentLat as number,
-        lng: trip.telematics.currentLng as number,
-        isLiveGps: true,
-      };
-    }
-    const wp =
-      waypoints.find((w) => w.status === 'current') ||
-      [...waypoints].reverse().find((w) => w.status === 'completed') ||
-      waypoints[0];
-    return wp ? { lat: wp.lat, lng: wp.lng, isLiveGps: false } : null;
-  }, [hasRealGps, trip.telematics.currentLat, trip.telematics.currentLng, waypoints]);
-
-  // Initialize or update Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -62,21 +50,17 @@ const mapContainerRef = useRef<HTMLDivElement>(null);
         zoom: 10,
         zoomControl: false,
       });
-
       mapInstanceRef.current = map;
     }
 
     const map = mapInstanceRef.current;
 
-    // Remove existing tile layer if any
     map.eachLayer((layer) => {
       if (layer instanceof L.TileLayer) {
         map.removeLayer(layer);
       }
     });
 
-
-    // Add Tile Layer
     if (mapLayer === 'satellite') {
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -88,7 +72,7 @@ const mapContainerRef = useRef<HTMLDivElement>(null);
     } else {
       const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY;
       L.tileLayer(
-        `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(cartoApiKey)}`,
+        `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : ''}`,
         {
           attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
           subdomains: 'abcd',
@@ -98,184 +82,213 @@ const mapContainerRef = useRef<HTMLDivElement>(null);
       ).addTo(map);
     }
 
-
-    // Polyline connecting the route
-    if (polylineRef.current) {
-      map.removeLayer(polylineRef.current);
-    }
-    const routeCoords: [number, number][] = waypoints.map((wp) => [wp.lat, wp.lng]);
-    const routeLine = L.polyline(routeCoords, {
-      color: '#0F766E',
-      weight: 4,
-      opacity: 0.85,
-      dashArray: '6, 8',
-    }).addTo(map);
-    polylineRef.current = routeLine;
-
-    // Waypoint Markers
+    polylinesRef.current.forEach((line) => map.removeLayer(line));
+    polylinesRef.current = [];
+    segmentLabelsRef.current.forEach((label) => map.removeLayer(label));
+    segmentLabelsRef.current = [];
     Object.values(markersRef.current).forEach((m) => map.removeLayer(m));
     markersRef.current = {};
 
-    markerWaypoints.forEach((wp) => {
-      const isCurrent = wp.status === 'current';
-      const isCompleted = wp.status === 'completed';
-      const timeLabel = [wp.arrivalTime, wp.departureTime].filter(Boolean).join(' - ') || '—';
-      const bgColor = isCurrent ? '#0D9488' : isCompleted ? '#059669' : '#7C3AED';
+    // Draw ordered route segments colored by progress using only stops with valid coordinates
+    for (let i = 1; i < locatedStops.length; i += 1) {
+      const prev = locatedStops[i - 1];
+      const curr = locatedStops[i];
+      const legDone = prev.status === 'completed' && (curr.status === 'completed' || curr.status === 'current');
+
+      const segmentLine = L.polyline(
+        [
+          [prev.lat, prev.lng],
+          [curr.lat, curr.lng],
+        ],
+        legDone
+          ? { color: '#059669', weight: 4.5, opacity: 0.9 }
+          : { color: '#0F766E', weight: 4, opacity: 0.8, dashArray: '6, 8' },
+      ).addTo(map);
+      polylinesRef.current.push(segmentLine);
+
+      if (curr.distanceFromPrevKm >= 1 && locatedStops.length <= 15) {
+        const midLat = (prev.lat + curr.lat) / 2;
+        const midLng = (prev.lng + curr.lng) / 2;
+        const segText = `${curr.distanceFromPrevKm} km • ~${formatTravelDuration(curr.travelMinutesFromPrev)}`;
+        const segIcon = L.divIcon({
+          className: 'route-segment-pill',
+          html: `
+            <div style="
+              background: rgba(255,255,255,0.94);
+              color: #0F172A;
+              border: 1px solid #CBD5E1;
+              border-radius: 9999px;
+              padding: 2px 7px;
+              font-size: 10px;
+              font-weight: 700;
+              white-space: nowrap;
+              box-shadow: 0 2px 4px rgba(15,23,42,0.12);
+              transform: translate(-50%, -50%);
+              pointer-events: none;
+            ">
+              ${escapeHtml(segText)}
+            </div>
+          `,
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        });
+        const labelMarker = L.marker([midLat, midLng], {
+          icon: segIcon,
+          interactive: false,
+          keyboard: false,
+        }).addTo(map);
+        segmentLabelsRef.current.push(labelMarker);
+      }
+    }
+
+    // Offset markers slightly if multiple stops share exact coordinates so every visit order number is clickable
+    const coordCount = new Map<string, number>();
+
+    locatedStops.forEach((stop) => {
+      const coordKey = `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`;
+      const dupIndex = coordCount.get(coordKey) ?? 0;
+      coordCount.set(coordKey, dupIndex + 1);
+      const angle = dupIndex * ((2 * Math.PI) / 5);
+      const offsetRadius = dupIndex === 0 ? 0 : 0.0018;
+      const pinLat = stop.lat + Math.sin(angle) * offsetRadius;
+      const pinLng = stop.lng + Math.cos(angle) * offsetRadius;
+
+      const key = getStopKey(stop);
+      const isSelected = selectedStopKey === key;
+      const isCurrent = stop.status === 'current';
+      const isCompleted = stop.status === 'completed';
+      const bgColor = isCurrent ? '#0D9488' : isCompleted ? '#059669' : '#6366F1';
+      const ringShadow = isSelected
+        ? '0 0 0 4px rgba(20, 184, 166, 0.35), 0 6px 12px rgba(15, 23, 42, 0.3)'
+        : '0 4px 6px -1px rgba(0, 0, 0, 0.25)';
+
+      const pulseRing = isCurrent
+        ? `<div style="
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 9999px;
+            background: rgba(13, 148, 136, 0.28);
+            animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+            top: -20px;
+            left: -20px;
+          "></div>`
+        : '';
 
       const customIcon = L.divIcon({
         className: 'custom-leaflet-marker',
         html: `
-          <div style="
-            background: ${bgColor};
-            color: white;
-            font-size: 11px;
-            font-weight: 800;
-            width: 28px;
-            height: 28px;
-            border-radius: 9999px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid white;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.25);
-            cursor: pointer;
-            transform: translate(-50%, -50%);
-          ">
-            ${wp.code}
+          <div style="position: relative;">
+            ${pulseRing}
+            <div style="
+              background: ${bgColor};
+              color: white;
+              font-size: 11px;
+              font-weight: 800;
+              width: ${isSelected ? 32 : 28}px;
+              height: ${isSelected ? 32 : 28}px;
+              border-radius: 9999px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border: 2.5px solid white;
+              box-shadow: ${ringShadow};
+              cursor: pointer;
+              transform: translate(-50%, -50%);
+            ">
+              ${stop.order}
+            </div>
           </div>
         `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
       });
 
-      const marker = L.marker([wp.lat, wp.lng], { icon: customIcon }).addTo(map);
+      const marker = L.marker([pinLat, pinLng], { icon: customIcon }).addTo(map);
+      const legLine =
+        stop.distanceFromPrevKm > 0
+          ? `<div style="color:#475569;margin-top:3px;">Di chuyển ước tính: <strong>${stop.distanceFromPrevKm} km</strong> (~${escapeHtml(formatTravelDuration(stop.travelMinutesFromPrev))})</div>`
+          : `<div style="color:#0D9488;margin-top:3px;font-weight:600;">Điểm khởi đầu tuyến</div>`;
+      const dayTimeLine = [
+        stop.dayIndex ? `Ngày ${stop.dayIndex}` : '',
+        stop.timeLabel || '',
+      ]
+        .filter(Boolean)
+        .join(' • ');
+
       marker.bindPopup(`
-        <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
-          <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(wp.name)}</strong><br/>
-          <span style="color: #0D9488; font-weight: 700;">Điểm #${escapeHtml(wp.code)} • ${STATUS_LABEL[wp.status] || ''}</span><br/>
-          <span style="color: #64748B;">Khung giờ: ${escapeHtml(timeLabel)}</span>
+        <div style="font-family: sans-serif; font-size: 12px; padding: 2px; min-width: 190px;">
+          <strong style="color: #0F172A; font-size: 13px;">#${stop.order}. ${escapeHtml(stop.name)}</strong><br/>
+          <span style="color: ${isCompleted ? '#059669' : isCurrent ? '#0D9488' : '#6366F1'}; font-weight: 700;">
+            ${escapeHtml(STATUS_LABEL[stop.status] || '')}
+          </span>
+          ${dayTimeLine ? `<br/><span style="color: #64748B;">${escapeHtml(dayTimeLine)}</span>` : ''}
+          ${stop.activityTitle ? `<br/><span style="color: #334155;">Hoạt động: ${escapeHtml(stop.activityTitle)}</span>` : ''}
+          ${legLine}
         </div>
       `);
 
       marker.on('click', () => {
-        onSelectWaypoint?.(wp);
+        onSelectStop?.(stop);
       });
 
-      markersRef.current[wp.id] = marker;
+      markersRef.current[key] = marker;
     });
-
-    // Vehicle Bus Marker
-    if (busMarkerRef.current) {
-      map.removeLayer(busMarkerRef.current);
-    }
-
-    const busIcon = L.divIcon({
-      className: 'custom-bus-marker',
-      html: `
-        <div style="position: relative; cursor: pointer;">
-          <div style="
-            position: absolute;
-            width: 44px;
-            height: 44px;
-            border-radius: 9999px;
-            background: rgba(13, 148, 136, 0.3);
-            animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-            top: -22px;
-            left: -22px;
-          "></div>
-          <div style="
-            width: 36px;
-            height: 36px;
-            border-radius: 12px;
-            background: #0F172A;
-            color: #2DD4BF;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid #2DD4BF;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
-            transform: translate(-50%, -50%);
-          ">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 6v6"></path>
-              <path d="M15 6v6"></path>
-              <path d="M2 12h19.6"></path>
-              <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-3.3-2.7-6-6-6H7c-3.3 0-6 2.7-6 6 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"></path>
-              <circle cx="7" cy="18" r="2"></circle>
-              <circle cx="17" cy="18" r="2"></circle>
-            </svg>
-          </div>
-        </div>
-      `,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-    });
-
-    busMarkerRef.current = null;
-    if (busPos) {
-      const busMarker = L.marker([busPos.lat, busPos.lng], { icon: busIcon }).addTo(map);
-      const sourceLabel = busPos.isLiveGps
-        ? `GPS trực tiếp (${trip.telematics.gpsUpdatedAt || 'Vừa cập nhật'})${typeof trip.telematics.speedKmh === 'number' ? ` • ${trip.telematics.speedKmh} km/h` : ''}`
-        : 'Ước tính theo điểm dừng (Chưa bật GPS thiết bị)';
-      busMarker.bindPopup(`
-        <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
-          <strong style="color: #0F172A; font-size: 13px;">${escapeHtml(trip.telematics.vehicleType)}${trip.telematics.licensePlate ? ` (${escapeHtml(trip.telematics.licensePlate)})` : ''}</strong><br/>
-          <span style="color: #0D9488; font-weight: 700;">Tài xế: ${escapeHtml(trip.telematics.driver)}</span><br/>
-          <span style="color: #64748B;">Chặng: ${escapeHtml(trip.telematics.from)} → ${escapeHtml(trip.telematics.to)}</span><br/>
-          <span style="color: ${busPos.isLiveGps ? '#059669' : '#D97706'}; font-size: 11px; font-weight: 700;">${escapeHtml(sourceLabel)}</span>
-        </div>
-      `);
-      busMarkerRef.current = busMarker;
-    }
 
     return () => {
-      // Map stays attached or is cleaned up on unmount
+      // Keep map instance attached across layer/stop updates
     };
-  }, [mapLayer, trip, waypoints, markerWaypoints, busPos]);
+  }, [mapLayer, locatedStops, selectedStopKey, onSelectStop]);
 
-  // Tự động zoom vừa khít tuyến mỗi khi đổi chuyến đi / đổi waypoints
-  useEffect(() => {
+  const handleFitRoute = useCallback(() => {
     const map = mapInstanceRef.current;
-    if (!map || waypoints.length === 0) return;
+    if (!map || locatedStops.length === 0) return;
     map.invalidateSize();
-    if (waypoints.length === 1) {
-      map.setView([waypoints[0].lat, waypoints[0].lng], 12);
+    if (locatedStops.length === 1) {
+      map.flyTo([locatedStops[0].lat, locatedStops[0].lng], 12, { duration: 0.7 });
       return;
     }
     map.fitBounds(
-      L.latLngBounds(waypoints.map((w) => [w.lat, w.lng] as [number, number])),
-      { padding: [40, 40], maxZoom: 12 },
+      L.latLngBounds(locatedStops.map((s) => [s.lat, s.lng] as [number, number])),
+      { padding: [44, 44], maxZoom: 13 },
     );
-  }, [trip.id, waypoints]);
+  }, [locatedStops]);
 
-  // Handle Search Query Pan
+  useEffect(() => {
+    handleFitRoute();
+  }, [tripId, locatedStops, handleFitRoute]);
+
   useEffect(() => {
     if (!searchQuery.trim() || !mapInstanceRef.current) return;
     const q = searchQuery.toLowerCase();
-    const matched = waypoints.find(
-      (wp) => wp.name.toLowerCase().includes(q) || wp.code.toLowerCase().includes(q)
+    const matched = locatedStops.find(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.code.toLowerCase().includes(q) ||
+        (s.activityTitle && s.activityTitle.toLowerCase().includes(q)),
     );
     if (matched) {
-      mapInstanceRef.current.flyTo([matched.lat, matched.lng], 13, { duration: 1.2 });
-      markersRef.current[matched.id]?.openPopup();
+      mapInstanceRef.current.flyTo([matched.lat, matched.lng], 13, { duration: 1.0 });
+      markersRef.current[getStopKey(matched)]?.openPopup();
     }
-  }, [searchQuery, waypoints]);
-// Zoom helpers
+  }, [searchQuery, locatedStops]);
+
+  const focusStop = useCallback((stop: RouteStopItem) => {
+    const map = mapInstanceRef.current;
+    if (!map || !stop.hasCoordinates || stop.lat === null || stop.lng === null) return;
+    map.flyTo([stop.lat, stop.lng], 13, { duration: 0.8 });
+    markersRef.current[getStopKey(stop)]?.openPopup();
+  }, []);
+
   const handleZoomIn = () => mapInstanceRef.current?.zoomIn();
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
-  const handleResetFocus = () => {
-    if (!busPos) return;
-    mapInstanceRef.current?.flyTo([busPos.lat, busPos.lng], 12, { duration: 1 });
-    busMarkerRef.current?.openPopup();
-  };
+
   return {
     mapContainerRef,
     mapInstanceRef,
-    waypoints,
-    hasRealGps,
-    busPos,
     handleZoomIn,
     handleZoomOut,
-    handleResetFocus,
+    handleFitRoute,
+    focusStop,
   };
 }

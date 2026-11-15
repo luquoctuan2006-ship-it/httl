@@ -115,3 +115,38 @@ test('normalizeTripData does not invent default version, fake weather or fake ai
   assert.equal(normalized.weather.rainProb, '');
   assert.equal(normalized.aiConfidence, '');
 });
+
+test('normalizeTripData scrubs legacy hashed coordinates on unknown places while keeping valid coordinates', async () => {
+  const { computeLegacyHashedCoordinate, isLegacyHashedCoordinate } = await import('../src/utils/vietnamGeo');
+  const unknownPlace = 'Quán ẩn danh XYZ cũ';
+  const legacyHash = computeLegacyHashedCoordinate(unknownPlace)!;
+  assert.ok(legacyHash);
+  assert.equal(isLegacyHashedCoordinate(unknownPlace, legacyHash.lat, legacyHash.lng), true);
+  // Real coordinates for Đà Nẵng must never be flagged as legacy hash
+  assert.equal(isLegacyHashedCoordinate('Đà Nẵng', 16.0544, 108.2022), false);
+
+  const normalized = normalizeTripData({
+    id: 'test-legacy-hash-scrub',
+    waypoints: [
+      { id: 'wp-legacy', code: '01', name: unknownPlace, status: 'pending', lat: legacyHash.lat, lng: legacyHash.lng, xPercent: 50, yPercent: 50 },
+      { id: 'wp-real', code: '02', name: 'Đà Nẵng', status: 'current', lat: 16.0544, lng: 108.2022, xPercent: 70, yPercent: 70 },
+    ],
+    days: [
+      {
+        dayIndex: 1,
+        activities: [
+          { id: 'act-1', timeStart: '08:00', timeEnd: '09:00', title: 'Ăn sáng', location: unknownPlace, status: 'Đã xác nhận', type: 'meal', coordinates: legacyHash },
+          { id: 'act-2', timeStart: '10:00', timeEnd: '12:00', title: 'Cầu Rồng', location: 'Đà Nẵng', status: 'Đã xác nhận', type: 'sightseeing', coordinates: { lat: 16.0544, lng: 108.2022 } },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(normalized.days[0].activities[0].coordinates, undefined);
+  assert.deepEqual(normalized.days[0].activities[1].coordinates, { lat: 16.0544, lng: 108.2022 });
+  assert.equal(normalized.waypoints[0].lat, 0);
+  assert.equal(normalized.waypoints[0].lng, 0);
+  assert.equal(normalized.waypoints[1].lat, 16.0544);
+  assert.equal(normalized.waypoints[1].lng, 108.2022);
+});
+

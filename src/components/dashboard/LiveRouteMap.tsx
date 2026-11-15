@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import type { Waypoint, TripData } from '../../types/travel';
+import {
+  applyStopStatusUpdate,
+  buildRouteProgress,
+  type RouteStopItem,
+  type RouteStopStatus,
+} from '../../utils/routeProgress';
 import { LiveMapHeader } from './live-route-map/LiveMapHeader';
 import { LiveMapCanvas } from './live-route-map/LiveMapCanvas';
-import { TelematicsEditorModal } from './live-route-map/TelematicsEditorModal';
-import { useLiveRouteMap } from './live-route-map/useLiveRouteMap';
+import { RouteStopsPanel } from './live-route-map/RouteStopsPanel';
+import { getStopKey, useLiveRouteMap } from './live-route-map/useLiveRouteMap';
 import { useLiveRouteControls } from './live-route-map/useLiveRouteControls';
-import type { MapLayer } from './live-route-map/mapHelpers';
+import { STATUS_LABEL, type MapLayer } from './live-route-map/mapHelpers';
 
 interface LiveRouteMapProps {
   trip: TripData;
@@ -16,60 +22,127 @@ interface LiveRouteMapProps {
   onClearSearch?: () => void;
 }
 
-// Weather Code translation to Vietnamese
-function getWeatherDescription(code: number): string {
-  if (code === 0) return 'Trời quang, nắng đẹp';
-  if (code === 1) return 'Ít mây, trời trong';
-  if (code === 2) return 'Mây rải rác';
-  if (code === 3) return 'Nhiều mây';
-  if (code === 45 || code === 48) return 'Có sương mù nhẹ';
-  if (code >= 51 && code <= 55) return 'Mưa phùn nhẹ';
-  if (code >= 61 && code <= 65) return 'Mưa rào';
-  if (code >= 80 && code <= 82) return 'Mưa rào rải rác';
-  if (code >= 95) return 'Dông sét đèo Hải Vân';
-  return 'Thời tiết ổn định';
-}
-
-const escapeHtml = (value: unknown): string =>
-  String(value ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c],
-  );
-
-const STATUS_LABEL: Record<string, string> = {
-  completed: 'Hoàn tất',
-  current: 'Đang diễn ra',
-  pending: 'Chờ đến',
-};
-
-
-export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({ trip, onSelectWaypoint, onUpdateTrip, searchQuery = '' }) => {
+export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
+  trip,
+  onSelectWaypoint,
+  onUpdateTrip,
+  searchQuery = '',
+}) => {
   const [mapLayer, setMapLayer] = useState<MapLayer>('streets');
   const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
-  const map = useLiveRouteMap({ trip, onSelectWaypoint, mapLayer, searchQuery });
+  const [dayFilter, setDayFilter] = useState<number | 'all'>('all');
+  const [selectedStopKey, setSelectedStopKey] = useState<string | null>(null);
+
+  const progress = useMemo(
+    () => buildRouteProgress(trip, dayFilter),
+    [trip, dayFilter],
+  );
+
+  const handleSelectStopOnMap = useCallback((stop: RouteStopItem) => {
+    setSelectedStopKey(getStopKey(stop));
+  }, []);
+
+  const map = useLiveRouteMap({
+    tripId: trip.id,
+    stops: progress.stops,
+    selectedStopKey,
+    onSelectStop: handleSelectStopOnMap,
+    mapLayer,
+    searchQuery,
+  });
+
+  const weatherCoords = useMemo(() => {
+    const refStop =
+      progress.currentStop?.hasCoordinates &&
+      progress.currentStop.lat !== null &&
+      progress.currentStop.lng !== null
+        ? progress.currentStop
+        : progress.stops.find((s) => s.hasCoordinates && s.lat !== null && s.lng !== null);
+    return refStop && refStop.lat !== null && refStop.lng !== null
+      ? { lat: refStop.lat, lng: refStop.lng }
+      : null;
+  }, [progress.currentStop, progress.stops]);
+
   const controls = useLiveRouteControls({
     trip,
     onUpdateTrip,
-    busPos: map.busPos,
-    mapInstanceRef: map.mapInstanceRef,
+    weatherCoords,
   });
+
+  const handleFocusStop = useCallback(
+    (stop: RouteStopItem) => {
+      setSelectedStopKey(getStopKey(stop));
+      if (stop.hasCoordinates && stop.lat !== null && stop.lng !== null) {
+        map.focusStop(stop);
+      }
+    },
+    [map],
+  );
+
+  const handleChangeStopStatus = useCallback(
+    (stop: RouteStopItem, nextStatus: RouteStopStatus) => {
+      if (!onUpdateTrip) return;
+      const updatedTrip = applyStopStatusUpdate(trip, stop, nextStatus);
+      onUpdateTrip(
+        updatedTrip,
+        `Đã cập nhật "${stop.name}" sang "${STATUS_LABEL[nextStatus] || nextStatus}"!`,
+      );
+    },
+    [trip, onUpdateTrip],
+  );
+
+  const handleOpenStopActivity = useCallback(
+    (stop: RouteStopItem) => {
+      if (!onSelectWaypoint) return;
+      const wp: Waypoint = stop.waypointRef || {
+        id: stop.id,
+        code: stop.code,
+        name: stop.name,
+        status: stop.status,
+        lat: stop.lat ?? 0,
+        lng: stop.lng ?? 0,
+        xPercent: 50,
+        yPercent: 50,
+      };
+      onSelectWaypoint(wp);
+    },
+    [onSelectWaypoint],
+  );
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col relative">
       <LiveMapHeader
         trip={trip}
-        waypointCount={map.waypoints.length}
+        stopCount={progress.totalStops}
+        totalRouteKm={progress.totalRouteKm}
+        totalTravelMinutes={progress.totalTravelMinutes}
+        dayFilter={dayFilter}
+        setDayFilter={setDayFilter}
         mapLayer={mapLayer}
         setMapLayer={setMapLayer}
         layerDropdownOpen={layerDropdownOpen}
         setLayerDropdownOpen={setLayerDropdownOpen}
-        isGpsTracking={controls.isGpsTracking}
-        handleToggleGpsTracking={controls.handleToggleGpsTracking}
         isRefreshingWeather={controls.isRefreshingWeather}
         handleFetchLiveWeather={controls.handleFetchLiveWeather}
-        openTelematicsEditor={controls.openTelematicsEditor}
+        handleFitRoute={map.handleFitRoute}
       />
-      <LiveMapCanvas {...map} {...controls} trip={trip} />
-      <TelematicsEditorModal {...controls} trip={trip} />
+      <LiveMapCanvas
+        trip={trip}
+        progress={progress}
+        mapContainerRef={map.mapContainerRef}
+        weatherNotice={controls.weatherNotice}
+        setWeatherNotice={controls.setWeatherNotice}
+        handleZoomIn={map.handleZoomIn}
+        handleZoomOut={map.handleZoomOut}
+        handleFitRoute={map.handleFitRoute}
+      />
+      <RouteStopsPanel
+        progress={progress}
+        selectedStopKey={selectedStopKey}
+        onFocusStop={handleFocusStop}
+        onChangeStopStatus={onUpdateTrip ? handleChangeStopStatus : undefined}
+        onOpenStopActivity={onSelectWaypoint ? handleOpenStopActivity : undefined}
+      />
     </div>
   );
 };

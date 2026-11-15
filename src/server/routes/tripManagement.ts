@@ -9,7 +9,6 @@ import {
   canAccessTrip,
   computeAuthoritativeTripDerivedFields,
   estimateTripByteSize,
-  isAdminUser,
   MAX_TRIP_DOC_BYTES,
 } from '../../utils/tripRepository';
 import { detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';

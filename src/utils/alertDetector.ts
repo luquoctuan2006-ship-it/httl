@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Activity, OperationalAlert, TripData } from '../types/travel';
+import { OperationalAlert, TripData } from '../types/travel';
 
 function parseClock(timeStr: string): number | null {
   if (!timeStr || typeof timeStr !== 'string') return null;
@@ -59,7 +59,6 @@ export function createAiRiskAlerts(tripId: string, value: unknown): OperationalA
  */
 export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert[] {
   const alerts: OperationalAlert[] = [];
-  const existingAlertIds = new Set(trip.alerts?.map((a) => a.id) || []);
 
   if (!trip.days || !Array.isArray(trip.days)) {
     return alerts;

@@ -78,7 +78,7 @@ export function isAlertResolvedByRecommendation(
   alert: OperationalAlert,
   recommendation: OptimizationRecommendationLike,
   changedActivities: Activity[],
-  targetDayIndex?: number,
+  _targetDayIndex?: number,
 ): { resolved: boolean; reason?: string } {
   // 1. Kiểm tra ID cảnh báo trực tiếp nếu đề xuất chỉ định
   if (Array.isArray(recommendation.resolvedAlertIds) && recommendation.resolvedAlertIds.includes(alert.id)) {

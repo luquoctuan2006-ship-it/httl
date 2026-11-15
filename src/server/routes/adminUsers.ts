@@ -1,4 +1,4 @@
-import type { Express, Request, RequestHandler, Response } from 'express';
+import type { Express, Request, RequestHandler } from 'express';
 import type { Auth as FirebaseAdminAuth, DecodedIdToken, UserRecord } from 'firebase-admin/auth';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { ManagedUserRecord } from '../../types/auth';

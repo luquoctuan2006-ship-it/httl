@@ -7,15 +7,12 @@ import {
   Plus,
   Edit3,
   Trash2,
-  X,
-  UserCheck,
-  UserX,
-  Search,
-  Sparkles,
-  Shield,
-  Award
 } from 'lucide-react';
 import { TripMember } from '../../types/travel';
+import { Modal, ModalFooter } from '../common/Modal';
+import { Field, SelectInput, TextInput } from '../common/Field';
+
+const MEMBER_ROLES = ['Khách du lịch', 'Khách VIP', 'Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế'] as const;
 
 interface MembersViewProps {
   members: TripMember[];
@@ -351,230 +348,153 @@ export const MembersView: React.FC<MembersViewProps> = ({
       )}
 
       {/* Modal: Thêm thành viên mới */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 bg-teal-600 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <h3 className="text-sm font-extrabold">Thêm thành viên mới vào đoàn</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="p-1 rounded-full hover:bg-white/20 transition"
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Thêm thành viên mới vào đoàn"
+        icon={<Users className="w-4 h-4" />}
+      >
+        <form onSubmit={handleCreateMember} className="p-6 space-y-4 text-xs">
+          <Field label="Họ và tên *">
+            <TextInput
+              type="text"
+              required
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Ví dụ: Nguyễn Văn Bảo"
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Vai trò trong đoàn">
+              <SelectInput value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+                {MEMBER_ROLES.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </SelectInput>
+            </Field>
+
+            <Field label="Điểm danh ban đầu">
+              <SelectInput
+                value={newAttendance}
+                onChange={(e) => setNewAttendance(e.target.value as 'Có mặt' | 'Vắng mặt' | 'Chưa điểm danh')}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateMember} className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Họ và tên *</label>
-                <input
-                  type="text"
-                  required
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ví dụ: Nguyễn Văn Bảo"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Vai trò trong đoàn</label>
-                  <select
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                  >
-                    <option value="Khách du lịch">Khách du lịch</option>
-                    <option value="Khách VIP">Khách VIP</option>
-                    <option value="Trưởng đoàn">Trưởng đoàn</option>
-                    <option value="Hướng dẫn viên">Hướng dẫn viên</option>
-                    <option value="Tài xế">Tài xế</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Điểm danh ban đầu</label>
-                  <select
-                    value={newAttendance}
-                    onChange={(e) => setNewAttendance(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                  >
-                    <option value="Chưa điểm danh">Chưa điểm danh</option>
-                    <option value="Có mặt">Có mặt</option>
-                    <option value="Vắng mặt">Vắng mặt</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Số điện thoại liên hệ *</label>
-                <input
-                  type="tel"
-                  required
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="Ví dụ: 0912 345 678"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Sở thích cá nhân / Ghi chú dị ứng thực phẩm</label>
-                <input
-                  type="text"
-                  value={newPreference}
-                  onChange={(e) => setNewPreference(e.target.value)}
-                  placeholder="Ví dụ: Ăn chay trường, Say xe, Dị ứng tôm cua..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-xs transition"
-                >
-                  Thêm thành viên &amp; Lưu Firestore
-                </button>
-              </div>
-            </form>
+                <option value="Chưa điểm danh">Chưa điểm danh</option>
+                <option value="Có mặt">Có mặt</option>
+                <option value="Vắng mặt">Vắng mặt</option>
+              </SelectInput>
+            </Field>
           </div>
-        </div>
-      )}
+
+          <Field label="Số điện thoại liên hệ *">
+            <TextInput
+              type="tel"
+              required
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="Ví dụ: 0912 345 678"
+              className="font-mono"
+            />
+          </Field>
+
+          <Field label="Sở thích cá nhân / Ghi chú dị ứng thực phẩm">
+            <TextInput
+              type="text"
+              value={newPreference}
+              onChange={(e) => setNewPreference(e.target.value)}
+              placeholder="Ví dụ: Ăn chay trường, Say xe, Dị ứng tôm cua..."
+            />
+          </Field>
+
+          <ModalFooter
+            onCancel={() => setIsAddModalOpen(false)}
+            submitLabel="Thêm thành viên & Lưu Firestore"
+          />
+        </form>
+      </Modal>
 
       {/* Modal: Chỉnh sửa thông tin thành viên */}
-      {editingMember && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 bg-teal-600 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Edit3 className="w-4 h-4" />
-                <h3 className="text-sm font-extrabold">Chỉnh sửa thông tin thành viên</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingMember(null)}
-                className="p-1 rounded-full hover:bg-white/20 transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        isOpen={Boolean(editingMember)}
+        onClose={() => setEditingMember(null)}
+        title="Chỉnh sửa thông tin thành viên"
+        icon={<Edit3 className="w-4 h-4" />}
+      >
+        <form onSubmit={handleSaveEditMember} className="p-6 space-y-4 text-xs">
+          <Field label="Họ và tên *">
+            <TextInput
+              type="text"
+              required
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          </Field>
 
-            <form onSubmit={handleSaveEditMember} className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Họ và tên *</label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                />
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Vai trò trong đoàn">
+              <SelectInput value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+                {MEMBER_ROLES.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </SelectInput>
+            </Field>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Vai trò trong đoàn</label>
-                  <select
-                    value={editRole}
-                    onChange={(e) => setEditRole(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                  >
-                    <option value="Khách du lịch">Khách du lịch</option>
-                    <option value="Khách VIP">Khách VIP</option>
-                    <option value="Trưởng đoàn">Trưởng đoàn</option>
-                    <option value="Hướng dẫn viên">Hướng dẫn viên</option>
-                    <option value="Tài xế">Tài xế</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Số điện thoại *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Sở thích cá nhân / Ghi chú</label>
-                <input
-                  type="text"
-                  value={editPreference}
-                  onChange={(e) => setEditPreference(e.target.value)}
-                  placeholder="Ví dụ: Ăn chay trường, Say xe..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingMember(null)}
-                  className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-xs transition"
-                >
-                  Cập nhật &amp; Lưu Firestore
-                </button>
-              </div>
-            </form>
+            <Field label="Số điện thoại *">
+              <TextInput
+                type="tel"
+                required
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                className="font-mono"
+              />
+            </Field>
           </div>
-        </div>
-      )}
+
+          <Field label="Sở thích cá nhân / Ghi chú">
+            <TextInput
+              type="text"
+              value={editPreference}
+              onChange={(e) => setEditPreference(e.target.value)}
+              placeholder="Ví dụ: Ăn chay trường, Say xe..."
+            />
+          </Field>
+
+          <ModalFooter
+            onCancel={() => setEditingMember(null)}
+            submitLabel="Cập nhật & Lưu Firestore"
+          />
+        </form>
+      </Modal>
 
       {/* Modal: Xác nhận xóa thành viên */}
-      {deletingMemberId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl p-6 text-xs text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-slate-900">Xóa thành viên khỏi đoàn?</h3>
-              <p className="text-slate-500 mt-1">
-                Hành động này sẽ xóa thành viên này khỏi đoàn và đồng bộ ngay lên Firestore.
-              </p>
-            </div>
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingMemberId(null)}
-                className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDeleteMember(deletingMemberId)}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs transition"
-              >
-                Xác nhận xóa
-              </button>
-            </div>
+      <Modal
+        isOpen={Boolean(deletingMemberId)}
+        onClose={() => setDeletingMemberId(null)}
+        maxWidth="sm"
+        hideHeader
+      >
+        <div className="p-6 text-xs text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+            <Trash2 className="w-6 h-6" />
           </div>
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-900">Xóa thành viên khỏi đoàn?</h3>
+            <p className="text-slate-500 mt-1">
+              Hành động này sẽ xóa thành viên này khỏi đoàn và đồng bộ ngay lên Firestore.
+            </p>
+          </div>
+          <ModalFooter
+            cancelLabel="Hủy bỏ"
+            onCancel={() => setDeletingMemberId(null)}
+            submitLabel="Xác nhận xóa"
+            submitType="button"
+            onSubmitClick={() => deletingMemberId && void handleDeleteMember(deletingMemberId)}
+            submitVariant="rose"
+            bordered={false}
+            align="center"
+          />
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

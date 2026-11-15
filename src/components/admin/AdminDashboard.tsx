@@ -45,7 +45,7 @@ export function AdminDashboard({
   onLogout,
   onOpenAccount,
   isAdminMode,
-  isAIPlannerOpen,
+  isAIPlannerOpen: _isAIPlannerOpen,
   setIsAIPlannerOpen,
   isAIOptimizeOpen,
   setIsAIOptimizeOpen,
@@ -56,7 +56,7 @@ export function AdminDashboard({
   selectedActivity,
   setSelectedActivity,
   handleSelectTab,
-  handleApplyGeneratedTrip,
+  handleApplyGeneratedTrip: _handleApplyGeneratedTrip,
   handleApplyAIOptimization,
   handleAddActivity,
   handleUpdateActivityStatus,
@@ -86,7 +86,7 @@ export function AdminDashboard({
   onOpenAIPlanner,
   onOpenAIOptimize,
   onOpenAutoArrange,
-  onOpenTraditionalPlanner,
+  onOpenTraditionalPlanner: _onOpenTraditionalPlanner,
 }: {
   trip: TripData | null;
   trips: TripData[];
@@ -377,9 +377,9 @@ export function AdminDashboard({
                 trip ? (
                   <div className="space-y-4">
                     <div>
-                      <h2 className="text-xl font-black text-white">Bản đồ Tuyến đường Toàn cảnh & Telematics</h2>
+                      <h2 className="text-xl font-black text-white">Quản lý Bản đồ Tuyến đường & Tiến độ Lịch trình</h2>
                       <p className="text-xs text-slate-400 font-medium">
-                        Giám sát hành trình phương tiện trực tiếp trên cung đường {trip.originFull} - {trip.destinationFull}
+                        Hiển thị thứ tự điểm tham quan, khoảng cách và thời gian di chuyển dự kiến trên cung đường {trip.originFull} - {trip.destinationFull}
                       </p>
                     </div>
                     <LiveRouteMap

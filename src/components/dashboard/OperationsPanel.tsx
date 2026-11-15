@@ -34,7 +34,7 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
   onOpenApplyAIPlan,
   isAIApplied,
   onUndo,
-  canUndo,
+  canUndo: _canUndo,
   onScanAlerts,
   isScanningAlerts = false,
   notificationsEnabled = false,

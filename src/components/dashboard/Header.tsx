@@ -7,15 +7,12 @@ import {
   Calendar,
   Users,
   CheckCircle2,
-  Clock,
-  Check,
-  X,
   Database,
   Edit2,
   Trash2,
   Menu,
 } from 'lucide-react';
-import { TripData, Activity, TripMember } from '../../types/travel';
+import { TripData, Activity } from '../../types/travel';
 
 type AppRole = 'user' | 'admin';
 

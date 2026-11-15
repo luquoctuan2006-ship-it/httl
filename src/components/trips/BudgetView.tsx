@@ -21,7 +21,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   trip,
   onUpdateTripBudget,
   searchQuery = '',
-  onClearSearch,
+  onClearSearch: _onClearSearch,
 }) => {
   const budgetData = useBudgetCalculations(trip, searchQuery);
   const {

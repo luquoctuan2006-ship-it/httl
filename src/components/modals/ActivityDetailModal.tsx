@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Clock, MapPin, Tag, Edit3, Trash2, CheckCircle2, DollarSign, FileText } from 'lucide-react';
+import { X, Clock, MapPin, Tag, Edit3, Trash2, DollarSign, FileText } from 'lucide-react';
 import { Activity } from '../../types/travel';
 import { validateActivityTimeRange } from '../../utils/tripSyncHelpers';
 

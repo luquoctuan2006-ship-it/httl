@@ -8,10 +8,9 @@ import assert from 'node:assert/strict';
 import {
   detectDayScheduleConflicts,
   autoArrangeDayActivities,
-  autoArrangeDay,
   autoArrangeEntireTrip,
 } from '../src/utils/scheduleAutoArranger';
-import { Activity, DaySchedule, TripData } from '../src/types/travel';
+import { Activity, TripData } from '../src/types/travel';
 
 describe('scheduleAutoArranger - Lập lịch tự động & Tối ưu thời gian', () => {
   it('phát hiện chính xác xung đột chồng chéo thời gian giữa hai hoạt động', () => {

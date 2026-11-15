@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAiRiskAlerts } from '../src/utils/alertDetector';
-import { buildAIPlanWaypoints, dedupeWaypointsForMap } from '../src/utils/vietnamGeo';
+import { buildAIPlanWaypoints, dedupeWaypointsForMap, lookupCoordinates } from '../src/utils/vietnamGeo';
 
-test('AI waypoints use valid generated coordinates and retain route endpoints', () => {
+test('AI waypoints use valid generated coordinates, skip unknown locations, and retain route endpoints', () => {
+  assert.equal(lookupCoordinates('Điểm không có tọa độ'), null);
+
   const waypoints = buildAIPlanWaypoints('Đà Nẵng', 'Huế', [
     {
       location: 'Bà Nà Hills',
@@ -16,6 +18,7 @@ test('AI waypoints use valid generated coordinates and retain route endpoints', 
     },
   ]);
 
+  assert.equal(waypoints.length, 3);
   assert.equal(waypoints[0].name, 'Đà Nẵng');
   assert.equal(waypoints.at(-1)?.name, 'Huế');
   assert.deepEqual(

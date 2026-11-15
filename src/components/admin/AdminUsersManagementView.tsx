@@ -1,60 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  LayoutDashboard,
   Users,
-  MapPin,
-  Sliders,
-  Sparkles,
-  ShieldAlert,
-  Settings,
-  Database,
   Search,
   Plus,
   Trash2,
-  Edit2,
   CheckCircle2,
-  AlertTriangle,
   X,
-  Clock,
-  Car,
-  Wallet,
-  Calendar,
   Lock,
   Unlock,
-  Eye,
-  EyeOff,
-  Filter,
-  Download,
-  Upload,
-  ArrowRight,
-  TrendingUp,
-  Cpu,
   RefreshCw,
-  Activity,
   Check,
-  AlertCircle,
-  FileText,
-  Compass,
-  Navigation,
-  DollarSign,
-  Flag,
-  ChevronRight,
-  Zap,
   Copy,
 } from 'lucide-react';
-import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../../types/travel';
 import { authenticatedFetch } from '../../api';
 
-
-// ============================================================================
-// 2. QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN (RBAC)
-// - Xem danh sách, tìm kiếm và lọc tài khoản.
-// - Xem thông tin cơ bản và lịch sử hoạt động.
-// - Khóa / Mở khóa tài khoản vi phạm (gọi PATCH /api/admin/users/:id).
-// - Phân quyền User / Admin / Điều phối / v.v.
-// - Thêm User mới (gọi POST /api/admin/users).
-// - Xóa User (gọi DELETE /api/admin/users/:id).
-// ============================================================================
 interface ManagedUser {
   id: string;
   name: string;
@@ -697,12 +656,3 @@ export const AdminUsersManagementView: React.FC = () => {
     </div>
   );
 };
-
-
-// ============================================================================
-// 3. QUẢN LÝ ĐỊA ĐIỂM DU LỊCH & DỮ LIỆU HOẠCH ĐỊNH
-// - Thêm, sửa, xóa hoặc ẩn địa điểm (đồng bộ trực tiếp vào trip.waypoints).
-// - Quản lý tên, mô tả, tọa độ, loại hình, giờ mở cửa, giá vé tham khảo.
-// - Phân loại: thiên nhiên, ăn uống, vui chơi, văn hóa, lưu trú.
-// - Kiểm tra dữ liệu thiếu hoặc không hợp lệ.
-// ============================================================================

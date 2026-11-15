@@ -1,5 +1,4 @@
-import React from 'react';
-import { Calendar, Compass } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import type { ManualPlannerTabProps } from './ManualPlannerTab';
 
 type ManualTripBasicsProps = Pick<

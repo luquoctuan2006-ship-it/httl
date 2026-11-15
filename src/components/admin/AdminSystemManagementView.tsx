@@ -1,55 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard,
-  Users,
-  MapPin,
-  Sliders,
-  Sparkles,
-  ShieldAlert,
   Settings,
-  Database,
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
-  CheckCircle2,
   AlertTriangle,
-  X,
-  Clock,
-  Car,
-  Wallet,
-  Calendar,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
-  Filter,
   Download,
-  Upload,
-  ArrowRight,
-  TrendingUp,
-  Cpu,
   RefreshCw,
-  Activity,
   Check,
-  AlertCircle,
   FileText,
-  Compass,
-  Navigation,
-  DollarSign,
-  Flag,
-  ChevronRight,
-  Zap,
 } from 'lucide-react';
-import { TripData, Waypoint, TripMember, Activity as ActivityType } from '../../types/travel';
+import { TripData } from '../../types/travel';
 import { authenticatedFetch } from '../../api';
 
-
-// 7. CẤU HÌNH HỆ THỐNG & AUDIT LOG (NHẬT KÝ HOẠT ĐỘNG)
-// - Cấu hình bảo trì, timeout phiên, lịch sao lưu.
-// - Xuất bản sao lưu toàn bộ hệ thống (voyager-backup.json).
-// - Nhật ký hoạt động Audit Log thời gian thực.
-// ============================================================================
 export const AdminSystemManagementView: React.FC<{ trip: TripData }> = ({ trip }) => {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState('60 phút');
