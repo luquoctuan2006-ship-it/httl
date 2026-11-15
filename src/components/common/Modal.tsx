@@ -5,6 +5,7 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: React.ReactNode;
+  subtitle?: React.ReactNode;
   icon?: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg';
   headerClassName?: string;
@@ -23,6 +24,7 @@ export const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
   title,
+  subtitle,
   icon,
   maxWidth = 'md',
   headerClassName = 'bg-teal-600 text-white',
@@ -40,10 +42,13 @@ export const Modal: React.FC<ModalProps> = ({
         }`}
       >
         {!hideHeader && (
-          <div className={`px-6 py-4 flex items-center justify-between shrink-0 ${headerClassName}`}>
-            <div className="flex items-center gap-2">
-              {icon}
-              <h3 className="text-sm font-extrabold">{title}</h3>
+          <div className={`px-6 py-4 flex items-center justify-between gap-3 shrink-0 ${headerClassName}`}>
+            <div className="flex items-start gap-2 min-w-0">
+              {icon && <span className="mt-0.5 shrink-0">{icon}</span>}
+              <div className="min-w-0">
+                <h3 className="text-sm font-extrabold">{title}</h3>
+                {subtitle && <p className="text-[11px] opacity-90 font-medium mt-0.5 leading-snug">{subtitle}</p>}
+              </div>
             </div>
             <button
               type="button"

@@ -8,7 +8,7 @@ interface RoutingApiResponse {
   legs?: RoadLegData[];
 }
 
-export function useRoadRouting(stops: RouteStopItem[]) {
+export function useRoadRouting(stops: RouteStopItem[], guestJoinCode?: string) {
   const cacheRef = useRef<Map<string, RoadLegData>>(new Map());
   const [roadLegsMap, setRoadLegsMap] = useState<ReadonlyMap<string, RoadLegData>>(() => new Map());
   const [isRoutingLoading, setIsRoutingLoading] = useState(false);
@@ -55,11 +55,17 @@ export function useRoadRouting(stops: RouteStopItem[]) {
 
     (async () => {
       try {
-        const res = await authenticatedFetch('/api/routing/road', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ points: locatedPoints }),
-        });
+        const res = guestJoinCode
+          ? await fetch('/api/guest/routing/road', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ joinCode: guestJoinCode, points: locatedPoints }),
+            })
+          : await authenticatedFetch('/api/routing/road', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ points: locatedPoints }),
+            });
         if (!res.ok) return;
         const data = await safeJsonResponse<RoutingApiResponse>(res);
         if (cancelled) return;
@@ -85,7 +91,7 @@ export function useRoadRouting(stops: RouteStopItem[]) {
     return () => {
       cancelled = true;
     };
-  }, [coordsSignature, locatedPoints]);
+  }, [coordsSignature, locatedPoints, guestJoinCode]);
 
   return { roadLegsMap, isRoutingLoading };
 }

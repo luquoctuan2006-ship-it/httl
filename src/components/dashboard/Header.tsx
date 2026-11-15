@@ -30,6 +30,7 @@ interface HeaderProps {
   onToggleAttendance?: (memberId: string) => void;
   firebaseStatus?: 'loading' | 'connected' | 'error';
   onOpenMobileMenu?: () => void;
+  isTripParticipant?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAttendance,
   firebaseStatus = 'connected',
   onOpenMobileMenu,
+  isTripParticipant = false,
 }) => {
   const isAdminMode = role === 'admin';
   const inputRef = useRef<HTMLInputElement>(null);
@@ -226,6 +228,12 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 {trip.status}
+              </span>
+            )}
+
+            {trip && isTripParticipant && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
+                Hành khách (HK)
               </span>
             )}
 

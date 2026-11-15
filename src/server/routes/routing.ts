@@ -147,6 +147,51 @@ async function fetchOsrmBatch(points: RoadRoutePoint[]): Promise<RoadRouteLegRes
   }
 }
 
+export async function computeRoadRouteLegs(
+  rawPoints: unknown,
+): Promise<{ status: 200; source: 'osrm' | 'fallback'; cached?: boolean; legs: RoadRouteLegResult[] } | { status: 400; error: string }> {
+  if (!Array.isArray(rawPoints) || rawPoints.length < 2 || rawPoints.length > 60) {
+    return {
+      status: 400,
+      error: 'Cần từ 2 đến 60 điểm tọa độ hợp lệ để tính tuyến đường bộ.',
+    };
+  }
+
+  const points = rawPoints.filter(isValidPoint);
+  if (points.length !== rawPoints.length) {
+    return {
+      status: 400,
+      error: 'Danh sách tọa độ có phần tử không hợp lệ.',
+    };
+  }
+
+  const cacheKey = points.map(formatCoordKey).join('>');
+  const now = Date.now();
+  const cached = routeCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return { status: 200, source: 'osrm', cached: true, legs: cached.legs };
+  }
+
+  const allLegs: RoadRouteLegResult[] = [];
+  for (let start = 0; start < points.length - 1; start += MAX_POINTS_PER_BATCH - 1) {
+    const batch = points.slice(start, start + MAX_POINTS_PER_BATCH);
+    if (batch.length < 2) break;
+    const batchLegs = await fetchOsrmBatch(batch);
+    if (!batchLegs) {
+      return { status: 200, source: 'fallback', legs: [] };
+    }
+    allLegs.push(...batchLegs);
+  }
+
+  if (routeCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = routeCache.keys().next().value;
+    if (oldestKey) routeCache.delete(oldestKey);
+  }
+  routeCache.set(cacheKey, { expiresAt: now + CACHE_TTL_MS, legs: allLegs });
+
+  return { status: 200, source: 'osrm', cached: false, legs: allLegs };
+}
+
 export function registerRoutingRoutes(
   app: Express,
   dependencies: { requireAuth: RequestHandler },
@@ -155,45 +200,15 @@ export function registerRoutingRoutes(
 
   app.post('/api/routing/road', requireAuth, async (req, res) => {
     const rawPoints = (req.body as { points?: unknown })?.points;
-    if (!Array.isArray(rawPoints) || rawPoints.length < 2 || rawPoints.length > 60) {
-      return res.status(400).json({
-        success: false,
-        error: 'Cần từ 2 đến 60 điểm tọa độ hợp lệ để tính tuyến đường bộ.',
-      });
+    const result = await computeRoadRouteLegs(rawPoints);
+    if (result.status === 400) {
+      return res.status(400).json({ success: false, error: result.error });
     }
-
-    const points = rawPoints.filter(isValidPoint);
-    if (points.length !== rawPoints.length) {
-      return res.status(400).json({
-        success: false,
-        error: 'Danh sách tọa độ có phần tử không hợp lệ.',
-      });
-    }
-
-    const cacheKey = points.map(formatCoordKey).join('>');
-    const now = Date.now();
-    const cached = routeCache.get(cacheKey);
-    if (cached && cached.expiresAt > now) {
-      return res.json({ success: true, source: 'osrm', cached: true, legs: cached.legs });
-    }
-
-    const allLegs: RoadRouteLegResult[] = [];
-    for (let start = 0; start < points.length - 1; start += MAX_POINTS_PER_BATCH - 1) {
-      const batch = points.slice(start, start + MAX_POINTS_PER_BATCH);
-      if (batch.length < 2) break;
-      const batchLegs = await fetchOsrmBatch(batch);
-      if (!batchLegs) {
-        return res.json({ success: true, source: 'fallback', legs: [] });
-      }
-      allLegs.push(...batchLegs);
-    }
-
-    if (routeCache.size >= MAX_CACHE_ENTRIES) {
-      const oldestKey = routeCache.keys().next().value;
-      if (oldestKey) routeCache.delete(oldestKey);
-    }
-    routeCache.set(cacheKey, { expiresAt: now + CACHE_TTL_MS, legs: allLegs });
-
-    return res.json({ success: true, source: 'osrm', cached: false, legs: allLegs });
+    return res.json({
+      success: true,
+      source: result.source,
+      cached: Boolean(result.cached),
+      legs: result.legs,
+    });
   });
 }

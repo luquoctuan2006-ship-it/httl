@@ -6,12 +6,14 @@ import { applyScheduleChangesStrict, filterAlertsByRecommendation } from '../uti
 import { clearTripPendingOfflineSync } from '../utils/offlineStorage';
 import { cloneTripForTemplate, findMatchingActivityForWaypoint } from '../utils/tripHelpers';
 import { getTripComparableJson } from '../utils/tripRepository';
+import { isUserTripOwnerOrAdmin } from '../utils/tripJoinHelpers';
 import { AuthSessionError, PayloadTooLargeError, type SingleFlightQueue } from '../utils/tripSyncHelpers';
 
 interface UseTripActionsOptions {
   trip: TripData | null;
   trips: TripData[];
   authUserId: string | null;
+  authUserRole?: 'user' | 'admin';
   currentDayIndex: number;
   setTrip: Dispatch<SetStateAction<TripData | null>>;
   setTrips: Dispatch<SetStateAction<TripData[]>>;
@@ -39,6 +41,11 @@ interface UseTripActionsOptions {
   >;
   fetchServerTripSnapshot: (tripId: string) => Promise<TripData | null>;
   ensureFullTrip: (tripOrId: TripData | string) => Promise<TripData | null>;
+  applyAuthoritativeTripUpdate: (
+    serverTrip: TripData,
+    options?: { select?: boolean; prependIfNew?: boolean },
+  ) => TripData;
+  removeTripFromLocalState: (tripId: string) => Promise<TripData | null>;
   performSignOutAndClearCache: (uidOverride?: string | null) => Promise<void>;
   setConflictState: Dispatch<SetStateAction<{ localTrip: TripData; serverTrip: TripData } | null>>;
   saveQueueRef: MutableRefObject<SingleFlightQueue>;
@@ -56,6 +63,7 @@ export function useTripActions({
   trip,
   trips,
   authUserId,
+  authUserRole,
   currentDayIndex,
   setTrip,
   setTrips,
@@ -73,6 +81,8 @@ export function useTripActions({
   executeTripPut,
   fetchServerTripSnapshot,
   ensureFullTrip,
+  applyAuthoritativeTripUpdate,
+  removeTripFromLocalState,
   performSignOutAndClearCache,
   setConflictState,
   saveQueueRef,
@@ -659,8 +669,16 @@ export function useTripActions({
       });
     } catch (error) {
       if (error instanceof AuthSessionError) {
+        if (error.status === 403 && !isUserTripOwnerOrAdmin(trip, authUserId, authUserRole)) {
+          showToast(error.message || 'Bạn chỉ có thể điểm danh cho bản thân hoặc người thân do mình đăng ký.', 'error');
+          return;
+        }
         await performSignOutAndClearCache(authUserId);
         showToast('Phiên đăng nhập không hợp lệ hoặc tài khoản đã bị vô hiệu hóa.', 'error');
+        return;
+      }
+      if (!isUserTripOwnerOrAdmin(trip, authUserId, authUserRole)) {
+        showToast(error instanceof Error ? error.message : 'Không thể lưu trạng thái điểm danh.', 'error');
         return;
       }
       console.warn('PATCH điểm danh thất bại, chuyển sang lưu toàn bộ chuyến đi:', error);
@@ -762,6 +780,128 @@ export function useTripActions({
     showToast(`Đã tạo chuyến đi ${savedTrip.title} thành công!`, 'success');
   };
 
+  const handleJoinTripByCode = async (payload: {
+    joinCode: string;
+    phone?: string;
+    specialPreference?: string;
+    displayName?: string;
+  }) => {
+    const response = await authenticatedFetch('/api/trips/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await safeJsonResponse(response);
+    if (!response.ok || !result?.success || !result?.trip) {
+      throw new Error(result?.error || 'Không thể tham gia chuyến đi bằng mã này.');
+    }
+
+    const joinedTrip = applyAuthoritativeTripUpdate(result.trip, {
+      select: true,
+      prependIfNew: true,
+    });
+    setIsAIApplied(false);
+    setCurrentTab('dashboard');
+    showToast(result.message || `Đã tham gia chuyến đi "${joinedTrip.title}" với tư cách Hành khách (HK)!`, 'success');
+  };
+
+  const handleManageJoinCode = async (action: 'generate' | 'rotate' | 'toggle') => {
+    if (!trip) return;
+    try {
+      const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(trip.id)}/join-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          ...(action === 'toggle' ? { enabled: trip.joinCodeEnabled === false } : {}),
+        }),
+      });
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result?.success || !result?.trip) {
+        throw new Error(result?.error || 'Không thể cập nhật mã mời chuyến đi.');
+      }
+
+      const updated = applyAuthoritativeTripUpdate(result.trip);
+      if (action === 'toggle') {
+        showToast(
+          updated.joinCodeEnabled === false
+            ? 'Đã tạm khóa mã tham gia chuyến đi.'
+            : 'Đã mở lại mã tham gia chuyến đi!',
+          'info',
+        );
+      } else {
+        showToast(
+          action === 'rotate'
+            ? `Đã đổi sang mã mời mới: ${updated.joinCode}`
+            : `Đã tạo mã mời chuyến đi: ${updated.joinCode}`,
+          'success',
+        );
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Không thể cập nhật mã mời.', 'error');
+    }
+  };
+
+  const handleAddGuestCompanion = async (payload: {
+    name: string;
+    phone?: string;
+    specialPreference?: string;
+  }) => {
+    if (!trip) return;
+    const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(trip.id)}/guest-companions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await safeJsonResponse(response);
+    if (!response.ok || !result?.success || !result?.trip) {
+      throw new Error(result?.error || 'Không thể thêm người thân vào đoàn.');
+    }
+
+    applyAuthoritativeTripUpdate(result.trip);
+    showToast(result.message || `Đã thêm "${payload.name}" vào danh sách hành khách.`, 'success');
+  };
+
+  const handleRemoveGuestCompanion = async (memberId: string) => {
+    if (!trip) return;
+    try {
+      const response = await authenticatedFetch(
+        `/api/trips/${encodeURIComponent(trip.id)}/guest-companions/${encodeURIComponent(memberId)}`,
+        { method: 'DELETE' },
+      );
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result?.success || !result?.trip) {
+        throw new Error(result?.error || 'Không thể xóa người thân khỏi đoàn.');
+      }
+
+      applyAuthoritativeTripUpdate(result.trip);
+      showToast('Đã xóa người thân khỏi danh sách đoàn.', 'info');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Không thể xóa người thân.', 'error');
+    }
+  };
+
+  const handleLeaveTrip = async () => {
+    if (!trip) return;
+    try {
+      const leavingTripId = trip.id;
+      const response = await authenticatedFetch(`/api/trips/${encodeURIComponent(leavingTripId)}/leave`, {
+        method: 'POST',
+      });
+      const result = await safeJsonResponse(response);
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || 'Không thể rời khỏi chuyến đi.');
+      }
+
+      const nextActive = await removeTripFromLocalState(leavingTripId);
+      setIsAIApplied(false);
+      setCurrentTab(nextActive ? 'dashboard' : 'trips');
+      showToast(result.message || 'Đã rời khỏi chuyến đi.', 'info');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Không thể rời chuyến đi.', 'error');
+    }
+  };
+
   return {
     isAIApplied,
     lastOptimizedTripSnapshot,
@@ -792,5 +932,10 @@ export function useTripActions({
     handleDismissAlert,
     handleSelectTrip,
     handleApplyGeneratedTrip,
+    handleJoinTripByCode,
+    handleManageJoinCode,
+    handleAddGuestCompanion,
+    handleRemoveGuestCompanion,
+    handleLeaveTrip,
   };
 }

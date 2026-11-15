@@ -6,8 +6,8 @@ interface AlertsListModalProps {
   isOpen: boolean;
   onClose: () => void;
   alerts: OperationalAlert[];
-  onDismissAlert: (id: string) => void;
-  onTriggerAI: () => void;
+  onDismissAlert?: (id: string) => void;
+  onTriggerAI?: () => void;
   onScanAlerts?: () => Promise<void>;
   isScanningAlerts?: boolean;
 }
@@ -75,12 +75,14 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onDismissAlert(alert.id)}
-                  className="px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 shrink-0"
-                >
-                  Đã giải quyết
-                </button>
+                {onDismissAlert && (
+                  <button
+                    onClick={() => onDismissAlert(alert.id)}
+                    className="px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 shrink-0"
+                  >
+                    Đã giải quyết
+                  </button>
+                )}
               </div>
             ))
           )}
@@ -99,12 +101,14 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
                 <span>Quét lại cảnh báo</span>
               </button>
             )}
-            <button
-              onClick={onTriggerAI}
-              className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
-            >
-              <span>Tối ưu lại lịch trình</span>
-            </button>
+            {onTriggerAI && (
+              <button
+                onClick={onTriggerAI}
+                className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
+              >
+                <span>Tối ưu lại lịch trình</span>
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}

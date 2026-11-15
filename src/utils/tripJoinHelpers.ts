@@ -1,0 +1,180 @@
+import type { GuestTripData, TripData, TripMember } from '../types/travel';
+
+const JOIN_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const STAFF_ROLES = new Set(['Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế']);
+
+export function normalizeJoinCode(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 12);
+}
+
+export function isValidJoinCodeFormat(code: string): boolean {
+  return /^[A-Z0-9]{5,12}$/.test(code);
+}
+
+export function generateTripJoinCode(length = 6): string {
+  const safeLength = Math.max(5, Math.min(10, length));
+  const randomValues = new Uint8Array(safeLength);
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(randomValues);
+  } else {
+    for (let i = 0; i < safeLength; i += 1) {
+      randomValues[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  let out = '';
+  for (let i = 0; i < safeLength; i += 1) {
+    out += JOIN_CODE_CHARS[randomValues[i] % JOIN_CODE_CHARS.length];
+  }
+  return out;
+}
+
+export function getMemberInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+  }
+  return (name.trim().slice(0, 2) || 'HK').toUpperCase();
+}
+
+export function isUserTripOwnerOrAdmin(
+  trip: Partial<TripData> | null | undefined,
+  userId?: string | null,
+  role?: 'user' | 'admin' | unknown,
+): boolean {
+  if (!trip) return false;
+  if (role === 'admin') return true;
+  if (!userId) return false;
+  // Chuyến cũ chưa có ownerId không cho user thường tự ý sở hữu ngoài chủ chuyến thật
+  return Boolean(trip.ownerId && trip.ownerId === userId);
+}
+
+export function isUserTripParticipant(
+  trip: Partial<TripData> | null | undefined,
+  userId?: string | null,
+): boolean {
+  if (!trip || !userId) return false;
+  if (trip.ownerId === userId) return false;
+  return Array.isArray(trip.participantUids) && trip.participantUids.includes(userId);
+}
+
+export function buildGuestInviteUrl(joinCode: string, origin?: string): string {
+  const cleanCode = normalizeJoinCode(joinCode);
+  const baseOrigin =
+    origin ||
+    (typeof window !== 'undefined' && window.location ? window.location.origin : '');
+  if (!cleanCode) return baseOrigin;
+  return `${baseOrigin}/?guestCode=${encodeURIComponent(cleanCode)}`;
+}
+
+/**
+ * Loại bỏ toàn bộ dữ liệu tài chính nội bộ, hóa đơn, UID và số điện thoại cá nhân của hành khách
+ * trước khi trả về cho giao diện Hành khách không có tài khoản.
+ */
+export function sanitizeTripForGuest(trip: TripData): GuestTripData {
+  const safeMembers: GuestTripData['members'] = (trip.members || []).map((m: TripMember) => {
+    const isStaff = STAFF_ROLES.has(m.role);
+    return {
+      id: m.id,
+      name: m.name,
+      avatar: m.avatar || getMemberInitials(m.name),
+      role: m.role,
+      status: m.status,
+      attendanceStatus: m.attendanceStatus,
+      ...(m.specialPreference ? { specialPreference: m.specialPreference } : {}),
+      ...(m.memberType ? { memberType: m.memberType } : {}),
+      ...(m.invitedByName ? { invitedByName: m.invitedByName } : {}),
+      phone: isStaff ? (m.phone || '') : '',
+    };
+  });
+
+  const safeDays = (trip.days || []).map((day) => ({
+    ...day,
+    activities: (day.activities || []).map((act) => {
+      const { cost: _cost, ...restAct } = act;
+      return restAct;
+    }),
+  }));
+
+  return {
+    id: trip.id,
+    joinCode: trip.joinCode || '',
+    code: trip.code,
+    title: trip.title,
+    status: trip.status,
+    dates: trip.dates,
+    origin: trip.origin,
+    originFull: trip.originFull,
+    destination: trip.destination,
+    destinationFull: trip.destinationFull,
+    destinationsCount: trip.destinationsCount,
+    totalKm: trip.totalKm,
+    vehicle: trip.vehicle,
+    currentDay: trip.currentDay,
+    totalDays: trip.totalDays,
+    totalActivities: trip.totalActivities,
+    confirmedActivities: trip.confirmedActivities,
+    pendingActivities: trip.pendingActivities,
+    membersTotal: safeMembers.length,
+    membersStatus: trip.membersStatus,
+    members: safeMembers,
+    weather: trip.weather,
+    telematics: {
+      from: trip.telematics?.from || trip.originFull,
+      to: trip.telematics?.to || trip.destinationFull,
+      vehicleType: trip.telematics?.vehicleType || trip.vehicle,
+      licensePlate: trip.telematics?.licensePlate,
+      driver: trip.telematics?.driver || 'Chưa phân công',
+      driverPhone: trip.telematics?.driverPhone || '',
+      passengerCount: trip.telematics?.passengerCount ?? safeMembers.length,
+    },
+    waypoints: (trip.waypoints || []).filter((wp) => !wp.isHidden),
+    alerts: trip.alerts || [],
+    days: safeDays,
+  };
+}
+
+export function guestTripToReadOnlyTripData(guestTrip: GuestTripData): TripData {
+  return {
+    id: guestTrip.id,
+    joinCode: guestTrip.joinCode,
+    joinCodeEnabled: true,
+    code: guestTrip.code,
+    title: guestTrip.title,
+    status: guestTrip.status,
+    dates: guestTrip.dates,
+    origin: guestTrip.origin,
+    originFull: guestTrip.originFull,
+    destination: guestTrip.destination,
+    destinationFull: guestTrip.destinationFull,
+    destinationsCount: guestTrip.destinationsCount,
+    totalKm: guestTrip.totalKm,
+    vehicle: guestTrip.vehicle,
+    currentDay: guestTrip.currentDay,
+    totalDays: guestTrip.totalDays,
+    totalActivities: guestTrip.totalActivities,
+    confirmedActivities: guestTrip.confirmedActivities,
+    pendingActivities: guestTrip.pendingActivities,
+    budgetTotal: 0,
+    budgetUsed: 0,
+    budgetRemaining: 0,
+    budgetUsedPercent: 0,
+    membersOnline: guestTrip.members.filter((m) => m.status === 'online').length,
+    membersTotal: guestTrip.membersTotal,
+    membersStatus: guestTrip.membersStatus,
+    members: guestTrip.members,
+    weather: guestTrip.weather,
+    telematics: guestTrip.telematics,
+    waypoints: guestTrip.waypoints,
+    alerts: guestTrip.alerts,
+    aiSuggestions: [],
+    aiSavingsEstimate: '0 ₫',
+    aiConfidence: '',
+    days: guestTrip.days,
+  };
+}

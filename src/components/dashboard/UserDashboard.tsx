@@ -7,7 +7,8 @@ import { TimelineSchedule } from "./TimelineSchedule";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
-import { Calendar, Clock, Compass, RotateCcw } from "lucide-react";
+import { isUserTripOwnerOrAdmin } from "../../utils/tripJoinHelpers";
+import { Calendar, Clock, Compass, KeyRound, MapPin, RotateCcw, Users } from "lucide-react";
 
 const LiveRouteMap = lazy(() =>
   import("./LiveRouteMap").then((m) => ({ default: m.LiveRouteMap })),
@@ -98,6 +99,12 @@ export function UserDashboard({
   onOpenAIOptimize,
   onOpenAutoArrange,
   onOpenTraditionalPlanner,
+  onOpenJoinModal,
+  onManageJoinCode,
+  onAddGuestCompanion,
+  onRemoveGuestCompanion,
+  onOpenGuestModeWithCode,
+  onLeaveTrip,
 }: {
   trip: TripData | null;
   trips: TripData[];
@@ -156,8 +163,17 @@ export function UserDashboard({
   onOpenAIOptimize?: () => void;
   onOpenAutoArrange?: () => void;
   onOpenTraditionalPlanner?: () => void;
+  onOpenJoinModal?: () => void;
+  onManageJoinCode?: (action: 'generate' | 'rotate' | 'toggle') => Promise<void>;
+  onAddGuestCompanion?: (payload: { name: string; phone?: string; specialPreference?: string }) => Promise<void>;
+  onRemoveGuestCompanion?: (memberId: string) => Promise<void>;
+  onOpenGuestModeWithCode?: (joinCode: string, guestName?: string) => Promise<void>;
+  onLeaveTrip?: () => Promise<void>;
 }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  const isTripOwner = trip ? isUserTripOwnerOrAdmin(trip, authUser.id, authUser.role) : true;
+  const isParticipant = Boolean(trip && !isTripOwner);
 
   const renderEmptyState = () => (
     <div className="rounded-3xl bg-white border border-slate-200 p-8 sm:p-12 text-center shadow-sm space-y-5 max-w-2xl mx-auto my-8">
@@ -167,7 +183,7 @@ export function UserDashboard({
       <div className="space-y-2">
         <h2 className="text-2xl font-black text-slate-900">Chào {authUser.name}, bạn chưa có chuyến đi nào</h2>
         <p className="text-xs sm:text-sm text-slate-500 max-w-lg mx-auto leading-relaxed">
-          Tài khoản của bạn hiện chưa có dữ liệu tour mẫu giả lập. Hãy tạo chuyến đi đầu tiên bằng trình lập lịch thủ công hoặc để Gemini AI thiết kế hành trình hoàn chỉnh theo nhu cầu của bạn.
+          Hãy tạo chuyến đi đầu tiên bằng trình lập lịch hoặc nhập mã tham gia nếu bạn là hành khách được mời vào chuyến đi khác.
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -186,6 +202,16 @@ export function UserDashboard({
           <Calendar className="w-4 h-4" />
           <span>Lập lịch tự động</span>
         </button>
+        {onOpenJoinModal && (
+          <button
+            type="button"
+            onClick={onOpenJoinModal}
+            className="px-5 py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition flex items-center gap-2 cursor-pointer"
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>Tham gia bằng mã</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -204,6 +230,8 @@ export function UserDashboard({
           alertCount={trip?.alerts.length || 0}
           tripCount={trips.length}
           onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+          onOpenJoinTrip={onOpenJoinModal}
+          hideBudgetTab={isParticipant}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
@@ -212,9 +240,10 @@ export function UserDashboard({
           <Header
             trip={trip}
             role="user"
+            isTripParticipant={isParticipant}
             onOpenCreateTripModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-            onOpenEditTripModal={trip ? () => onOpenEditTripModal?.(trip) : undefined}
-            onDeleteCurrentTrip={trip ? () => onDeleteTrip?.(trip.id) : undefined}
+            onOpenEditTripModal={trip && isTripOwner ? () => onOpenEditTripModal?.(trip) : undefined}
+            onDeleteCurrentTrip={trip && isTripOwner ? () => onDeleteTrip?.(trip.id) : undefined}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onSelectActivity={(act, dayIdx) => {
@@ -296,10 +325,12 @@ export function UserDashboard({
                   currentTrip={trip}
                   onSelectTrip={onSelectTrip}
                   onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                  onOpenJoinModal={onOpenJoinModal}
                   onEditTrip={onOpenEditTripModal}
                   onDeleteTrip={onDeleteTrip}
                   onCloneTrip={onCloneTrip}
                   readOnly={false}
+                  currentUserUid={authUser.id}
                   searchQuery={searchQuery}
                   onClearSearch={() => setSearchQuery('')}
                 />
@@ -316,71 +347,106 @@ export function UserDashboard({
                         <div>
                           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-teal-400">
                             <span className="w-2 h-2 rounded-full bg-teal-400"></span>
-                            <span>Bảng Điều Phối Du Lịch Thông Minh</span>
+                            <span>
+                              {isParticipant
+                                ? 'Hành khách tham gia chuyến đi (HK)'
+                                : 'Bảng Điều Phối Du Lịch Thông Minh'}
+                            </span>
                           </div>
                           <h2 className="mt-2 text-2xl sm:text-3xl font-black text-white">
                             Chào {authUser.name}
                           </h2>
                           <p className="mt-1.5 max-w-2xl text-xs sm:text-sm text-slate-300">
-                            Hành trình <strong className="text-white">{trip.title}</strong> ({trip.originFull} ➔ {trip.destinationFull}) • {trip.totalDays} ngày ({trip.dates}). Hệ thống giám sát giao thông, thời tiết đèo dốc và tự động tối ưu hóa lịch trình.
+                            {isParticipant ? (
+                              <>
+                                Bạn đang tham gia hành trình <strong className="text-white">{trip.title}</strong> ({trip.originFull} ➔ {trip.destinationFull}) • {trip.totalDays} ngày ({trip.dates}). Bạn có thể xem lịch trình, điểm danh và thêm người thân đi cùng không có tài khoản.
+                              </>
+                            ) : (
+                              <>
+                                Hành trình <strong className="text-white">{trip.title}</strong> ({trip.originFull} ➔ {trip.destinationFull}) • {trip.totalDays} ngày ({trip.dates}). Hệ thống giám sát giao thông, thời tiết đèo dốc và tự động tối ưu hóa lịch trình.
+                              </>
+                            )}
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                          <button
-                            onClick={onOpenTraditionalPlanner || onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                            className="px-3.5 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition shadow-lg shadow-teal-500/25 flex items-center gap-1.5 cursor-pointer"
-                            title="Lập lịch theo mẫu tour chuẩn hoặc tự thiết kế từng ngày"
-                          >
-                            <span>📋 Lập lịch truyền thống</span>
-                          </button>
-
-                          <button
-                            onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/25 flex items-center gap-1.5 cursor-pointer"
-                            title="Tự động lập toàn bộ hành trình"
-                          >
-                            <Calendar className="w-3.5 h-3.5 text-slate-950" />
-                            <span>Lập lịch tự động</span>
-                          </button>
-
-                          {onOpenAutoArrange && (
+                        {isParticipant ? (
+                          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                             <button
-                              onClick={onOpenAutoArrange}
-                              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs border border-amber-400/30 transition flex items-center gap-1.5 cursor-pointer"
-                              title="Tự động xếp lịch: loại bỏ chồng chéo thời gian và cân bằng đệm di chuyển"
+                              type="button"
+                              onClick={() => setCurrentTab('members')}
+                              className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition shadow-lg shadow-teal-500/25 flex items-center gap-1.5 cursor-pointer"
                             >
-                              <Clock className="w-3.5 h-3.5 text-amber-300" />
-                              <span>Tự động xếp lịch</span>
+                              <Users className="w-4 h-4" />
+                              <span>
+                                Thành viên &amp; Người thân{trip.joinCode ? ` (${trip.joinCode})` : ''}
+                              </span>
                             </button>
-                          )}
-
-                          <button
-                            onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-teal-400/30 transition flex items-center gap-1.5 cursor-pointer"
-                            title="Sắp xếp lại các điểm tham quan và cảnh báo trong chuyến đi"
-                          >
-                            <span>Tối ưu chuyến đi</span>
-                          </button>
-
-                          {canUndo && onUndo && (
                             <button
-                              onClick={onUndo}
-                              className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-400/40 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                              title="Hoàn tác phương án tối ưu lịch trình vừa áp dụng"
+                              type="button"
+                              onClick={() => setCurrentTab('map')}
+                              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-200 font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
                             >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>Hoàn tác điều phối</span>
+                              <MapPin className="w-4 h-4" />
+                              <span>Xem bản đồ tuyến</span>
                             </button>
-                          )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                            <button
+                              onClick={onOpenTraditionalPlanner || onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                              className="px-3.5 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition shadow-lg shadow-teal-500/25 flex items-center gap-1.5 cursor-pointer"
+                              title="Lập lịch theo mẫu tour chuẩn hoặc tự thiết kế từng ngày"
+                            >
+                              <span>📋 Lập lịch truyền thống</span>
+                            </button>
 
-                          <button
-                            onClick={() => setIsAddActivityOpen(true)}
-                            className="px-3.5 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <span>+ Thêm hoạt động</span>
-                          </button>
-                        </div>
+                            <button
+                              onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/25 flex items-center gap-1.5 cursor-pointer"
+                              title="Tự động lập toàn bộ hành trình"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-slate-950" />
+                              <span>Lập lịch tự động</span>
+                            </button>
+
+                            {onOpenAutoArrange && (
+                              <button
+                                onClick={onOpenAutoArrange}
+                                className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs border border-amber-400/30 transition flex items-center gap-1.5 cursor-pointer"
+                                title="Tự động xếp lịch: loại bỏ chồng chéo thời gian và cân bằng đệm di chuyển"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-amber-300" />
+                                <span>Tự động xếp lịch</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
+                              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-teal-400/30 transition flex items-center gap-1.5 cursor-pointer"
+                              title="Sắp xếp lại các điểm tham quan và cảnh báo trong chuyến đi"
+                            >
+                              <span>Tối ưu chuyến đi</span>
+                            </button>
+
+                            {canUndo && onUndo && (
+                              <button
+                                onClick={onUndo}
+                                className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-400/40 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                title="Hoàn tác phương án tối ưu lịch trình vừa áp dụng"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>Hoàn tác điều phối</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setIsAddActivityOpen(true)}
+                              className="px-3.5 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>+ Thêm hoạt động</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -390,6 +456,7 @@ export function UserDashboard({
                       onOpenMembers={() => setCurrentTab('members')}
                       onOpenBudget={() => setCurrentTab('budget')}
                       onOpenSchedule={() => setCurrentTab('schedule')}
+                      hideBudgetCard={isParticipant}
                     />
 
                     {/* Operations Panel and Live Route Map */}
@@ -399,7 +466,8 @@ export function UserDashboard({
                           <LiveRouteMap
                             trip={trip}
                             onSelectWaypoint={onSelectWaypoint}
-                            onUpdateTrip={handleUpdateTrip}
+                            onUpdateTrip={isTripOwner ? handleUpdateTrip : undefined}
+                            readOnly={isParticipant}
                             searchQuery={searchQuery}
                             onClearSearch={() => setSearchQuery('')}
                           />
@@ -412,12 +480,13 @@ export function UserDashboard({
                           onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
                           onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                           isAIApplied={isAIApplied}
-                          onUndo={onUndo}
-                          canUndo={canUndo}
-                          onScanAlerts={onScanAlerts}
+                          onUndo={isTripOwner ? onUndo : undefined}
+                          canUndo={isTripOwner ? canUndo : false}
+                          onScanAlerts={isTripOwner ? onScanAlerts : undefined}
                           isScanningAlerts={isScanningAlerts}
                           notificationsEnabled={notificationsEnabled}
-                          onToggleNotifications={onToggleNotifications}
+                          onToggleNotifications={isTripOwner ? onToggleNotifications : undefined}
+                          readOnly={isParticipant}
                         />
                       </div>
                     </div>
@@ -432,15 +501,16 @@ export function UserDashboard({
                         onSelectActivity={(act) => setSelectedActivity(act)}
                         filterMode={filterMode}
                         onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
+                        canAddActivity={isTripOwner}
                         searchQuery={searchQuery}
                         onClearSearch={() => setSearchQuery('')}
-                        onUpdateStatus={handleUpdateActivityStatus}
-                        onDeleteActivity={handleDeleteActivity}
-                        onEditActivity={handleEditActivity}
-                        onAddDay={handleAddDay}
-                        onDeleteDay={handleDeleteDay}
-                        onUpdateDayNote={handleUpdateDayNote}
-                        onOpenAutoArrange={onOpenAutoArrange}
+                        onUpdateStatus={isTripOwner ? handleUpdateActivityStatus : undefined}
+                        onDeleteActivity={isTripOwner ? handleDeleteActivity : undefined}
+                        onEditActivity={isTripOwner ? handleEditActivity : undefined}
+                        onAddDay={isTripOwner ? handleAddDay : undefined}
+                        onDeleteDay={isTripOwner ? handleDeleteDay : undefined}
+                        onUpdateDayNote={isTripOwner ? handleUpdateDayNote : undefined}
+                        onOpenAutoArrange={isTripOwner ? onOpenAutoArrange : undefined}
                       />
                     </div>
                   </>
@@ -456,7 +526,7 @@ export function UserDashboard({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {onOpenAutoArrange && (
+                        {isTripOwner && onOpenAutoArrange && (
                           <button
                             onClick={onOpenAutoArrange}
                             className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
@@ -465,25 +535,29 @@ export function UserDashboard({
                             <span>Tự động xếp lịch</span>
                           </button>
                         )}
-                        <button
-                          onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                          className="px-3.5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                          title="Phân tích và tối ưu lại lịch trình chuyến đi"
-                        >
-                          <span>Tối ưu chuyến đi</span>
-                        </button>
+                        {isTripOwner && (
+                          <button
+                            onClick={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
+                            className="px-3.5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                            title="Phân tích và tối ưu lại lịch trình chuyến đi"
+                          >
+                            <span>Tối ưu chuyến đi</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
                         >
                           {filterMode === 'timeline' ? 'Hiện toàn bộ ngày' : 'Chế độ timeline'}
                         </button>
-                        <button
-                          onClick={() => setIsAddActivityOpen(true)}
-                          className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
-                        >
-                          + Thêm hoạt động vào Ngày {currentDayIndex}
-                        </button>
+                        {isTripOwner && (
+                          <button
+                            onClick={() => setIsAddActivityOpen(true)}
+                            className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
+                          >
+                            + Thêm hoạt động vào Ngày {currentDayIndex}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -495,16 +569,16 @@ export function UserDashboard({
                       onSelectActivity={(act) => setSelectedActivity(act)}
                       filterMode={filterMode}
                       onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                      canAddActivity
+                      canAddActivity={isTripOwner}
                       searchQuery={searchQuery}
                       onClearSearch={() => setSearchQuery('')}
-                      onUpdateStatus={handleUpdateActivityStatus}
-                      onDeleteActivity={handleDeleteActivity}
-                      onEditActivity={handleEditActivity}
-                      onAddDay={handleAddDay}
-                      onDeleteDay={handleDeleteDay}
-                      onUpdateDayNote={handleUpdateDayNote}
-                      onOpenAutoArrange={onOpenAutoArrange}
+                      onUpdateStatus={isTripOwner ? handleUpdateActivityStatus : undefined}
+                      onDeleteActivity={isTripOwner ? handleDeleteActivity : undefined}
+                      onEditActivity={isTripOwner ? handleEditActivity : undefined}
+                      onAddDay={isTripOwner ? handleAddDay : undefined}
+                      onDeleteDay={isTripOwner ? handleDeleteDay : undefined}
+                      onUpdateDayNote={isTripOwner ? handleUpdateDayNote : undefined}
+                      onOpenAutoArrange={isTripOwner ? onOpenAutoArrange : undefined}
                     />
                   </div>
                 )}
@@ -515,7 +589,8 @@ export function UserDashboard({
                       <LiveRouteMap
                         trip={trip}
                         onSelectWaypoint={onSelectWaypoint}
-                        onUpdateTrip={handleUpdateTrip}
+                        onUpdateTrip={isTripOwner ? handleUpdateTrip : undefined}
+                        readOnly={isParticipant}
                         searchQuery={searchQuery}
                         onClearSearch={() => setSearchQuery('')}
                       />
@@ -529,32 +604,57 @@ export function UserDashboard({
                       <MembersView
                         members={trip.members}
                         onToggleStatus={handleToggleMemberAttendance}
-                        onUpdateMembers={handleUpdateMembers}
+                        onUpdateMembers={isTripOwner ? handleUpdateMembers : undefined}
                         searchQuery={searchQuery}
                         onClearSearch={() => setSearchQuery('')}
+                        joinCode={trip.joinCode}
+                        joinCodeEnabled={trip.joinCodeEnabled ?? true}
+                        isTripOwner={isTripOwner}
+                        currentUserUid={authUser.id}
+                        onManageJoinCode={isTripOwner ? onManageJoinCode : undefined}
+                        onAddGuestCompanion={onAddGuestCompanion}
+                        onRemoveGuestCompanion={onRemoveGuestCompanion}
+                        onOpenGuestModeWithCode={onOpenGuestModeWithCode}
+                        onLeaveTrip={isParticipant ? onLeaveTrip : undefined}
                       />
                     </Suspense>
                   </div>
                 )}
 
                 {currentTab === 'budget' && (
-                  <div className="w-full min-w-0">
-                    <Suspense fallback={<TabLoadingFallback label="Đang tải quản lý ngân sách..." />}>
-                      <BudgetView
-                        trip={trip}
-                        onUpdateTripBudget={handleUpdateTripBudget}
-                        searchQuery={searchQuery}
-                        onClearSearch={() => setSearchQuery('')}
-                      />
-                    </Suspense>
-                  </div>
+                  isParticipant ? (
+                    <div className="rounded-3xl bg-white border border-slate-200 p-8 text-center space-y-3 shadow-xs">
+                      <h3 className="text-base font-black text-slate-900">Thông tin ngân sách nội bộ</h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Ngân sách và chứng từ chi phí chỉ hiển thị cho chủ chuyến đi hoặc quản trị viên.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentTab('dashboard')}
+                        className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition cursor-pointer"
+                      >
+                        Quay lại bảng tổng quan
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-full min-w-0">
+                      <Suspense fallback={<TabLoadingFallback label="Đang tải quản lý ngân sách..." />}>
+                        <BudgetView
+                          trip={trip}
+                          onUpdateTripBudget={handleUpdateTripBudget}
+                          searchQuery={searchQuery}
+                          onClearSearch={() => setSearchQuery('')}
+                        />
+                      </Suspense>
+                    </div>
+                  )
                 )}
               </>
             )}
           </main>
         </div>
 
-        {trip && isAIOptimizeOpen && (
+        {trip && isTripOwner && isAIOptimizeOpen && (
           <Suspense fallback={null}>
             <AIOptimizeModal
               isOpen={isAIOptimizeOpen}
@@ -567,7 +667,7 @@ export function UserDashboard({
             />
           </Suspense>
         )}
-        {trip && isAddActivityOpen && (
+        {trip && isTripOwner && isAddActivityOpen && (
           <Suspense fallback={null}>
             <AddActivityModal
               isOpen={isAddActivityOpen}
@@ -585,16 +685,20 @@ export function UserDashboard({
               isOpen={isAlertsModalOpen}
               onClose={() => setIsAlertsModalOpen(false)}
               alerts={trip.alerts}
-              onDismissAlert={handleDismissAlert}
-              onTriggerAI={() => {
-                setIsAlertsModalOpen(false);
-                if (onOpenAIOptimize) {
-                  onOpenAIOptimize();
-                } else {
-                  setIsAIOptimizeOpen(true);
-                }
-              }}
-              onScanAlerts={onScanAlerts}
+              onDismissAlert={isTripOwner ? handleDismissAlert : undefined}
+              onTriggerAI={
+                isTripOwner
+                  ? () => {
+                      setIsAlertsModalOpen(false);
+                      if (onOpenAIOptimize) {
+                        onOpenAIOptimize();
+                      } else {
+                        setIsAIOptimizeOpen(true);
+                      }
+                    }
+                  : undefined
+              }
+              onScanAlerts={isTripOwner ? onScanAlerts : undefined}
               isScanningAlerts={isScanningAlerts}
             />
           </Suspense>
@@ -605,9 +709,9 @@ export function UserDashboard({
               activity={selectedActivity}
               onClose={() => setSelectedActivity(null)}
               onUpdateStatus={handleUpdateActivityStatus}
-              onDeleteActivity={handleDeleteActivity}
-              onEditActivity={handleEditActivity}
-              canEdit
+              onDeleteActivity={isTripOwner ? handleDeleteActivity : undefined}
+              onEditActivity={isTripOwner ? handleEditActivity : undefined}
+              canEdit={isTripOwner}
             />
           </Suspense>
         )}

@@ -7,6 +7,7 @@ interface MetricCardsProps {
   onOpenMembers: () => void;
   onOpenBudget: () => void;
   onOpenSchedule: () => void;
+  hideBudgetCard?: boolean;
 }
 
 export const MetricCards: React.FC<MetricCardsProps> = ({
@@ -14,6 +15,7 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
   onOpenMembers,
   onOpenBudget,
   onOpenSchedule,
+  hideBudgetCard = false,
 }) => {
   const formatMillions = (amount: number) => {
     if (!amount) return '0 ₫';
@@ -34,7 +36,7 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 ${hideBudgetCard ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
       {/* Card 1: Tuyến đang điều phối */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
         <div>
@@ -133,37 +135,39 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
       })()}
 
       {/* Card 3: Ngân sách */}
-      <div
-        onClick={onOpenBudget}
-        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Wallet className="w-4 h-4" />
+      {!hideBudgetCard && (
+        <div
+          onClick={onOpenBudget}
+          className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
+        >
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-semibold text-slate-500">Ngân sách</span>
             </div>
-            <span className="text-xs font-semibold text-slate-500">Ngân sách</span>
+
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900 tracking-tight">
+                {formatMillions(trip.budgetTotal)}
+              </div>
+              <div className="text-xs text-slate-500 mt-1 font-medium">
+                Đã dùng <span className="font-semibold text-slate-700">{trip.budgetUsedPercent}%</span> • còn {formatShortMillions(trip.budgetRemaining)}
+              </div>
+            </div>
           </div>
 
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-900 tracking-tight">
-              {formatMillions(trip.budgetTotal)}
-            </div>
-            <div className="text-xs text-slate-500 mt-1 font-medium">
-              Đã dùng <span className="font-semibold text-slate-700">{trip.budgetUsedPercent}%</span> • còn {formatShortMillions(trip.budgetRemaining)}
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${trip.budgetUsedPercent}%` }}
+              ></div>
             </div>
           </div>
         </div>
-
-        <div className="mt-3 pt-3 border-t border-slate-100">
-          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-            <div
-              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-              style={{ width: `${trip.budgetUsedPercent}%` }}
-            ></div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Card 4: Thành viên */}
       <div

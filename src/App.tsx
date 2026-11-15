@@ -3,17 +3,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { safeJsonResponse } from './api';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useRealtimeAlertScanner } from './hooks/useRealtimeAlertScanner';
 import { useTripActions } from './hooks/useTripActions';
 import { useTripPersistence } from './hooks/useTripPersistence';
-import type { Activity, TripData } from './types/travel';
+import type { Activity, GuestTripData, TripData } from './types/travel';
+import {
+  clearGuestCodeFromUrl,
+  clearStoredGuestSession,
+  extractGuestCodeFromUrl,
+  loadStoredGuestSession,
+  saveStoredGuestSession,
+  type ActiveGuestSession,
+} from './utils/guestSession';
+import {
+  isUserTripOwnerOrAdmin,
+  isValidJoinCodeFormat,
+  normalizeJoinCode,
+} from './utils/tripJoinHelpers';
 
 const AuthScreen = lazy(() =>
   import('./components/auth/AuthScreen').then((m) => ({ default: m.AuthScreen })),
+);
+const GuestTripView = lazy(() =>
+  import('./components/guest/GuestTripView').then((m) => ({ default: m.GuestTripView })),
 );
 const AdminDashboard = lazy(() =>
   import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })),
@@ -29,6 +46,9 @@ const AutoArrangeModal = lazy(() =>
 );
 const EditTripModal = lazy(() =>
   import('./components/modals/EditTripModal').then((m) => ({ default: m.EditTripModal })),
+);
+const JoinTripModal = lazy(() =>
+  import('./components/modals/JoinTripModal').then((m) => ({ default: m.JoinTripModal })),
 );
 const AccountModal = lazy(() =>
   import('./components/modals/AccountModal').then((m) => ({ default: m.AccountModal })),
@@ -60,9 +80,13 @@ export default function App() {
   const [isAddActivityOpen, setIsAddActivityOpen] = useState<boolean>(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
+  const [isJoinTripModalOpen, setIsJoinTripModalOpen] = useState<boolean>(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [isEditTripModalOpen, setIsEditTripModalOpen] = useState<boolean>(false);
   const [tripToEdit, setTripToEdit] = useState<TripData | null>(null);
+  const [urlGuestCode] = useState<string>(() => extractGuestCodeFromUrl());
+  const [guestSession, setGuestSession] = useState<ActiveGuestSession | null>(null);
+  const guestRestoreAttemptedRef = useRef<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{
     text: string;
     type: 'success' | 'error' | 'info';
@@ -84,13 +108,25 @@ export default function App() {
     }, 4500);
   }, []);
 
+  const handleClearAuthAndGuest = useCallback(() => {
+    setGuestSession((prev) => (prev?.enteredFromAccount ? null : prev));
+    clearAuthUser();
+  }, [clearAuthUser]);
+
   const persistence = useTripPersistence({
     authUserId,
+    authUserRole: authUser?.role,
     isOnline,
-    onClearAuthUser: clearAuthUser,
+    onClearAuthUser: handleClearAuthAndGuest,
     setCurrentDayIndex,
     showToast,
   });
+
+  const canScanActiveTrip = Boolean(
+    authUser &&
+      persistence.trip &&
+      isUserTripOwnerOrAdmin(persistence.trip, authUserId, authUser.role),
+  );
 
   const {
     notificationsEnabled,
@@ -100,6 +136,7 @@ export default function App() {
   } = useRealtimeAlertScanner({
     authUserId,
     activeTripId: persistence.trip?.id,
+    canScanAlerts: canScanActiveTrip,
     isOnline,
     loadedTripUserId: persistence.loadedTripUserId,
     hasConflict: Boolean(persistence.conflictState),
@@ -117,6 +154,7 @@ export default function App() {
     trip: persistence.trip,
     trips: persistence.trips,
     authUserId,
+    authUserRole: authUser?.role,
     currentDayIndex,
     setTrip: persistence.setTrip,
     setTrips: persistence.setTrips,
@@ -134,6 +172,8 @@ export default function App() {
     executeTripPut: persistence.executeTripPut,
     fetchServerTripSnapshot: persistence.fetchServerTripSnapshot,
     ensureFullTrip: persistence.ensureFullTrip,
+    applyAuthoritativeTripUpdate: persistence.applyAuthoritativeTripUpdate,
+    removeTripFromLocalState: persistence.removeTripFromLocalState,
     performSignOutAndClearCache: persistence.performSignOutAndClearCache,
     setConflictState: persistence.setConflictState,
     saveQueueRef: persistence.saveQueueRef,
@@ -142,12 +182,107 @@ export default function App() {
     showToast,
   });
 
+  const handleOpenGuestModeWithCode = useCallback(
+    async (rawCode: string, guestName?: string, enteredFromAccount = true) => {
+      const cleanCode = normalizeJoinCode(rawCode);
+      if (!isValidJoinCodeFormat(cleanCode)) {
+        showToast('Mã tham gia chưa hợp lệ.', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/guest/access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            joinCode: cleanCode,
+            guestName: guestName?.trim() || undefined,
+          }),
+        });
+        const result = await safeJsonResponse<{
+          success?: boolean;
+          error?: string;
+          joinCode?: string;
+          guestName?: string;
+          trip?: GuestTripData;
+        }>(response);
+
+        if (!response.ok || !result?.success || !result.trip) {
+          throw new Error(result?.error || 'Không thể mở giao diện Hành khách bằng mã này.');
+        }
+
+        const resolvedName = result.guestName || guestName?.trim() || 'Hành khách';
+        const resolvedCode = result.joinCode || cleanCode;
+        if (!enteredFromAccount) {
+          saveStoredGuestSession(resolvedCode, resolvedName);
+          clearGuestCodeFromUrl();
+        }
+        setGuestSession({
+          joinCode: resolvedCode,
+          guestName: resolvedName,
+          trip: result.trip,
+          enteredFromAccount,
+        });
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Không thể mở giao diện Hành khách.', 'error');
+      }
+    },
+    [showToast],
+  );
+
+  const handleRefreshGuestTrip = useCallback(async () => {
+    if (!guestSession) return;
+    try {
+      const response = await fetch(
+        `/api/guest/trip?code=${encodeURIComponent(guestSession.joinCode)}`,
+      );
+      const result = await safeJsonResponse<{
+        success?: boolean;
+        error?: string;
+        trip?: GuestTripData;
+      }>(response);
+      if (!response.ok || !result?.success || !result.trip) {
+        throw new Error(result?.error || 'Mã chuyến đi hiện đã đóng hoặc không còn hợp lệ.');
+      }
+      setGuestSession((prev) => (prev ? { ...prev, trip: result.trip! } : null));
+      showToast('Đã làm mới lịch trình chuyến đi.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Không thể làm mới lịch trình.', 'error');
+    }
+  }, [guestSession, showToast]);
+
+  const handleExitGuestMode = useCallback(() => {
+    clearStoredGuestSession();
+    clearGuestCodeFromUrl();
+    setGuestSession(null);
+  }, []);
+
+  useEffect(() => {
+    if (authLoading || authUser || guestSession || guestRestoreAttemptedRef.current) return;
+    guestRestoreAttemptedRef.current = true;
+    const stored = loadStoredGuestSession();
+    const codeToRestore = urlGuestCode || stored?.joinCode || '';
+    if (!codeToRestore) return;
+
+    const guestNameToUse = urlGuestCode ? '' : stored?.guestName || '';
+    void handleOpenGuestModeWithCode(codeToRestore, guestNameToUse, false);
+  }, [authLoading, authUser, guestSession, urlGuestCode, handleOpenGuestModeWithCode]);
+
   useEffect(() => {
     const adminExclusiveTabs = ['planning', 'rules', 'ai', 'monitoring', 'system'];
     if (!isAdminMode && adminExclusiveTabs.includes(currentTab)) {
       setCurrentTab('dashboard');
+      return;
     }
-  }, [isAdminMode, currentTab]);
+    if (
+      authUser &&
+      persistence.trip &&
+      !isUserTripOwnerOrAdmin(persistence.trip, authUserId, authUser.role) &&
+      currentTab === 'budget'
+    ) {
+      setCurrentTab('dashboard');
+    }
+  }, [isAdminMode, currentTab, authUser, authUserId, persistence.trip]);
 
   useEffect(() => {
     const trip = persistence.trip;
@@ -171,6 +306,21 @@ export default function App() {
     setCurrentTab(tab);
   };
 
+  if (guestSession) {
+    return (
+      <Suspense fallback={<FullPageLoadingFallback message="Đang tải giao diện Hành khách..." />}>
+        <GuestTripView
+          guestTrip={guestSession.trip}
+          guestName={guestSession.guestName}
+          joinCode={guestSession.joinCode}
+          enteredFromAccount={guestSession.enteredFromAccount}
+          onRefresh={handleRefreshGuestTrip}
+          onExitGuestMode={handleExitGuestMode}
+        />
+      </Suspense>
+    );
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm text-slate-300">
@@ -182,7 +332,19 @@ export default function App() {
   if (!authUser) {
     return (
       <Suspense fallback={<FullPageLoadingFallback message="Đang tải trang đăng nhập..." />}>
-        <AuthScreen />
+        <AuthScreen
+          initialGuestCode={urlGuestCode}
+          onEnterGuestTrip={({ joinCode, guestName, trip }) => {
+            saveStoredGuestSession(joinCode, guestName);
+            clearGuestCodeFromUrl();
+            setGuestSession({
+              joinCode,
+              guestName,
+              trip,
+              enteredFromAccount: false,
+            });
+          }}
+        />
       </Suspense>
     );
   }
@@ -245,6 +407,13 @@ export default function App() {
     onOpenAIOptimize: actions.handleOpenAIOptimize,
     onOpenAutoArrange: actions.handleOpenAutoArrange,
     onOpenTraditionalPlanner: actions.handleOpenTraditionalPlanner,
+    onOpenJoinModal: () => setIsJoinTripModalOpen(true),
+    onManageJoinCode: actions.handleManageJoinCode,
+    onAddGuestCompanion: actions.handleAddGuestCompanion,
+    onRemoveGuestCompanion: actions.handleRemoveGuestCompanion,
+    onOpenGuestModeWithCode: (code: string, name?: string) =>
+      handleOpenGuestModeWithCode(code, name, true),
+    onLeaveTrip: actions.handleLeaveTrip,
   };
 
   return (
@@ -306,6 +475,18 @@ export default function App() {
             onClose={() => setIsEditTripModalOpen(false)}
             trip={tripToEdit}
             onSave={actions.handleSaveEditedTrip}
+          />
+        </Suspense>
+      )}
+
+      {/* Modal Tham gia chuyến đi bằng mã mời — chỉ mount khi mở */}
+      {isJoinTripModalOpen && (
+        <Suspense fallback={null}>
+          <JoinTripModal
+            isOpen={isJoinTripModalOpen}
+            onClose={() => setIsJoinTripModalOpen(false)}
+            defaultDisplayName={authUser.name}
+            onJoinTrip={actions.handleJoinTripByCode}
           />
         </Suspense>
       )}

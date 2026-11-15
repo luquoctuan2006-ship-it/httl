@@ -33,14 +33,23 @@ export function isAdminUser(user?: AuthTokenUser) {
   return user?.role === 'admin';
 }
 
-// Chỉ chủ chuyến hoặc admin mới được xem/sửa.
+export function isTripOwnerOrAdmin(
+  trip: Partial<TripData> | null | undefined,
+  user?: AuthTokenUser,
+) {
+  if (!trip || !user) return false;
+  return isAdminUser(user) || (!!trip.ownerId && trip.ownerId === user.uid);
+}
+
+// Chủ chuyến, admin hoặc hành khách (HK) đã tham gia bằng mã mới được xem chuyến đi.
 // Chuyến cũ chưa có ownerId chỉ admin thấy (xem scripts/assign-trip-owner.ts để gán chủ).
 export function canAccessTrip(
   trip: Partial<TripData> | null | undefined,
   user?: AuthTokenUser,
 ) {
   if (!trip || !user) return false;
-  return isAdminUser(user) || (!!trip.ownerId && trip.ownerId === user.uid);
+  if (isTripOwnerOrAdmin(trip, user)) return true;
+  return Array.isArray(trip.participantUids) && trip.participantUids.includes(user.uid);
 }
 
 /**
@@ -131,7 +140,7 @@ export async function upsertTripForUser(
     const snap = await transaction.get(docRef);
     const existing = snap.exists ? normalizeTripData(snap.data()) : null;
 
-    if (existing && !canAccessTrip(existing, user)) {
+    if (existing && !isTripOwnerOrAdmin(existing, user)) {
       return { status: 'forbidden' };
     }
 
@@ -147,11 +156,33 @@ export async function upsertTripForUser(
 
     const nextVersion = existing ? (existing.version || 0) + 1 : 1;
     const ownerId = existing ? existing.ownerId : user.uid;
+
+    // Giữ nguyên danh sách participantUids đã được xác thực ở server;
+    // nếu chủ chuyến xóa thành viên có gắn uid khỏi đoàn thì thu hồi quyền tham gia tương ứng.
+    const existingParticipantUids = existing?.participantUids || [];
+    const remainingAccountUids = new Set(
+      authoritativeInput.members
+        .map((m) => m.uid)
+        .filter((u): u is string => typeof u === 'string' && u.length > 0),
+    );
+    const hasLinkedMemberChanges = existing
+      ? existing.members.some((m) => Boolean(m.uid) && !remainingAccountUids.has(m.uid!))
+      : false;
+    const participantUids = existing
+      ? (hasLinkedMemberChanges
+          ? existingParticipantUids.filter((u) => remainingAccountUids.has(u))
+          : existingParticipantUids)
+      : [];
+
     const savedTrip: TripData = {
       ...authoritativeInput,
       ownerId,
+      ...(participantUids.length > 0 ? { participantUids } : {}),
       version: nextVersion,
     };
+    if (participantUids.length === 0) {
+      delete savedTrip.participantUids;
+    }
 
     const byteSize = estimateTripByteSize(savedTrip as unknown as Record<string, unknown>);
     if (byteSize > MAX_TRIP_DOC_BYTES) {

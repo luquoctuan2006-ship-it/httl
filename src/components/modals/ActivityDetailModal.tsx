@@ -254,7 +254,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   {activity.type}
                 </span>
               </div>
-              {activity.cost !== undefined && activity.cost > 0 && (
+              {canEdit && activity.cost !== undefined && activity.cost > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 font-medium">Chi phí dự toán/thực tế:</span>
                   <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">

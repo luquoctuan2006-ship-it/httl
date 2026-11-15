@@ -21,6 +21,8 @@ interface LiveRouteMapProps {
   onUpdateTrip?: (updatedTrip: TripData, message?: string) => void;
   searchQuery?: string;
   onClearSearch?: () => void;
+  readOnly?: boolean;
+  guestJoinCode?: string;
 }
 
 export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
@@ -28,6 +30,8 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   onSelectWaypoint,
   onUpdateTrip,
   searchQuery = '',
+  readOnly = false,
+  guestJoinCode,
 }) => {
   const [mapLayer, setMapLayer] = useState<MapLayer>('streets');
   const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
@@ -39,7 +43,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     [trip, dayFilter],
   );
 
-  const { roadLegsMap, isRoutingLoading } = useRoadRouting(baseProgress.stops);
+  const { roadLegsMap, isRoutingLoading } = useRoadRouting(baseProgress.stops, guestJoinCode);
 
   const progress = useMemo(
     () => buildRouteProgress(trip, dayFilter, roadLegsMap),
@@ -52,7 +56,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
 
   const controls = useLiveRouteControls({
     trip,
-    onUpdateTrip,
+    onUpdateTrip: readOnly ? undefined : onUpdateTrip,
     stops: progress.stops,
     currentStop: progress.currentStop,
   });
@@ -143,8 +147,8 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         stopForecasts={controls.weather?.stopForecasts}
         selectedStopKey={selectedStopKey}
         onFocusStop={handleFocusStop}
-        onChangeStopStatus={onUpdateTrip ? handleChangeStopStatus : undefined}
-        onOpenStopActivity={onSelectWaypoint ? handleOpenStopActivity : undefined}
+        onChangeStopStatus={!readOnly && onUpdateTrip ? handleChangeStopStatus : undefined}
+        onOpenStopActivity={!readOnly && onSelectWaypoint ? handleOpenStopActivity : undefined}
       />
     </div>
   );

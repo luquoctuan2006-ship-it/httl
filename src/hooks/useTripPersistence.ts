@@ -12,6 +12,7 @@ import {
   saveOfflineTripsCacheDetailed,
 } from '../utils/offlineStorage';
 import { getTripComparableJson } from '../utils/tripRepository';
+import { isUserTripOwnerOrAdmin } from '../utils/tripJoinHelpers';
 import {
   AuthSessionError,
   offloadTripReceipts,
@@ -21,6 +22,7 @@ import {
 
 interface UseTripPersistenceOptions {
   authUserId: string | null;
+  authUserRole?: 'user' | 'admin';
   isOnline: boolean;
   onClearAuthUser: () => void;
   setCurrentDayIndex: (dayIndex: number) => void;
@@ -34,6 +36,7 @@ interface UseTripPersistenceOptions {
 
 export function useTripPersistence({
   authUserId,
+  authUserRole,
   isOnline,
   onClearAuthUser,
   setCurrentDayIndex,
@@ -435,7 +438,7 @@ export function useTripPersistence({
     try {
       for (const pendingId of cache.pendingSyncIds) {
         const queuedTrip = cache.trips.find((t) => t.id === pendingId);
-        if (!queuedTrip) {
+        if (!queuedTrip || !isUserTripOwnerOrAdmin(queuedTrip, authUserId, authUserRole)) {
           clearTripPendingOfflineSync(authUserId, pendingId);
           continue;
         }
@@ -514,7 +517,7 @@ export function useTripPersistence({
     } finally {
       isSyncingOfflineRef.current = false;
     }
-  }, [authUserId, isOnline, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+  }, [authUserId, authUserRole, isOnline, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
 
   useEffect(() => {
     if (isOnline && authUserId && tripsLoaded && pendingSyncCount > 0 && !conflictState) {
@@ -522,9 +525,18 @@ export function useTripPersistence({
     }
   }, [isOnline, authUserId, tripsLoaded, pendingSyncCount, conflictState, syncPendingOfflineTrips]);
 
-  // Autosave trip changes qua hàng đợi tuần tự (single-flight)
+  // Autosave trip changes qua hàng đợi tuần tự (single-flight) — chỉ chạy cho chủ chuyến hoặc Admin
   useEffect(() => {
-    if (!authUserId || !trip?.id || trip.isSummary || loadedTripUserId !== authUserId || conflictState) return;
+    if (
+      !authUserId ||
+      !trip?.id ||
+      trip.isSummary ||
+      loadedTripUserId !== authUserId ||
+      conflictState ||
+      !isUserTripOwnerOrAdmin(trip, authUserId, authUserRole)
+    ) {
+      return;
+    }
 
     const currentComparable = getTripComparableJson(trip);
     if (!currentComparable || currentComparable === lastSavedContentByTripIdRef.current[trip.id]) return;
@@ -533,7 +545,14 @@ export function useTripPersistence({
     const timeout = window.setTimeout(() => {
       void saveQueueRef.current.enqueue(async () => {
         const liveTrip = latestTripRef.current;
-        if (!liveTrip || liveTrip.id !== tripIdSnapshot || liveTrip.isSummary) return;
+        if (
+          !liveTrip ||
+          liveTrip.id !== tripIdSnapshot ||
+          liveTrip.isSummary ||
+          !isUserTripOwnerOrAdmin(liveTrip, authUserId, authUserRole)
+        ) {
+          return;
+        }
 
         const normalized = normalizeTripData(liveTrip);
         const targetComparable = getTripComparableJson(normalized);
@@ -636,10 +655,77 @@ export function useTripPersistence({
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [trip, authUserId, loadedTripUserId, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+  }, [trip, authUserId, authUserRole, loadedTripUserId, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+
+  const applyAuthoritativeTripUpdate = useCallback(
+    (serverTrip: TripData, options?: { select?: boolean; prependIfNew?: boolean }) => {
+      const normalized = normalizeTripData(serverTrip);
+      lastSavedContentByTripIdRef.current[normalized.id] = getTripComparableJson(normalized);
+      if (typeof normalized.version === 'number') {
+        latestServerVersionByTripIdRef.current[normalized.id] = normalized.version;
+      }
+      if (authUserId) {
+        const cacheAfter = clearTripPendingOfflineSync(authUserId, normalized.id);
+        if (cacheAfter) {
+          setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+        }
+      }
+      setTrips((prev) => {
+        const exists = prev.some((item) => item.id === normalized.id);
+        if (!exists) {
+          return options?.prependIfNew ? [normalized, ...prev] : [...prev, normalized];
+        }
+        return prev.map((item) => (item.id === normalized.id ? normalized : item));
+      });
+      if (options?.select) {
+        setTrip(normalized);
+        setCurrentDayIndex(normalized.currentDay || 1);
+      } else {
+        setTrip((prev) => (prev?.id === normalized.id ? normalized : prev));
+      }
+      return normalized;
+    },
+    [authUserId, setCurrentDayIndex],
+  );
+
+  const removeTripFromLocalState = useCallback(
+    async (tripId: string): Promise<TripData | null> => {
+      delete lastSavedContentByTripIdRef.current[tripId];
+      delete latestServerVersionByTripIdRef.current[tripId];
+      if (authUserId) {
+        const cacheAfter = clearTripPendingOfflineSync(authUserId, tripId);
+        if (cacheAfter) {
+          setPendingSyncCount(cacheAfter.pendingSyncIds.length);
+        }
+      }
+
+      const remaining = tripsRef.current.filter((item) => item.id !== tripId);
+      setTrips(remaining);
+
+      if (latestTripRef.current?.id === tripId) {
+        if (remaining.length > 0) {
+          const candidate = remaining[0];
+          const resolved = candidate.isSummary ? await ensureFullTrip(candidate) : candidate;
+          const nextActive = resolved || candidate;
+          setTrip(nextActive);
+          setCurrentDayIndex(nextActive.currentDay || 1);
+          return nextActive;
+        }
+        setTrip(null);
+        setCurrentDayIndex(1);
+        return null;
+      }
+      return latestTripRef.current;
+    },
+    [authUserId, ensureFullTrip, setCurrentDayIndex],
+  );
 
   const saveTripToFirestore = useCallback(async (updatedTrip: TripData, successMessage?: string) => {
     if (updatedTrip.isSummary) return;
+    if (!isUserTripOwnerOrAdmin(updatedTrip, authUserId, authUserRole)) {
+      showToast('Hành khách không có quyền chỉnh sửa toàn bộ chuyến đi.', 'info');
+      return;
+    }
     const normalizedTrip = normalizeTripData(updatedTrip);
     setTrip(normalizedTrip);
 
@@ -755,7 +841,7 @@ export function useTripPersistence({
       setFirebaseStatus('error');
       showToast('Không thể kết nối máy chủ — thay đổi đã được lưu tạm ngoại tuyến.', 'error');
     }
-  }, [authUserId, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
+  }, [authUserId, authUserRole, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
 
   const handleKeepLocalConflict = useCallback(async () => {
     if (!conflictState) return;
@@ -865,6 +951,8 @@ export function useTripPersistence({
     ensureFullTrip,
     fetchServerTripSnapshot,
     executeTripPut,
+    applyAuthoritativeTripUpdate,
+    removeTripFromLocalState,
     saveTripToFirestore,
     syncPendingOfflineTrips,
     handleKeepLocalConflict,

@@ -14,6 +14,7 @@ import {
   UserCog,
   LogOut,
   X,
+  KeyRound,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -28,6 +29,8 @@ interface SidebarProps {
   alertCount?: number;
   tripCount?: number;
   onOpenAIPlanner: () => void;
+  onOpenJoinTrip?: () => void;
+  hideBudgetTab?: boolean;
   onOpenAccount?: () => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
@@ -42,10 +45,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   alertCount = 0,
   tripCount = 0,
   onOpenAIPlanner,
+  onOpenJoinTrip,
+  hideBudgetTab = false,
   onOpenAccount,
   isMobileOpen = false,
   onCloseMobile,
 }) => {
+  const userNav = [
+    { id: 'dashboard', label: 'Bảng điều phối', icon: LayoutDashboard },
+    { id: 'trips', label: 'Chuyến đi', icon: Compass, badge: tripCount },
+    { id: 'schedule', label: 'Lịch trình', icon: Calendar },
+    { id: 'map', label: 'Bản đồ & Tiến độ', icon: MapPin },
+    { id: 'members', label: 'Thành viên', icon: Users },
+    ...(!hideBudgetTab ? [{ id: 'budget', label: 'Ngân sách', icon: Wallet }] : []),
+  ];
+
   const mainNav = userRole === 'admin'
     ? [
         { id: 'dashboard', label: 'Dashboard / Thống kê', icon: LayoutDashboard },
@@ -56,14 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'monitoring', label: 'Giám sát lịch trình', icon: ShieldAlert, badge: alertCount },
         { id: 'system', label: 'Hệ thống', icon: Settings },
       ]
-    : [
-        { id: 'dashboard', label: 'Bảng điều phối', icon: LayoutDashboard },
-        { id: 'trips', label: 'Chuyến đi', icon: Compass, badge: tripCount },
-        { id: 'schedule', label: 'Lịch trình', icon: Calendar },
-        { id: 'map', label: 'Bản đồ & Tiến độ', icon: MapPin },
-        { id: 'members', label: 'Thành viên', icon: Users },
-        { id: 'budget', label: 'Ngân sách', icon: Wallet },
-      ];
+    : userNav;
 
   const isAdmin = userRole === 'admin';
   const asideBg = isAdmin
@@ -168,6 +175,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Plus className="w-3.5 h-3.5" />
           <span>Tạo chuyến đi</span>
         </button>
+
+        {!isAdmin && onOpenJoinTrip && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenJoinTrip();
+              onCloseMobile?.();
+            }}
+            className="w-full min-h-[42px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs border border-indigo-400/40 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-100 transition cursor-pointer"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-indigo-300" />
+            <span>Tham gia bằng mã</span>
+          </button>
+        )}
 
         <PWAInstallButton />
       </div>

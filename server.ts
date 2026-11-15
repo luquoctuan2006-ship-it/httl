@@ -13,6 +13,7 @@ import { registerFleetRoutes } from './src/server/routes/fleet';
 import { registerAdminMonitoringRoutes } from './src/server/routes/adminMonitoring';
 import { registerAdminConfigRoutes } from './src/server/routes/adminConfig';
 import { registerRoutingRoutes } from './src/server/routes/routing';
+import { registerGuestRoutes } from './src/server/routes/guest';
 import { initFirebaseAdmin } from './src/server/services/firebaseAdmin';
 import { createSystemConfigStore, ALLOWED_AI_MODELS } from './src/server/services/systemConfigStore';
 import { createTripStore } from './src/server/services/tripStore';
@@ -133,6 +134,17 @@ const aiRateLimiter = rateLimit({
 
 const tripStore = createTripStore(requireFirestore);
 
+const joinCodeRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 40,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Bạn đã thử quá nhiều mã chuyến đi trong thời gian ngắn. Vui lòng đợi ít phút rồi thử lại.',
+  },
+});
+
 const geminiService = createGeminiService({
   getFirestoreOrNull: () => firestore,
   requireFirestore,
@@ -153,10 +165,13 @@ geminiService.startFirestoreCleanupInterval();
 
 registerTripManagementRoutes(app, {
   requireAuth,
+  joinRateLimiter: joinCodeRateLimiter,
   requireFirestore,
   listTripsForUser: tripStore.listTripsForUser,
   loadUserTrips: tripStore.loadUserTrips,
   getTripById: tripStore.getTripById,
+  findTripByJoinCode: tripStore.findTripByJoinCode,
+  generateUniqueJoinCode: tripStore.generateUniqueJoinCode,
   createTripDoc: tripStore.createTripDoc,
   deleteTripDoc: tripStore.deleteTripDoc,
   recordAuditLog,
@@ -215,6 +230,11 @@ registerAdminUserRoutes(app, {
 });
 
 registerRoutingRoutes(app, { requireAuth });
+
+registerGuestRoutes(app, {
+  findTripByJoinCode: tripStore.findTripByJoinCode,
+  rateLimiter: joinCodeRateLimiter,
+});
 
 app.all('/api/*', (req, res) => {
   res.status(404).json({

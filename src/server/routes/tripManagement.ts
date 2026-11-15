@@ -4,13 +4,20 @@ import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
 import { createTripSyncRouter } from './trips';
 import { normalizeTripData } from '../../data/normalizeTripData';
-import type { TripData } from '../../types/travel';
+import type { TripData, TripMember } from '../../types/travel';
 import {
   canAccessTrip,
   computeAuthoritativeTripDerivedFields,
   estimateTripByteSize,
+  isTripOwnerOrAdmin,
   MAX_TRIP_DOC_BYTES,
 } from '../../utils/tripRepository';
+import {
+  generateTripJoinCode,
+  getMemberInitials,
+  isValidJoinCodeFormat,
+  normalizeJoinCode,
+} from '../../utils/tripJoinHelpers';
 import { detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';
 import { buildRouteProgress } from '../../utils/routeProgress';
 import {
@@ -23,6 +30,7 @@ type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 
 interface TripManagementRouteDependencies {
   requireAuth: RequestHandler;
+  joinRateLimiter?: RequestHandler;
   requireFirestore: () => Firestore;
   listTripsForUser: (
     user: DecodedIdToken,
@@ -30,6 +38,8 @@ interface TripManagementRouteDependencies {
   ) => Promise<{ trips: TripData[]; hasMore: boolean; nextCursor: string | null }>;
   loadUserTrips: (user: DecodedIdToken) => Promise<TripData[]>;
   getTripById: (tripId: string) => Promise<TripData | null>;
+  findTripByJoinCode?: (joinCode: string) => Promise<TripData | null>;
+  generateUniqueJoinCode?: () => Promise<string>;
   createTripDoc: (trip: TripData) => Promise<void>;
   deleteTripDoc: (tripId: string) => Promise<void>;
   recordAuditLog: (user: string, action: string) => Promise<void>;
@@ -45,14 +55,40 @@ function isConflictError(error: unknown) {
 export function registerTripManagementRoutes(app: Express, dependencies: TripManagementRouteDependencies) {
   const {
     requireAuth,
+    joinRateLimiter,
     requireFirestore,
     listTripsForUser,
     loadUserTrips,
     getTripById,
+    findTripByJoinCode,
+    generateUniqueJoinCode,
     createTripDoc,
     deleteTripDoc,
     recordAuditLog,
   } = dependencies;
+
+  const passThrough: RequestHandler = (_req, _res, next) => next();
+  const joinLimiter = joinRateLimiter || passThrough;
+
+  async function resolveTripByJoinCode(rawCode: string): Promise<TripData | null> {
+    if (findTripByJoinCode) {
+      return findTripByJoinCode(rawCode);
+    }
+    const code = normalizeJoinCode(rawCode);
+    if (!isValidJoinCodeFormat(code)) return null;
+    const db = requireFirestore();
+    const snap = await db.collection('trips').where('joinCode', '==', code).limit(5).get();
+    if (snap.empty) return null;
+    const candidates = snap.docs.filter((d) => d.id !== 'active').map((d) => normalizeTripData(d.data()));
+    return candidates.find((t) => t.joinCodeEnabled !== false) || candidates[0] || null;
+  }
+
+  async function allocateJoinCode(): Promise<string> {
+    if (generateUniqueJoinCode) {
+      return generateUniqueJoinCode();
+    }
+    return generateTripJoinCode(6);
+  }
 
   app.get('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
@@ -109,9 +145,24 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
     }
   
-    // Luôn tự tính các trường dẫn xuất phía server và ép version = 1 khi tạo mới
-    const authoritative = computeAuthoritativeTripDerivedFields(body);
-    const trip: TripData = { ...authoritative, ownerId: req.authUser!.uid, version: 1 };
+    // Luôn tự tính các trường dẫn xuất phía server, cấp mã mời và ép version = 1 khi tạo mới
+    const joinCode = body.joinCode && isValidJoinCodeFormat(body.joinCode)
+      ? body.joinCode
+      : await allocateJoinCode();
+    const authoritative = computeAuthoritativeTripDerivedFields({
+      ...body,
+      joinCode,
+      joinCodeEnabled: body.joinCodeEnabled !== false,
+      participantUids: [],
+    });
+    const trip: TripData = {
+      ...authoritative,
+      ownerId: req.authUser!.uid,
+      joinCode,
+      joinCodeEnabled: body.joinCodeEnabled !== false,
+      version: 1,
+    };
+    delete trip.participantUids;
   
     if (estimateTripByteSize(trip as unknown as Record<string, unknown>) > MAX_TRIP_DOC_BYTES) {
       return res.status(413).json({
@@ -129,6 +180,193 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       }
       console.error('Error creating trip:', error);
       return res.status(503).json({ success: false, error: 'Không thể lưu chuyến đi mới' });
+    }
+  });
+
+  // Tham gia chuyến đi bằng mã mời (User B có tài khoản tham gia với tư cách Hành khách - HK)
+  app.post('/api/trips/join', requireAuth, joinLimiter, async (req: AuthenticatedRequest, res) => {
+    const user = req.authUser!;
+    const body = (req.body || {}) as {
+      joinCode?: unknown;
+      phone?: unknown;
+      specialPreference?: unknown;
+      displayName?: unknown;
+    };
+    const joinCode = normalizeJoinCode(body.joinCode);
+    if (!isValidJoinCodeFormat(joinCode)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mã tham gia chuyến đi không hợp lệ (cần 5–12 ký tự chữ/số).',
+      });
+    }
+
+    try {
+      const matched = await resolveTripByJoinCode(joinCode);
+      if (!matched) {
+        return res.status(404).json({
+          success: false,
+          error: 'Không tìm thấy chuyến đi khớp với mã này.',
+        });
+      }
+      if (matched.joinCodeEnabled === false) {
+        return res.status(403).json({
+          success: false,
+          error: 'Chủ chuyến đi đã tạm khóa tính năng tham gia bằng mã cho chuyến này.',
+        });
+      }
+
+      if (matched.ownerId === user.uid) {
+        return res.json({
+          success: true,
+          trip: matched,
+          alreadyOwner: true,
+          alreadyJoined: true,
+          message: 'Bạn đang là chủ sở hữu chuyến đi này.',
+        });
+      }
+
+      const db = requireFirestore();
+      const tripRef = db.collection('trips').doc(matched.id);
+      const userNameRaw =
+        typeof body.displayName === 'string' && body.displayName.trim()
+          ? body.displayName.trim()
+          : (typeof user.name === 'string' && user.name.trim()
+              ? user.name.trim()
+              : user.email?.split('@')[0] || 'Hành khách');
+      const cleanName = userNameRaw.slice(0, 120);
+      const cleanPhone = typeof body.phone === 'string' ? body.phone.trim().slice(0, 30) : '';
+      const cleanPref =
+        typeof body.specialPreference === 'string' && body.specialPreference.trim()
+          ? body.specialPreference.trim().slice(0, 200)
+          : undefined;
+
+      const txResult = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(tripRef);
+        if (!snap.exists) return { kind: 'not_found' as const };
+        const latest = normalizeTripData(snap.data());
+        if (latest.joinCode !== joinCode) return { kind: 'code_mismatch' as const };
+        if (latest.joinCodeEnabled === false) return { kind: 'disabled' as const };
+        if (latest.ownerId === user.uid) {
+          return { kind: 'owner' as const, trip: latest };
+        }
+
+        const existingParticipants = Array.isArray(latest.participantUids) ? latest.participantUids : [];
+        const alreadyInParticipants = existingParticipants.includes(user.uid);
+        if (!alreadyInParticipants && existingParticipants.length >= 100) {
+          return { kind: 'full' as const };
+        }
+
+        const nextParticipantUids = alreadyInParticipants
+          ? existingParticipants
+          : [...existingParticipants, user.uid];
+
+        const existingMembers = Array.isArray(latest.members) ? latest.members : [];
+        const linkedIdx = existingMembers.findIndex((m) => m.uid === user.uid);
+        let nextMembers: TripMember[];
+        if (linkedIdx >= 0) {
+          nextMembers = existingMembers.map((m, idx) =>
+            idx === linkedIdx
+              ? {
+                  ...m,
+                  name: cleanName || m.name,
+                  avatar: getMemberInitials(cleanName || m.name),
+                  ...(cleanPhone ? { phone: cleanPhone } : {}),
+                  ...(cleanPref ? { specialPreference: cleanPref } : {}),
+                  memberType: 'account' as const,
+                }
+              : m,
+          );
+        } else {
+          if (existingMembers.length >= 100) {
+            return { kind: 'full' as const };
+          }
+          const newMember: TripMember = {
+            id: `member-uid-${user.uid.slice(0, 16)}-${Date.now().toString(36)}`,
+            name: cleanName,
+            avatar: getMemberInitials(cleanName),
+            role: 'Khách du lịch',
+            phone: cleanPhone,
+            status: 'online',
+            attendanceStatus: 'Có mặt',
+            ...(cleanPref ? { specialPreference: cleanPref } : {}),
+            uid: user.uid,
+            memberType: 'account',
+          };
+          nextMembers = [...existingMembers, newMember];
+        }
+
+        const authoritative = computeAuthoritativeTripDerivedFields({
+          ...latest,
+          participantUids: nextParticipantUids,
+          members: nextMembers,
+        });
+        const nextVersion = (latest.version || 0) + 1;
+        const updatedTrip: TripData = {
+          ...authoritative,
+          ownerId: latest.ownerId,
+          participantUids: nextParticipantUids,
+          version: nextVersion,
+        };
+
+        if (estimateTripByteSize(updatedTrip as unknown as Record<string, unknown>) > MAX_TRIP_DOC_BYTES) {
+          return { kind: 'too_large' as const };
+        }
+
+        transaction.update(tripRef, {
+          participantUids: nextParticipantUids,
+          members: updatedTrip.members,
+          membersTotal: updatedTrip.membersTotal,
+          membersOnline: updatedTrip.membersOnline,
+          membersStatus: updatedTrip.membersStatus,
+          version: nextVersion,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        return {
+          kind: 'ok' as const,
+          trip: updatedTrip,
+          alreadyJoined: alreadyInParticipants,
+        };
+      });
+
+      if (txResult.kind === 'not_found' || txResult.kind === 'code_mismatch') {
+        return res.status(404).json({ success: false, error: 'Mã tham gia không khớp hoặc chuyến đi đã thay đổi mã.' });
+      }
+      if (txResult.kind === 'disabled') {
+        return res.status(403).json({ success: false, error: 'Chủ chuyến đi đã tạm khóa mã tham gia.' });
+      }
+      if (txResult.kind === 'full') {
+        return res.status(400).json({ success: false, error: 'Đoàn đã đạt giới hạn tối đa 100 thành viên.' });
+      }
+      if (txResult.kind === 'too_large') {
+        return res.status(413).json({ success: false, error: 'Dung lượng dữ liệu chuyến đi đã đạt giới hạn.' });
+      }
+      if (txResult.kind === 'owner') {
+        return res.json({
+          success: true,
+          trip: txResult.trip,
+          alreadyOwner: true,
+          alreadyJoined: true,
+          message: 'Bạn đang là chủ sở hữu chuyến đi này.',
+        });
+      }
+
+      recordAuditLog(
+        user.email || user.uid,
+        `Tham gia chuyến đi "${txResult.trip.title}" (${txResult.trip.code}) với tư cách Hành khách bằng mã ${joinCode}`,
+      );
+
+      return res.json({
+        success: true,
+        trip: txResult.trip,
+        alreadyJoined: txResult.alreadyJoined,
+        message: txResult.alreadyJoined
+          ? `Bạn đã ở trong chuyến đi "${txResult.trip.title}".`
+          : `Đã tham gia chuyến đi "${txResult.trip.title}" với tư cách Hành khách (HK)!`,
+      });
+    } catch (error) {
+      console.error('Error joining trip by code:', error);
+      return res.status(503).json({ success: false, error: 'Không thể tham gia chuyến đi bằng mã lúc này.' });
     }
   });
   
@@ -157,8 +395,8 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
   
-      if (!canAccessTrip(existing, req.authUser)) {
-        return res.status(403).json({ success: false, error: 'Bạn không có quyền xóa chuyến đi này' });
+      if (!isTripOwnerOrAdmin(existing, req.authUser)) {
+        return res.status(403).json({ success: false, error: 'Chỉ chủ chuyến đi mới có quyền xóa chuyến đi này' });
       }
   
       await deleteTripDoc(tripId);
@@ -202,7 +440,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
-      if (!canAccessTrip(existing, req.authUser)) {
+      if (!isTripOwnerOrAdmin(existing, req.authUser)) {
         return res.status(403).json({ success: false, error: 'Bạn không có quyền tải ảnh lên chuyến đi này' });
       }
   
@@ -234,7 +472,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
-      if (!canAccessTrip(existing, req.authUser)) {
+      if (!isTripOwnerOrAdmin(existing, req.authUser)) {
         return res.status(403).json({ success: false, error: 'Không có quyền xem chứng từ chuyến đi này' });
       }
   
@@ -289,7 +527,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
-      if (!canAccessTrip(existing, req.authUser)) {
+      if (!isTripOwnerOrAdmin(existing, req.authUser)) {
         return res.status(403).json({ success: false, error: 'Bạn không có quyền xóa chứng từ chuyến đi này' });
       }
   
@@ -328,7 +566,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         if (!snap.exists) return { kind: 'not_found' as const };
   
         const existing = normalizeTripData(snap.data());
-        if (!canAccessTrip(existing, req.authUser)) {
+        if (!isTripOwnerOrAdmin(existing, req.authUser)) {
           return { kind: 'forbidden' as const };
         }
   
@@ -469,8 +707,8 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
 
-      if (!canAccessTrip(existing, req.authUser)) {
-        return res.status(403).json({ success: false, error: 'Không có quyền truy cập chuyến đi này' });
+      if (!isTripOwnerOrAdmin(existing, req.authUser)) {
+        return res.status(403).json({ success: false, error: 'Chỉ chủ chuyến đi mới có quyền quét và lưu cảnh báo' });
       }
 
       const liveWeather = await fetchRealtimeWeatherAlongRoute(existing);
@@ -562,6 +800,14 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         const members = Array.isArray(latest.members) ? latest.members : [];
         const mIdx = members.findIndex((m) => m.id === req.params.memberId);
         if (mIdx < 0) return { kind: 'member_not_found' as const };
+
+        const targetMember = members[mIdx];
+        const isOwnerOrAdmin = isTripOwnerOrAdmin(latest, user);
+        const canSelfOrInvitedToggle =
+          targetMember.uid === user.uid || targetMember.invitedByUid === user.uid;
+        if (!isOwnerOrAdmin && !canSelfOrInvitedToggle) {
+          return { kind: 'forbidden' as const };
+        }
   
         const updatedMembers = members.map((m, idx) => (idx === mIdx ? { ...m, attendanceStatus } : m));
         const authoritative = computeAuthoritativeTripDerivedFields({
@@ -591,7 +837,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
       if (txResult.kind === 'forbidden') {
-        return res.status(403).json({ success: false, error: 'Không có quyền truy cập chuyến đi này' });
+        return res.status(403).json({ success: false, error: 'Bạn chỉ có thể điểm danh cho bản thân hoặc người thân do mình đăng ký' });
       }
       if (txResult.kind === 'member_not_found') {
         return res.status(404).json({ success: false, error: 'Không tìm thấy thành viên' });
@@ -613,6 +859,311 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
     } catch (error) {
       console.error('Error updating member attendance:', error);
       return res.status(503).json({ success: false, error: 'Không thể lưu trạng thái điểm danh' });
+    }
+  });
+
+  // Quản lý mã mời chuyến đi (Chỉ chủ chuyến / Admin): tạo, đổi mã mới hoặc bật/tắt mã
+  app.post('/api/trips/:tripId/join-code', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const tripId = req.params.tripId;
+    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+      return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
+    }
+
+    const action = req.body?.action;
+    if (action !== 'generate' && action !== 'rotate' && action !== 'toggle') {
+      return res.status(400).json({ success: false, error: 'Thao tác mã tham gia không hợp lệ' });
+    }
+
+    try {
+      const freshCode = action === 'rotate' || action === 'generate' ? await allocateJoinCode() : '';
+      const db = requireFirestore();
+      const tripRef = db.collection('trips').doc(tripId);
+      const requestedEnabled = typeof req.body?.enabled === 'boolean' ? req.body.enabled : undefined;
+
+      const txResult = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(tripRef);
+        if (!snap.exists) return { kind: 'not_found' as const };
+        const latest = normalizeTripData(snap.data());
+        if (!isTripOwnerOrAdmin(latest, req.authUser)) {
+          return { kind: 'forbidden' as const };
+        }
+
+        const nextJoinCode =
+          action === 'rotate'
+            ? freshCode
+            : action === 'generate'
+              ? latest.joinCode || freshCode
+              : latest.joinCode || freshCode;
+        const nextEnabled =
+          action === 'toggle'
+            ? (requestedEnabled !== undefined ? requestedEnabled : latest.joinCodeEnabled === false)
+            : true;
+        const nextVersion = (latest.version || 0) + 1;
+
+        transaction.update(tripRef, {
+          joinCode: nextJoinCode,
+          joinCodeEnabled: nextEnabled,
+          version: nextVersion,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const updatedTrip: TripData = {
+          ...latest,
+          joinCode: nextJoinCode,
+          joinCodeEnabled: nextEnabled,
+          version: nextVersion,
+        };
+        return { kind: 'ok' as const, trip: updatedTrip };
+      });
+
+      if (txResult.kind === 'not_found') {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+      }
+      if (txResult.kind === 'forbidden') {
+        return res.status(403).json({ success: false, error: 'Chỉ chủ chuyến đi mới có quyền quản lý mã mời' });
+      }
+
+      return res.json({
+        success: true,
+        joinCode: txResult.trip.joinCode,
+        joinCodeEnabled: txResult.trip.joinCodeEnabled,
+        version: txResult.trip.version,
+        trip: txResult.trip,
+      });
+    } catch (error) {
+      console.error('Error managing join code:', error);
+      return res.status(503).json({ success: false, error: 'Không thể cập nhật mã mời chuyến đi' });
+    }
+  });
+
+  // Hành khách đã đăng nhập (User B) hoặc chủ chuyến đăng ký người thân KHÔNG CÓ TÀI KHOẢN vào đoàn
+  app.post('/api/trips/:tripId/guest-companions', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const tripId = req.params.tripId;
+    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+      return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
+    }
+
+    const user = req.authUser!;
+    const body = (req.body || {}) as { name?: unknown; phone?: unknown; specialPreference?: unknown };
+    const cleanName = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
+    if (!cleanName) {
+      return res.status(400).json({ success: false, error: 'Vui lòng nhập họ tên người thân / hành khách.' });
+    }
+    const cleanPhone = typeof body.phone === 'string' ? body.phone.trim().slice(0, 30) : '';
+    const cleanPref =
+      typeof body.specialPreference === 'string' && body.specialPreference.trim()
+        ? body.specialPreference.trim().slice(0, 200)
+        : undefined;
+    const inviterName =
+      typeof user.name === 'string' && user.name.trim()
+        ? user.name.trim().slice(0, 120)
+        : user.email?.split('@')[0] || 'Thành viên';
+
+    try {
+      const db = requireFirestore();
+      const tripRef = db.collection('trips').doc(tripId);
+      const txResult = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(tripRef);
+        if (!snap.exists) return { kind: 'not_found' as const };
+        const latest = normalizeTripData(snap.data());
+        if (!canAccessTrip(latest, user)) {
+          return { kind: 'forbidden' as const };
+        }
+        const members = Array.isArray(latest.members) ? latest.members : [];
+        if (members.length >= 100) {
+          return { kind: 'full' as const };
+        }
+
+        const companion: TripMember = {
+          id: `guest-${Date.now()}-${randomUUID().slice(0, 6)}`,
+          name: cleanName,
+          avatar: getMemberInitials(cleanName),
+          role: 'Khách du lịch',
+          phone: cleanPhone,
+          status: 'online',
+          attendanceStatus: 'Chưa điểm danh',
+          ...(cleanPref ? { specialPreference: cleanPref } : {}),
+          memberType: 'guest',
+          invitedByUid: user.uid,
+          invitedByName: inviterName,
+        };
+
+        const authoritative = computeAuthoritativeTripDerivedFields({
+          ...latest,
+          members: [...members, companion],
+        });
+        const nextVersion = (latest.version || 0) + 1;
+        const updatedTrip: TripData = {
+          ...authoritative,
+          ownerId: latest.ownerId,
+          ...(latest.participantUids?.length ? { participantUids: latest.participantUids } : {}),
+          version: nextVersion,
+        };
+
+        if (estimateTripByteSize(updatedTrip as unknown as Record<string, unknown>) > MAX_TRIP_DOC_BYTES) {
+          return { kind: 'too_large' as const };
+        }
+
+        transaction.update(tripRef, {
+          members: updatedTrip.members,
+          membersTotal: updatedTrip.membersTotal,
+          membersOnline: updatedTrip.membersOnline,
+          membersStatus: updatedTrip.membersStatus,
+          version: nextVersion,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        return { kind: 'ok' as const, trip: updatedTrip, member: companion };
+      });
+
+      if (txResult.kind === 'not_found') {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+      }
+      if (txResult.kind === 'forbidden') {
+        return res.status(403).json({ success: false, error: 'Bạn không có quyền thêm người thân vào chuyến này' });
+      }
+      if (txResult.kind === 'full') {
+        return res.status(400).json({ success: false, error: 'Đoàn đã đạt tối đa 100 thành viên' });
+      }
+      if (txResult.kind === 'too_large') {
+        return res.status(413).json({ success: false, error: 'Dung lượng chuyến đi vượt giới hạn Firestore' });
+      }
+
+      return res.status(201).json({
+        success: true,
+        member: txResult.member,
+        joinCode: txResult.trip.joinCode,
+        trip: txResult.trip,
+        message: `Đã thêm "${txResult.member.name}" vào danh sách hành khách.`,
+      });
+    } catch (error) {
+      console.error('Error adding guest companion:', error);
+      return res.status(503).json({ success: false, error: 'Không thể thêm người thân vào chuyến đi' });
+    }
+  });
+
+  // Xóa người thân không tài khoản do chính user đăng ký (hoặc chủ chuyến / Admin)
+  app.delete('/api/trips/:tripId/guest-companions/:memberId', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const { tripId, memberId } = req.params;
+    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId) || !memberId) {
+      return res.status(400).json({ success: false, error: 'Tham số không hợp lệ' });
+    }
+
+    const user = req.authUser!;
+    try {
+      const db = requireFirestore();
+      const tripRef = db.collection('trips').doc(tripId);
+      const txResult = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(tripRef);
+        if (!snap.exists) return { kind: 'not_found' as const };
+        const latest = normalizeTripData(snap.data());
+        if (!canAccessTrip(latest, user)) {
+          return { kind: 'forbidden' as const };
+        }
+        const members = Array.isArray(latest.members) ? latest.members : [];
+        const target = members.find((m) => m.id === memberId);
+        if (!target) return { kind: 'member_not_found' as const };
+
+        const canDelete = isTripOwnerOrAdmin(latest, user) || target.invitedByUid === user.uid;
+        if (!canDelete) return { kind: 'forbidden' as const };
+
+        const nextMembers = members.filter((m) => m.id !== memberId);
+        const authoritative = computeAuthoritativeTripDerivedFields({
+          ...latest,
+          members: nextMembers,
+        });
+        const nextVersion = (latest.version || 0) + 1;
+        const updatedTrip: TripData = {
+          ...authoritative,
+          ownerId: latest.ownerId,
+          ...(latest.participantUids?.length ? { participantUids: latest.participantUids } : {}),
+          version: nextVersion,
+        };
+
+        transaction.update(tripRef, {
+          members: updatedTrip.members,
+          membersTotal: updatedTrip.membersTotal,
+          membersOnline: updatedTrip.membersOnline,
+          membersStatus: updatedTrip.membersStatus,
+          version: nextVersion,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        return { kind: 'ok' as const, trip: updatedTrip };
+      });
+
+      if (txResult.kind === 'not_found') {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+      }
+      if (txResult.kind === 'member_not_found') {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy thành viên' });
+      }
+      if (txResult.kind === 'forbidden') {
+        return res.status(403).json({ success: false, error: 'Bạn không có quyền xóa thành viên này' });
+      }
+
+      return res.json({ success: true, trip: txResult.trip });
+    } catch (error) {
+      console.error('Error removing guest companion:', error);
+      return res.status(503).json({ success: false, error: 'Không thể xóa người thân khỏi đoàn' });
+    }
+  });
+
+  // Hành khách đã tham gia bằng mã chủ động rời chuyến đi
+  app.post('/api/trips/:tripId/leave', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const tripId = req.params.tripId;
+    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+      return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
+    }
+
+    const user = req.authUser!;
+    try {
+      const db = requireFirestore();
+      const tripRef = db.collection('trips').doc(tripId);
+      const txResult = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(tripRef);
+        if (!snap.exists) return { kind: 'not_found' as const };
+        const latest = normalizeTripData(snap.data());
+        if (latest.ownerId === user.uid) {
+          return { kind: 'owner_cannot_leave' as const };
+        }
+        const nextParticipantUids = (latest.participantUids || []).filter((u) => u !== user.uid);
+        const nextMembers = (latest.members || []).filter((m) => m.uid !== user.uid);
+        const authoritative = computeAuthoritativeTripDerivedFields({
+          ...latest,
+          participantUids: nextParticipantUids,
+          members: nextMembers,
+        });
+        const nextVersion = (latest.version || 0) + 1;
+
+        transaction.update(tripRef, {
+          participantUids: nextParticipantUids.length > 0 ? nextParticipantUids : FieldValue.delete(),
+          members: authoritative.members,
+          membersTotal: authoritative.membersTotal,
+          membersOnline: authoritative.membersOnline,
+          membersStatus: authoritative.membersStatus,
+          version: nextVersion,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        return { kind: 'ok' as const, title: latest.title };
+      });
+
+      if (txResult.kind === 'not_found') {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
+      }
+      if (txResult.kind === 'owner_cannot_leave') {
+        return res.status(400).json({ success: false, error: 'Chủ chuyến đi không thể tự rời chuyến.' });
+      }
+
+      return res.json({
+        success: true,
+        leftTripId: tripId,
+        message: `Đã rời khỏi chuyến đi "${txResult.title}".`,
+      });
+    } catch (error) {
+      console.error('Error leaving trip:', error);
+      return res.status(503).json({ success: false, error: 'Không thể rời chuyến đi' });
     }
   });
 }

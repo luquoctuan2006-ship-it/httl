@@ -3,27 +3,97 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth';
+import { KeyRound } from 'lucide-react';
+import { safeJsonResponse } from '../../api';
 import { firebaseAuth } from '../../firebase';
+import type { GuestTripData } from '../../types/travel';
+import { isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/tripJoinHelpers';
 import { mapFirebaseAuthError, setPendingRegisteredDisplayName } from '../../utils/tripSyncHelpers';
 
-export function AuthScreen() {
-  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
+interface AuthScreenProps {
+  initialGuestCode?: string;
+  onEnterGuestTrip?: (payload: { joinCode: string; guestName: string; trip: GuestTripData }) => void;
+}
+
+export function AuthScreen({ initialGuestCode = '', onEnterGuestTrip }: AuthScreenProps) {
+  const [mode, setMode] = useState<'login' | 'register' | 'reset' | 'guest'>(
+    initialGuestCode ? 'guest' : 'login',
+  );
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [guestCode, setGuestCode] = useState(initialGuestCode);
+  const [guestName, setGuestName] = useState('');
   const [message, setMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (initialGuestCode) {
+      setGuestCode(initialGuestCode);
+      setMode('guest');
+    }
+  }, [initialGuestCode]);
+
+  const handleGuestSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMessage('');
+    setSuccessMessage('');
+
+    const cleanCode = normalizeJoinCode(guestCode);
+    if (!isValidJoinCodeFormat(cleanCode)) {
+      setMessage('Vui lòng nhập mã chuyến đi hợp lệ (5–12 ký tự chữ hoặc số).');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/guest/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          joinCode: cleanCode,
+          guestName: guestName.trim() || undefined,
+        }),
+      });
+      const result = await safeJsonResponse<{
+        success?: boolean;
+        error?: string;
+        joinCode?: string;
+        guestName?: string;
+        trip?: GuestTripData;
+      }>(response);
+
+      if (!response.ok || !result?.success || !result.trip) {
+        throw new Error(result?.error || 'Không thể vào chuyến đi bằng mã này.');
+      }
+
+      onEnterGuestTrip?.({
+        joinCode: result.joinCode || cleanCode,
+        guestName: result.guestName || guestName.trim() || 'Hành khách',
+        trip: result.trip,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (mode === 'guest') {
+      await handleGuestSubmit(event);
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage('');
     setSuccessMessage('');
@@ -81,7 +151,7 @@ export function AuthScreen() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900/90 p-6 shadow-2xl shadow-slate-950/60">
+      <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900/95 p-6 shadow-2xl shadow-slate-950/60">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-xl font-black text-white shadow-lg shadow-teal-600/30">
             V
@@ -92,11 +162,13 @@ export function AuthScreen() {
               ? 'Đăng nhập vào hệ thống'
               : mode === 'register'
                 ? 'Tạo tài khoản mới'
-                : 'Khôi phục mật khẩu qua email'}
+                : mode === 'guest'
+                  ? 'Xem lịch trình đoàn dành cho Hành khách (không cần tài khoản)'
+                  : 'Khôi phục mật khẩu qua email'}
           </p>
         </div>
 
-        <div className="mb-5 grid grid-cols-2 rounded-xl bg-slate-800 p-1">
+        <div className="mb-5 grid grid-cols-3 rounded-xl bg-slate-800 p-1 gap-1">
           <button
             type="button"
             onClick={() => {
@@ -105,7 +177,7 @@ export function AuthScreen() {
               setMessage('');
               setSuccessMessage('');
             }}
-            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'login' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
+            className={`rounded-lg px-2 py-2 text-xs font-bold transition ${mode === 'login' || mode === 'reset' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
           >
             Đăng nhập
           </button>
@@ -118,70 +190,121 @@ export function AuthScreen() {
               setMessage('');
               setSuccessMessage('');
             }}
-            className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'register' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
+            className={`rounded-lg px-2 py-2 text-xs font-bold transition ${mode === 'register' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
           >
             Đăng ký
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('guest');
+              setMessage('');
+              setSuccessMessage('');
+            }}
+            className={`rounded-lg px-2 py-2 text-xs font-bold transition ${mode === 'guest' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-300 hover:text-white'}`}
+          >
+            Vào bằng mã
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'register' && (
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Họ tên</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="name"
-                required
-                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-                placeholder="Nguyễn Văn A"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-              placeholder="email@example.com"
-            />
-          </div>
-
-          {mode !== 'reset' && (
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Mật khẩu</label>
-                {mode === 'login' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('reset');
-                      setPassword('');
-                      setMessage('');
-                      setSuccessMessage('');
-                    }}
-                    className="text-xs font-semibold text-teal-400 hover:text-teal-300 hover:underline"
-                  >
-                    Quên mật khẩu?
-                  </button>
-                )}
+          {mode === 'guest' ? (
+            <>
+              <div className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-3 text-xs text-teal-200 flex items-start gap-2.5">
+                <KeyRound className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+                <span>
+                  Nhập <strong>Mã chuyến đi</strong> do trưởng đoàn hoặc người thân cung cấp để xem lịch trình, bản đồ và liên hệ đoàn ngay lập tức.
+                </span>
               </div>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                minLength={6}
-                required
-                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
-                placeholder="••••••••"
-              />
-            </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  Mã tham gia chuyến đi *
+                </label>
+                <input
+                  type="text"
+                  value={guestCode}
+                  onChange={(e) => setGuestCode(e.target.value.toUpperCase())}
+                  required
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm font-mono font-bold tracking-[0.2em] uppercase text-white outline-none placeholder:text-slate-500 focus:border-teal-500"
+                  placeholder="V8K4M2"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  Tên hiển thị của hành khách (tùy chọn)
+                </label>
+                <input
+                  type="text"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-teal-500"
+                  placeholder="Ví dụ: Cô Lan (Người thân anh Bình)"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {mode === 'register' && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Họ tên</label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    autoComplete="name"
+                    required
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
+                    placeholder="Nguyễn Văn A"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              {mode !== 'reset' && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Mật khẩu</label>
+                    {mode === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('reset');
+                          setPassword('');
+                          setMessage('');
+                          setSuccessMessage('');
+                        }}
+                        className="text-xs font-semibold text-teal-400 hover:text-teal-300 hover:underline"
+                      >
+                        Quên mật khẩu?
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    minLength={6}
+                    required
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:border-teal-500"
+                    placeholder="••••••••"
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {message && (
@@ -204,12 +327,14 @@ export function AuthScreen() {
             className="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-teal-900/30 active:scale-98"
           >
             {isSubmitting
-              ? 'Đang xác thực...'
-              : mode === 'login'
-                ? 'Đăng nhập vào hệ thống'
-                : mode === 'register'
-                  ? 'Tạo tài khoản & Đăng nhập'
-                  : 'Gửi email đặt lại mật khẩu'}
+              ? 'Đang xử lý...'
+              : mode === 'guest'
+                ? 'Vào xem chuyến đi (Không cần tài khoản)'
+                : mode === 'login'
+                  ? 'Đăng nhập vào hệ thống'
+                  : mode === 'register'
+                    ? 'Tạo tài khoản & Đăng nhập'
+                    : 'Gửi email đặt lại mật khẩu'}
           </button>
 
           {mode === 'reset' && (

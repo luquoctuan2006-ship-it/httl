@@ -91,6 +91,10 @@ export interface TripMember {
   status: 'online' | 'busy' | 'offline';
   attendanceStatus?: 'Chưa điểm danh' | 'Có mặt' | 'Vắng mặt';
   specialPreference?: string;
+  uid?: string;
+  memberType?: 'manual' | 'account' | 'guest';
+  invitedByUid?: string;
+  invitedByName?: string;
 }
 
 export interface RouteStopWeather {
@@ -110,6 +114,9 @@ export interface RouteStopWeather {
 export interface TripData {
   id: string;
   ownerId?: string; // uid của người tạo chuyến (do server gán, client không được đổi)
+  joinCode?: string; // Mã mời tham gia chuyến đi (chủ chuyến quản lý)
+  joinCodeEnabled?: boolean; // Cho phép dùng mã để tham gia hay tạm khóa
+  participantUids?: string[]; // Danh sách uid tài khoản HK đã tham gia qua mã
   isSummary?: boolean; // true khi chỉ tải dữ liệu tóm tắt cho danh sách chuyến đi
   code: string; // "VN-1024"
   title: string; // "Khám phá miền Trung 7 ngày"
@@ -177,4 +184,38 @@ export interface TripData {
     sightseeing?: number;
     contingency?: number;
   };
+}
+
+export interface GuestTripData {
+  id: string;
+  joinCode: string;
+  code: string;
+  title: string;
+  status: TripData['status'];
+  dates: string;
+  origin: string;
+  originFull: string;
+  destination: string;
+  destinationFull: string;
+  destinationsCount: number;
+  totalKm: number;
+  vehicle: string;
+  currentDay: number;
+  totalDays: number;
+  totalActivities: number;
+  confirmedActivities: number;
+  pendingActivities: number;
+  membersTotal: number;
+  membersStatus: string;
+  members: Array<
+    Pick<
+      TripMember,
+      'id' | 'name' | 'avatar' | 'role' | 'status' | 'attendanceStatus' | 'specialPreference' | 'memberType' | 'invitedByName' | 'phone'
+    >
+  >;
+  weather: TripData['weather'];
+  telematics: Pick<TripData['telematics'], 'from' | 'to' | 'vehicleType' | 'licensePlate' | 'driver' | 'driverPhone' | 'passengerCount'>;
+  waypoints: Waypoint[];
+  alerts: OperationalAlert[];
+  days: DaySchedule[];
 }

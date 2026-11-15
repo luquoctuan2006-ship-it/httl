@@ -12,6 +12,7 @@ const PERIODIC_ALERT_SCAN_MS = 3 * 60 * 1000;
 interface UseRealtimeAlertScannerOptions {
   authUserId: string | null;
   activeTripId: string | undefined;
+  canScanAlerts?: boolean;
   isOnline: boolean;
   loadedTripUserId: string | null;
   hasConflict: boolean;
@@ -28,6 +29,7 @@ interface UseRealtimeAlertScannerOptions {
 export function useRealtimeAlertScanner({
   authUserId,
   activeTripId,
+  canScanAlerts = true,
   isOnline,
   loadedTripUserId,
   hasConflict,
@@ -78,6 +80,12 @@ export function useRealtimeAlertScanner({
   const handleScanRealtimeAlerts = useCallback(async (silent = false) => {
     const activeTrip = latestTripRef.current;
     if (!activeTrip?.id || hasConflict) return;
+    if (!canScanAlerts) {
+      if (!silent) {
+        showToast('Chỉ chủ chuyến đi mới có quyền quét và lưu cảnh báo.', 'info');
+      }
+      return;
+    }
 
     const currentComparable = getTripComparableJson(activeTrip);
     const hasUnsavedEdits = currentComparable !== lastSavedContentByTripIdRef.current[activeTrip.id];
@@ -160,6 +168,7 @@ export function useRealtimeAlertScanner({
       setIsScanningAlerts(false);
     }
   }, [
+    canScanAlerts,
     hasConflict,
     lastSavedContentByTripIdRef,
     latestServerVersionByTripIdRef,
@@ -178,12 +187,12 @@ export function useRealtimeAlertScanner({
   }, [handleScanRealtimeAlerts]);
 
   useEffect(() => {
-    if (!authUserId || !activeTripId || !isOnline || loadedTripUserId !== authUserId) return;
+    if (!authUserId || !activeTripId || !canScanAlerts || !isOnline || loadedTripUserId !== authUserId) return;
     const timer = window.setInterval(() => {
       void latestScanRef.current(true);
     }, PERIODIC_ALERT_SCAN_MS);
     return () => window.clearInterval(timer);
-  }, [authUserId, activeTripId, isOnline, loadedTripUserId]);
+  }, [authUserId, activeTripId, canScanAlerts, isOnline, loadedTripUserId]);
 
   return {
     notificationsEnabled,

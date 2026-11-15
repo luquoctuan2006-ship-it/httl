@@ -123,6 +123,10 @@ export function AdminDashboard({
   onOpenAutoArrange,
   onOpenTraditionalPlanner: _onOpenTraditionalPlanner,
   onEnsureFullTrip,
+  onManageJoinCode,
+  onAddGuestCompanion,
+  onRemoveGuestCompanion,
+  onOpenGuestModeWithCode,
 }: {
   trip: TripData | null;
   trips: TripData[];
@@ -185,6 +189,10 @@ export function AdminDashboard({
   onOpenAutoArrange?: () => void;
   onOpenTraditionalPlanner?: () => void;
   onEnsureFullTrip?: (tripId: string) => Promise<TripData | null>;
+  onManageJoinCode?: (action: 'generate' | 'rotate' | 'toggle') => Promise<void>;
+  onAddGuestCompanion?: (payload: { name: string; phone?: string; specialPreference?: string }) => Promise<void>;
+  onRemoveGuestCompanion?: (memberId: string) => Promise<void>;
+  onOpenGuestModeWithCode?: (joinCode: string, guestName?: string) => Promise<void>;
 }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -392,6 +400,8 @@ export function AdminDashboard({
                     onEditTrip={onOpenEditTripModal}
                     onDeleteTrip={onDeleteTrip}
                     onCloneTrip={onCloneTrip}
+                    isAdmin
+                    currentUserUid={authUser.id}
                     searchQuery={searchQuery}
                     onClearSearch={() => setSearchQuery('')}
                   />
@@ -480,6 +490,14 @@ export function AdminDashboard({
                       onUpdateMembers={handleUpdateMembers}
                       searchQuery={searchQuery}
                       onClearSearch={() => setSearchQuery('')}
+                      joinCode={trip.joinCode}
+                      joinCodeEnabled={trip.joinCodeEnabled ?? true}
+                      isTripOwner
+                      currentUserUid={authUser.id}
+                      onManageJoinCode={onManageJoinCode}
+                      onAddGuestCompanion={onAddGuestCompanion}
+                      onRemoveGuestCompanion={onRemoveGuestCompanion}
+                      onOpenGuestModeWithCode={onOpenGuestModeWithCode}
                     />
                   </Suspense>
                 ) : emptyTripNotice

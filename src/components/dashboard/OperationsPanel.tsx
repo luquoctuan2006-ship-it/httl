@@ -26,6 +26,7 @@ interface OperationsPanelProps {
   isScanningAlerts?: boolean;
   notificationsEnabled?: boolean;
   onToggleNotifications?: () => void;
+  readOnly?: boolean;
 }
 
 export const OperationsPanel: React.FC<OperationsPanelProps> = ({
@@ -39,6 +40,7 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
   isScanningAlerts = false,
   notificationsEnabled = false,
   onToggleNotifications,
+  readOnly = false,
 }) => {
   return (
     <div className="flex flex-col gap-4">
@@ -54,7 +56,7 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
               </h3>
             </div>
             <div className="flex items-center gap-1.5">
-              {onToggleNotifications && (
+              {!readOnly && onToggleNotifications && (
                 <button
                   type="button"
                   onClick={onToggleNotifications}
@@ -68,7 +70,7 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
                   {notificationsEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
                 </button>
               )}
-              {onScanAlerts && (
+              {!readOnly && onScanAlerts && (
                 <button
                   type="button"
                   onClick={onScanAlerts}
@@ -132,108 +134,110 @@ export const OperationsPanel: React.FC<OperationsPanelProps> = ({
         </div>
       </div>
 
-      {/* Trip planning suggestions */}
-      <div className="bg-[#0B1320] text-white rounded-2xl p-5 border border-slate-800 shadow-md relative overflow-hidden flex flex-col justify-between">
-        {/* Subtle background glow */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
+        {/* Trip planning suggestions (chỉ hiển thị cho chủ chuyến / Admin) */}
+        {!readOnly && (
+          <div className="bg-[#0B1320] text-white rounded-2xl p-5 border border-slate-800 shadow-md relative overflow-hidden flex flex-col justify-between">
+            {/* Subtle background glow */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
-        <div>
-          {/* Header */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-teal-500/20 border border-teal-500/30 text-teal-400 flex items-center justify-center">
-                <Route className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                Điều phối chuyến đi
-              </h3>
-            </div>
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-950/60 text-teal-300 border border-teal-800/80">
-              <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
-              {isAIApplied ? 'Đã kích hoạt phương án' : 'Đã phân tích'}
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-400 font-medium mb-3">
-            {isAIApplied
-              ? 'Lịch trình đã được tối ưu hoàn tất'
-              : `${trip.aiSuggestions?.length || 0} đề xuất ưu tiên`}
-          </p>
-
-          {/* Planning suggestions */}
-          <div className="space-y-2.5">
-            {trip.aiSuggestions && trip.aiSuggestions.length > 0 ? (
-              trip.aiSuggestions.map((sug, idx) => (
-                <div key={sug.id || idx} className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-teal-900/40 text-teal-400 flex items-center justify-center shrink-0">
-                        {idx % 2 === 0 ? <Shuffle className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                      </div>
-                      <span className="text-xs font-bold text-slate-200">
-                        {sug.title}
-                      </span>
-                    </div>
-                    {sug.badge && (
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-teal-900/50 text-teal-300 border border-teal-700/50 shrink-0">
-                        {sug.badge}
-                      </span>
-                    )}
+            <div>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-teal-500/20 border border-teal-500/30 text-teal-400 flex items-center justify-center">
+                    <Route className="w-3.5 h-3.5" />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1 pl-8">
-                    {sug.description}
-                  </p>
+                  <h3 className="text-sm font-bold text-white tracking-tight">
+                    Điều phối chuyến đi
+                  </h3>
                 </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 italic py-2">
-                Không có đề xuất khẩn cấp nào cho chặng hiện tại.
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-950/60 text-teal-300 border border-teal-800/80">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
+                  {isAIApplied ? 'Đã kích hoạt phương án' : 'Đã phân tích'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-400 font-medium mb-3">
+                {isAIApplied
+                  ? 'Lịch trình đã được tối ưu hoàn tất'
+                  : `${trip.aiSuggestions?.length || 0} đề xuất ưu tiên`}
               </p>
-            )}
-          </div>
-        </div>
 
-        {/* Metrics & Action Button */}
-        <div className="mt-4 pt-3 border-t border-slate-800">
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
-            <div>
-              <span>Tiết kiệm dự kiến: </span>
-              <strong className="text-white font-semibold">{trip.aiSavingsEstimate}</strong>
+              {/* Planning suggestions */}
+              <div className="space-y-2.5">
+                {trip.aiSuggestions && trip.aiSuggestions.length > 0 ? (
+                  trip.aiSuggestions.map((sug, idx) => (
+                    <div key={sug.id || idx} className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md bg-teal-900/40 text-teal-400 flex items-center justify-center shrink-0">
+                            {idx % 2 === 0 ? <Shuffle className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                          </div>
+                          <span className="text-xs font-bold text-slate-200">
+                            {sug.title}
+                          </span>
+                        </div>
+                        {sug.badge && (
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-teal-900/50 text-teal-300 border border-teal-700/50 shrink-0">
+                            {sug.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 pl-8">
+                        {sug.description}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2">
+                    Không có đề xuất khẩn cấp nào cho chặng hiện tại.
+                  </p>
+                )}
+              </div>
             </div>
-            <div>
-              <span>Độ tin cậy: </span>
-              <strong className="text-teal-300 font-semibold">{trip.aiConfidence}</strong>
+
+            {/* Metrics & Action Button */}
+            <div className="mt-4 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
+                <div>
+                  <span>Tiết kiệm dự kiến: </span>
+                  <strong className="text-white font-semibold">{trip.aiSavingsEstimate}</strong>
+                </div>
+                <div>
+                  <span>Độ tin cậy: </span>
+                  <strong className="text-teal-300 font-semibold">{trip.aiConfidence}</strong>
+                </div>
+              </div>
+
+              <button
+                onClick={onOpenApplyAIPlan}
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm ${
+                  isAIApplied
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-teal-600 hover:bg-teal-500 text-white active:scale-[0.98]'
+                }`}
+              >
+                {isAIApplied ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Phương án đã được áp dụng</span>
+                  </>
+                ) : (
+                  <span>Xem & áp dụng phương án</span>
+                )}
+              </button>
+              {isAIApplied && onUndo && (
+                <button
+                  onClick={onUndo}
+                  className="w-full mt-2 py-2 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Hoàn tác điều phối</span>
+                </button>
+              )}
             </div>
           </div>
-
-          <button
-            onClick={onOpenApplyAIPlan}
-            className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm ${
-              isAIApplied
-                ? 'bg-emerald-600 text-white'
-                : 'bg-teal-600 hover:bg-teal-500 text-white active:scale-[0.98]'
-            }`}
-          >
-            {isAIApplied ? (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Phương án đã được áp dụng</span>
-              </>
-            ) : (
-              <span>Xem & áp dụng phương án</span>
-            )}
-          </button>
-          {isAIApplied && onUndo && (
-            <button
-              onClick={onUndo}
-              className="w-full mt-2 py-2 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Hoàn tác điều phối</span>
-            </button>
-          )}
-        </div>
-      </div>
+        )}
     </div>
   );
 };

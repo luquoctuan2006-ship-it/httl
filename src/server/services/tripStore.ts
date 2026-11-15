@@ -1,7 +1,8 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import { FieldValue, type Firestore, type Query } from 'firebase-admin/firestore';
+import { FieldValue, type Firestore, type Query, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { normalizeTripData, normalizeTripSummary } from '../../data/normalizeTripData';
 import type { TripData } from '../../types/travel';
+import { generateTripJoinCode, isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/tripJoinHelpers';
 import { isAdminUser } from '../../utils/tripRepository';
 
 export const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -9,6 +10,9 @@ export const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const TRIP_SUMMARY_FIELDS = [
   'id',
   'ownerId',
+  'joinCode',
+  'joinCodeEnabled',
+  'participantUids',
   'code',
   'title',
   'status',
@@ -47,6 +51,28 @@ export function createTripStore(requireFirestore: () => Firestore) {
     return snap.exists ? normalizeTripData(snap.data()) : null;
   }
 
+  async function findTripByJoinCode(rawCode: string): Promise<TripData | null> {
+    const code = normalizeJoinCode(rawCode);
+    if (!isValidJoinCodeFormat(code)) return null;
+    const db = requireFirestore();
+    const snap = await db.collection('trips').where('joinCode', '==', code).limit(5).get();
+    if (snap.empty) return null;
+    const candidates = snap.docs
+      .filter((d) => d.id !== 'active')
+      .map((d) => normalizeTripData(d.data()));
+    return candidates.find((t) => t.joinCodeEnabled !== false) || candidates[0] || null;
+  }
+
+  async function generateUniqueJoinCode(): Promise<string> {
+    const db = requireFirestore();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = generateTripJoinCode(6);
+      const existing = await db.collection('trips').where('joinCode', '==', code).limit(1).get();
+      if (existing.empty) return code;
+    }
+    return generateTripJoinCode(8);
+  }
+
   async function listTripsForUser(
     user: DecodedIdToken,
     options: { limit?: number; startAfterId?: string; summaryOnly?: boolean } = {},
@@ -58,17 +84,6 @@ export function createTripStore(requireFirestore: () => Firestore) {
     const safeLimit = Math.min(Math.max(1, options.limit || 50), 200);
 
     const col = db.collection('trips');
-    let query = isAdminUser(user)
-      ? col.orderBy('updatedAt', 'desc')
-      : col.where('ownerId', '==', user.uid);
-
-    if (isAdminUser(user) && options.startAfterId) {
-      const cursorSnap = await col.doc(options.startAfterId).get();
-      if (cursorSnap.exists) {
-        query = query.startAfter(cursorSnap);
-      }
-    }
-
     const applySelect = (q: Query): Query => {
       if (summaryOnly && typeof q.select === 'function') {
         return q.select(...TRIP_SUMMARY_FIELDS);
@@ -76,23 +91,47 @@ export function createTripStore(requireFirestore: () => Firestore) {
       return q;
     };
 
-    let docs;
-    try {
-      const snapshot = await applySelect(query).limit(safeLimit + 1).get();
-      docs = snapshot.docs;
-    } catch {
-      const fallbackBase = isAdminUser(user)
-        ? col.limit(safeLimit + 1)
-        : col.where('ownerId', '==', user.uid).limit(safeLimit + 1);
-      const fallbackSnap = await applySelect(fallbackBase).get();
-      docs = [...fallbackSnap.docs].sort((a, b) => b.updateTime.toMillis() - a.updateTime.toMillis());
+    let docs: QueryDocumentSnapshot[];
+    if (isAdminUser(user)) {
+      let query: Query = col.orderBy('updatedAt', 'desc');
+      if (options.startAfterId) {
+        const cursorSnap = await col.doc(options.startAfterId).get();
+        if (cursorSnap.exists) {
+          query = query.startAfter(cursorSnap);
+        }
+      }
+      try {
+        const snapshot = await applySelect(query).limit(safeLimit + 1).get();
+        docs = snapshot.docs;
+      } catch {
+        const fallbackSnap = await applySelect(col.limit(safeLimit + 1)).get();
+        docs = [...fallbackSnap.docs].sort((a, b) => b.updateTime.toMillis() - a.updateTime.toMillis());
+      }
+    } else {
+      const [ownedSnap, joinedSnap] = await Promise.all([
+        applySelect(col.where('ownerId', '==', user.uid)).limit(safeLimit + 1).get(),
+        applySelect(col.where('participantUids', 'array-contains', user.uid))
+          .limit(safeLimit + 1)
+          .get()
+          .catch(() => ({ docs: [] as QueryDocumentSnapshot[] })),
+      ]);
+
+      const mergedById = new Map<string, QueryDocumentSnapshot>();
+      for (const docSnap of ownedSnap.docs) {
+        mergedById.set(docSnap.id, docSnap);
+      }
+      for (const docSnap of joinedSnap.docs) {
+        if (!mergedById.has(docSnap.id)) {
+          mergedById.set(docSnap.id, docSnap);
+        }
+      }
+      docs = Array.from(mergedById.values()).sort(
+        (a, b) => b.updateTime.toMillis() - a.updateTime.toMillis(),
+      );
     }
 
     const hasMore = docs.length > safeLimit;
     const pageDocs = docs.slice(0, safeLimit);
-    if (!isAdminUser(user)) {
-      pageDocs.sort((a, b) => b.updateTime.toMillis() - a.updateTime.toMillis());
-    }
 
     const trips = pageDocs
       .filter((d) => d.id !== 'active')
@@ -136,9 +175,12 @@ export function createTripStore(requireFirestore: () => Firestore) {
 
   return {
     getTripById,
+    findTripByJoinCode,
+    generateUniqueJoinCode,
     listTripsForUser,
     createTripDoc,
     deleteTripDoc,
     loadUserTrips,
   };
 }
+

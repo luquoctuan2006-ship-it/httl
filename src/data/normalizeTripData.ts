@@ -1,9 +1,44 @@
 import { initialTripData } from './mockData';
 import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice, RouteStopWeather } from '../types/travel';
 import { isLegacyHashedCoordinate } from '../utils/vietnamGeo';
+import { getMemberInitials, isValidJoinCodeFormat, normalizeJoinCode } from '../utils/tripJoinHelpers';
 
 const VALID_STATUSES: Activity['status'][] = ['Hoàn tất', 'Đang diễn ra', 'Cần xử lý', 'Đã xác nhận', 'Chờ duyệt'];
 const VALID_TYPES: Activity['type'][] = ['transport', 'meal', 'sightseeing', 'hotel', 'checkin', 'briefing'];
+
+function normalizeMember(raw: unknown, idx: number): TripMember {
+  const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 120) : `Thành viên ${idx + 1}`;
+  const avatar = typeof m.avatar === 'string' && m.avatar.trim() ? m.avatar.trim().slice(0, 8) : getMemberInitials(name);
+  const role = typeof m.role === 'string' && m.role.trim() ? m.role.trim().slice(0, 60) : 'Khách du lịch';
+  const phone = typeof m.phone === 'string' ? m.phone.trim().slice(0, 30) : '';
+  const status = m.status === 'busy' || m.status === 'offline' ? m.status : 'online';
+  const attendanceStatus =
+    m.attendanceStatus === 'Có mặt' || m.attendanceStatus === 'Vắng mặt' || m.attendanceStatus === 'Chưa điểm danh'
+      ? m.attendanceStatus
+      : undefined;
+  const memberType = m.memberType === 'account' || m.memberType === 'guest' || m.memberType === 'manual'
+    ? m.memberType
+    : undefined;
+
+  const member: TripMember = {
+    id: typeof m.id === 'string' && m.id.trim() ? m.id.trim().slice(0, 128) : `member-${idx + 1}`,
+    name,
+    avatar,
+    role,
+    phone,
+    status,
+    ...(attendanceStatus ? { attendanceStatus } : {}),
+    ...(typeof m.specialPreference === 'string' && m.specialPreference.trim()
+      ? { specialPreference: m.specialPreference.trim().slice(0, 200) }
+      : {}),
+    ...(typeof m.uid === 'string' && m.uid.trim() ? { uid: m.uid.trim().slice(0, 128) } : {}),
+    ...(memberType ? { memberType } : {}),
+    ...(typeof m.invitedByUid === 'string' && m.invitedByUid.trim() ? { invitedByUid: m.invitedByUid.trim().slice(0, 128) } : {}),
+    ...(typeof m.invitedByName === 'string' && m.invitedByName.trim() ? { invitedByName: m.invitedByName.trim().slice(0, 120) } : {}),
+  };
+  return member;
+}
 
 function normalizeActivity(raw: unknown, idx: number, dayIdx: number): Activity {
   const isObject = raw && typeof raw === 'object';
@@ -176,7 +211,20 @@ export function normalizeTripData(value: unknown): TripData {
   const vehicle = typeof candidate.vehicle === 'string' ? candidate.vehicle.slice(0, 100) : 'Xe du lịch';
 
   const members: TripMember[] = Array.isArray(candidate.members)
-    ? (candidate.members as TripMember[]).slice(0, 100)
+    ? candidate.members.slice(0, 100).map((m, idx) => normalizeMember(m, idx))
+    : [];
+
+  const normalizedJoinCode = normalizeJoinCode(candidate.joinCode);
+  const joinCode = isValidJoinCodeFormat(normalizedJoinCode) ? normalizedJoinCode : undefined;
+  const joinCodeEnabled = typeof candidate.joinCodeEnabled === 'boolean' ? candidate.joinCodeEnabled : true;
+  const participantUids = Array.isArray(candidate.participantUids)
+    ? Array.from(
+        new Set(
+          candidate.participantUids
+            .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+            .map((u) => u.trim().slice(0, 128)),
+        ),
+      ).slice(0, 100)
     : [];
 
   const membersTotal = typeof candidate.membersTotal === 'number' ? candidate.membersTotal : members.length;
@@ -317,6 +365,9 @@ export function normalizeTripData(value: unknown): TripData {
   const normalized: TripData = {
     id,
     ...(typeof candidate.ownerId === 'string' ? { ownerId: candidate.ownerId } : {}),
+    ...(joinCode ? { joinCode } : {}),
+    joinCodeEnabled,
+    ...(participantUids.length > 0 ? { participantUids } : {}),
     code,
     title,
     status,
@@ -479,10 +530,26 @@ export function normalizeTripSummary(value: unknown, fallbackId?: string): TripD
     ? candidate.version
     : undefined;
 
+  const normalizedSummaryJoinCode = normalizeJoinCode(candidate.joinCode);
+  const summaryJoinCode = isValidJoinCodeFormat(normalizedSummaryJoinCode) ? normalizedSummaryJoinCode : undefined;
+  const summaryJoinCodeEnabled = typeof candidate.joinCodeEnabled === 'boolean' ? candidate.joinCodeEnabled : true;
+  const summaryParticipantUids = Array.isArray(candidate.participantUids)
+    ? Array.from(
+        new Set(
+          candidate.participantUids
+            .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+            .map((u) => u.trim().slice(0, 128)),
+        ),
+      ).slice(0, 100)
+    : [];
+
   return {
     id,
     isSummary: true,
     ...(typeof candidate.ownerId === 'string' ? { ownerId: candidate.ownerId } : {}),
+    ...(summaryJoinCode ? { joinCode: summaryJoinCode } : {}),
+    joinCodeEnabled: summaryJoinCodeEnabled,
+    ...(summaryParticipantUids.length > 0 ? { participantUids: summaryParticipantUids } : {}),
     code,
     title,
     status,

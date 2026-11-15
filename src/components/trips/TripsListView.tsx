@@ -4,19 +4,22 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Calendar, MapPin, Sparkles, Edit2, Trash2, AlertTriangle, Copy, ArrowUpDown, Filter } from 'lucide-react';
+import { Calendar, MapPin, Sparkles, Edit2, Trash2, AlertTriangle, Copy, ArrowUpDown, Filter, KeyRound } from 'lucide-react';
 import { TripData } from '../../types/travel';
+import { isUserTripOwnerOrAdmin } from '../../utils/tripJoinHelpers';
 
 interface TripsListViewProps {
   trips: TripData[];
   currentTrip: TripData | null;
   onSelectTrip: (trip: TripData) => void;
   onOpenCreateModal: () => void;
+  onOpenJoinModal?: () => void;
   onEditTrip?: (trip: TripData) => void;
   onDeleteTrip?: (tripId: string) => void;
   onCloneTrip?: (trip: TripData) => void;
   readOnly?: boolean;
   isAdmin?: boolean;
+  currentUserUid?: string;
   searchQuery?: string;
   onClearSearch?: () => void;
 }
@@ -29,11 +32,13 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
   currentTrip,
   onSelectTrip,
   onOpenCreateModal,
+  onOpenJoinModal,
   onEditTrip,
   onDeleteTrip,
   onCloneTrip,
   readOnly = false,
   isAdmin = false,
+  currentUserUid,
   searchQuery = '',
   onClearSearch,
 }) => {
@@ -99,13 +104,25 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
           </p>
         </div>
         {!readOnly && (
-          <button
-            onClick={onOpenCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-900/20 transition active:scale-95"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>{isAdmin ? 'Tạo tour tự động' : 'Tạo tour mới'}</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {onOpenJoinModal && (
+              <button
+                type="button"
+                onClick={onOpenJoinModal}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-teal-800 border border-teal-200 text-xs font-bold rounded-xl transition active:scale-95"
+              >
+                <KeyRound className="w-4 h-4 text-teal-600" />
+                <span>Tham gia bằng mã</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenCreateModal}
+              className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-900/20 transition active:scale-95"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{isAdmin ? 'Tạo tour tự động' : 'Tạo tour mới'}</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -173,6 +190,7 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredTrips.map((trip) => {
           const isCurrent = currentTrip?.id === trip.id;
+          const isOwnerOrAdmin = isUserTripOwnerOrAdmin(trip, currentUserUid, isAdmin ? 'admin' : 'user');
           const route = `${trip.originFull} → ${trip.destinationFull}`;
           const budget = `${((trip.budgetTotal || 0) / 1_000_000).toLocaleString('vi-VN')} triệu`;
           return (
@@ -186,8 +204,8 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
               }`}
             >
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-black text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
                       {trip.code}
                     </span>
@@ -202,12 +220,17 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
                     >
                       {trip.status}
                     </span>
+                    {!isOwnerOrAdmin && (
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        Hành khách (HK)
+                      </span>
+                    )}
                   </div>
 
-                  {/* Actions: Clone, Edit & Delete buttons */}
+                  {/* Actions: Clone, Edit & Delete buttons (Edit & Delete only for Owner/Admin) */}
                   {!readOnly && (
-                    <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition">
-                      {onCloneTrip && (
+                    <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition shrink-0">
+                      {onCloneTrip && isOwnerOrAdmin && (
                         <button
                           type="button"
                           title="Nhân bản làm tour mẫu mới"
@@ -220,7 +243,7 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      {onEditTrip && (
+                      {onEditTrip && isOwnerOrAdmin && (
                         <button
                           type="button"
                           title="Sửa thông tin chuyến đi"
@@ -233,7 +256,7 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      {onDeleteTrip && (
+                      {onDeleteTrip && isOwnerOrAdmin && (
                         <button
                           type="button"
                           title="Xóa chuyến đi"
@@ -265,7 +288,7 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
                   {trip.dates || `${trip.totalDays} ngày`}
                 </span>
                 <span className="font-bold text-slate-800">
-                  {budget} • {trip.membersTotal} khách
+                  {isOwnerOrAdmin ? `${budget} • ` : ''}{trip.membersTotal} khách
                 </span>
               </div>
             </div>
@@ -276,18 +299,30 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
           <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center space-y-3">
             <p className="text-sm text-slate-500 font-medium">
               {trips.length === 0
-                ? 'Bạn chưa có chuyến đi nào. Hãy tạo chuyến đi đầu tiên để bắt đầu điều phối!'
+                ? 'Bạn chưa có chuyến đi nào. Hãy tạo chuyến đi đầu tiên hoặc nhập mã tham gia để vào đoàn!'
                 : 'Không có chuyến đi nào khớp với bộ lọc hiện tại.'}
             </p>
             {trips.length === 0 && !readOnly && (
-              <button
-                type="button"
-                onClick={onOpenCreateModal}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Tạo chuyến đi đầu tiên</span>
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {onOpenJoinModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenJoinModal}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-teal-200 hover:bg-teal-50 text-teal-800 text-xs font-bold rounded-xl transition"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>Tham gia bằng mã</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onOpenCreateModal}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Tạo chuyến đi đầu tiên</span>
+                </button>
+              </div>
             )}
           </div>
         )}
