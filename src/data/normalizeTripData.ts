@@ -1,5 +1,5 @@
 import { initialTripData } from './mockData';
-import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice } from '../types/travel';
+import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice, RouteStopWeather } from '../types/travel';
 import { isLegacyHashedCoordinate } from '../utils/vietnamGeo';
 
 const VALID_STATUSES: Activity['status'][] = ['Hoàn tất', 'Đang diễn ra', 'Cần xử lý', 'Đã xác nhận', 'Chờ duyệt'];
@@ -188,6 +188,36 @@ export function normalizeTripData(value: unknown): TripData {
     ? (candidate.weather as Record<string, unknown>)
     : null;
 
+  const stopForecasts: RouteStopWeather[] = Array.isArray(rawWeather?.stopForecasts)
+    ? rawWeather.stopForecasts
+        .slice(0, 20)
+        .flatMap((rawItem): RouteStopWeather[] => {
+          if (!rawItem || typeof rawItem !== 'object') return [];
+          const sf = rawItem as Record<string, unknown>;
+          const stopId = typeof sf.stopId === 'string' ? sf.stopId.trim().slice(0, 128) : '';
+          const stopName = typeof sf.stopName === 'string' ? sf.stopName.trim().slice(0, 150) : '';
+          const lat = typeof sf.lat === 'number' && Number.isFinite(sf.lat) ? sf.lat : NaN;
+          const lng = typeof sf.lng === 'number' && Number.isFinite(sf.lng) ? sf.lng : NaN;
+          const temp = typeof sf.temp === 'number' && Number.isFinite(sf.temp) ? sf.temp : NaN;
+          if (!stopId || !stopName || Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(temp)) {
+            return [];
+          }
+          return [{
+            stopId,
+            stopName,
+            lat,
+            lng,
+            temp,
+            description: typeof sf.description === 'string' ? sf.description.slice(0, 100) : '',
+            rainProb: typeof sf.rainProb === 'string' ? sf.rainProb.slice(0, 20) : '',
+            rainProbTime: typeof sf.rainProbTime === 'string' ? sf.rainProbTime.slice(0, 20) : '',
+            ...(typeof sf.humidity === 'number' && Number.isFinite(sf.humidity) ? { humidity: sf.humidity } : {}),
+            ...(typeof sf.windSpeed === 'string' ? { windSpeed: sf.windSpeed.slice(0, 30) } : {}),
+            ...(typeof sf.weatherCode === 'number' && Number.isFinite(sf.weatherCode) ? { weatherCode: sf.weatherCode } : {}),
+          }];
+        })
+    : [];
+
   const weather: TripData['weather'] = rawWeather
     ? {
         temp: typeof rawWeather.temp === 'number' && Number.isFinite(rawWeather.temp) ? rawWeather.temp : 0,
@@ -198,6 +228,7 @@ export function normalizeTripData(value: unknown): TripData {
         ...(typeof rawWeather.windSpeed === 'string' ? { windSpeed: rawWeather.windSpeed.slice(0, 30) } : {}),
         ...(typeof rawWeather.isLive === 'boolean' ? { isLive: rawWeather.isLive } : {}),
         ...(typeof rawWeather.lastFetched === 'string' ? { lastFetched: rawWeather.lastFetched.slice(0, 50) } : {}),
+        ...(stopForecasts.length > 0 ? { stopForecasts } : {}),
       }
     : {
         temp: 0,
@@ -355,4 +386,142 @@ export function normalizeTripData(value: unknown): TripData {
   }
 
   return normalized;
+}
+
+export function normalizeTripSummary(value: unknown, fallbackId?: string): TripData {
+  if (!value || typeof value !== 'object') {
+    return {
+      ...structuredClone(initialTripData),
+      ...(fallbackId ? { id: fallbackId } : {}),
+      isSummary: true,
+      days: [],
+      waypoints: [],
+      alerts: [],
+      aiSuggestions: [],
+      members: [],
+    };
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const rawDays = Array.isArray(candidate.days) ? candidate.days : [];
+  const rawActivitiesCount = rawDays.reduce((acc, day) => {
+    const acts = day && typeof day === 'object' && Array.isArray((day as Record<string, unknown>).activities)
+      ? ((day as Record<string, unknown>).activities as unknown[]).length
+      : 0;
+    return acc + acts;
+  }, 0);
+
+  const id = typeof candidate.id === 'string' && candidate.id.trim()
+    ? candidate.id.trim().slice(0, 128)
+    : (fallbackId ? fallbackId.trim().slice(0, 128) : `trip-${Date.now()}`);
+
+  const code = typeof candidate.code === 'string' && candidate.code.trim()
+    ? candidate.code.trim().slice(0, 64)
+    : 'VN-TOUR';
+
+  const title = typeof candidate.title === 'string' && candidate.title.trim()
+    ? candidate.title.trim().slice(0, 200)
+    : 'Chuyến đi mới';
+
+  const status = candidate.status === 'Chuẩn bị' || candidate.status === 'Hoàn thành'
+    ? candidate.status
+    : 'Đang vận hành';
+
+  const originFull = typeof candidate.originFull === 'string' ? candidate.originFull.slice(0, 150) : '';
+  const destinationFull = typeof candidate.destinationFull === 'string' ? candidate.destinationFull.slice(0, 150) : '';
+  const vehicle = typeof candidate.vehicle === 'string' ? candidate.vehicle.slice(0, 100) : 'Xe du lịch';
+
+  const totalDays = typeof candidate.totalDays === 'number' && candidate.totalDays > 0
+    ? Math.min(candidate.totalDays, MAX_DAYS)
+    : Math.max(rawDays.length, 1);
+
+  const totalActivities = typeof candidate.totalActivities === 'number' && candidate.totalActivities >= 0
+    ? candidate.totalActivities
+    : rawActivitiesCount;
+
+  const confirmedActivities = typeof candidate.confirmedActivities === 'number' && candidate.confirmedActivities >= 0
+    ? candidate.confirmedActivities
+    : 0;
+
+  const pendingActivities = typeof candidate.pendingActivities === 'number' && candidate.pendingActivities >= 0
+    ? candidate.pendingActivities
+    : Math.max(0, totalActivities - confirmedActivities);
+
+  const budgetTotal = typeof candidate.budgetTotal === 'number' && Number.isFinite(candidate.budgetTotal) && candidate.budgetTotal >= 0
+    ? candidate.budgetTotal
+    : 0;
+
+  const budgetUsed = typeof candidate.budgetUsed === 'number' && Number.isFinite(candidate.budgetUsed) && candidate.budgetUsed >= 0
+    ? candidate.budgetUsed
+    : 0;
+
+  const budgetRemaining = typeof candidate.budgetRemaining === 'number' && Number.isFinite(candidate.budgetRemaining) && candidate.budgetRemaining >= 0
+    ? candidate.budgetRemaining
+    : Math.max(0, budgetTotal - budgetUsed);
+
+  const budgetUsedPercent = typeof candidate.budgetUsedPercent === 'number' && Number.isFinite(candidate.budgetUsedPercent)
+    ? Math.min(100, Math.max(0, Math.round(candidate.budgetUsedPercent)))
+    : (budgetTotal > 0 ? Math.min(100, Math.round((budgetUsed / budgetTotal) * 100)) : 0);
+
+  const membersTotal = typeof candidate.membersTotal === 'number' && candidate.membersTotal >= 0
+    ? candidate.membersTotal
+    : (Array.isArray(candidate.members) ? candidate.members.length : 0);
+
+  const membersOnline = typeof candidate.membersOnline === 'number' && candidate.membersOnline >= 0
+    ? candidate.membersOnline
+    : 0;
+
+  const rawTelematics = candidate.telematics && typeof candidate.telematics === 'object'
+    ? (candidate.telematics as Record<string, unknown>)
+    : null;
+
+  const version = typeof candidate.version === 'number' && Number.isInteger(candidate.version) && candidate.version > 0
+    ? candidate.version
+    : undefined;
+
+  return {
+    id,
+    isSummary: true,
+    ...(typeof candidate.ownerId === 'string' ? { ownerId: candidate.ownerId } : {}),
+    code,
+    title,
+    status,
+    dates: typeof candidate.dates === 'string' ? candidate.dates.slice(0, 100) : '',
+    origin: typeof candidate.origin === 'string' ? candidate.origin.slice(0, 10) : '',
+    originFull,
+    destination: typeof candidate.destination === 'string' ? candidate.destination.slice(0, 10) : '',
+    destinationFull,
+    destinationsCount: typeof candidate.destinationsCount === 'number' ? candidate.destinationsCount : 0,
+    totalKm: typeof candidate.totalKm === 'number' ? candidate.totalKm : 0,
+    vehicle,
+    currentDay: typeof candidate.currentDay === 'number' && candidate.currentDay > 0 ? candidate.currentDay : 1,
+    totalDays,
+    totalActivities,
+    confirmedActivities,
+    pendingActivities,
+    budgetTotal,
+    budgetUsed,
+    budgetRemaining,
+    budgetUsedPercent,
+    membersOnline,
+    membersTotal,
+    membersStatus: typeof candidate.membersStatus === 'string' ? candidate.membersStatus.slice(0, 100) : 'Chưa điểm danh',
+    weather: { temp: 0, description: '', rainProb: '', rainProbTime: '' },
+    telematics: {
+      from: typeof rawTelematics?.from === 'string' ? rawTelematics.from.slice(0, 150) : originFull,
+      to: typeof rawTelematics?.to === 'string' ? rawTelematics.to.slice(0, 150) : destinationFull,
+      vehicleType: typeof rawTelematics?.vehicleType === 'string' ? rawTelematics.vehicleType.slice(0, 100) : vehicle,
+      driver: typeof rawTelematics?.driver === 'string' ? rawTelematics.driver.slice(0, 100) : 'Chưa phân công',
+      driverPhone: '',
+      passengerCount: membersTotal,
+    },
+    waypoints: [],
+    alerts: [],
+    aiSuggestions: [],
+    aiSavingsEstimate: typeof candidate.aiSavingsEstimate === 'string' ? candidate.aiSavingsEstimate.slice(0, 50) : '0 ₫',
+    aiConfidence: typeof candidate.aiConfidence === 'string' ? candidate.aiConfidence.slice(0, 20) : '',
+    members: [],
+    days: [],
+    ...(typeof version === 'number' ? { version } : {}),
+  };
 }

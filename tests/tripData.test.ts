@@ -150,3 +150,56 @@ test('normalizeTripData scrubs legacy hashed coordinates on unknown places while
   assert.equal(normalized.waypoints[1].lng, 108.2022);
 });
 
+test('normalizeTripSummary retains summary metrics while omitting heavy nested arrays', async () => {
+  const { normalizeTripSummary } = await import('../src/data/normalizeTripData');
+
+  const summary = normalizeTripSummary({
+    ...initialTripData,
+    id: 'summary-trip-1',
+    version: 4,
+  });
+
+  assert.equal(summary.id, 'summary-trip-1');
+  assert.equal(summary.isSummary, true);
+  assert.equal(summary.version, 4);
+  assert.equal(summary.title, initialTripData.title);
+  assert.equal(summary.totalDays, initialTripData.totalDays);
+  assert.equal(summary.totalActivities, initialTripData.totalActivities);
+  assert.equal(summary.budgetTotal, initialTripData.budgetTotal);
+  assert.deepEqual(summary.days, []);
+  assert.deepEqual(summary.waypoints, []);
+  assert.deepEqual(summary.members, []);
+});
+
+test('offlineStorage preserves full cached trip against matching-version summary and ignores summary pending syncs', async () => {
+  const { normalizeTripSummary } = await import('../src/data/normalizeTripData');
+  const {
+    loadOfflineTripsCache,
+    markTripPendingOfflineSyncDetailed,
+    saveOfflineTripsCacheDetailed,
+  } = await import('../src/utils/offlineStorage');
+
+  const store = new Map<string, string>();
+  const memoryStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => { store.set(k, v); },
+    removeItem: (k: string) => { store.delete(k); },
+  };
+
+  const fullTrip = normalizeTripData({ ...initialTripData, id: 'trip-cached-1', version: 2 });
+  saveOfflineTripsCacheDetailed('user-1', [fullTrip], fullTrip.id, [], memoryStorage);
+
+  const sameVersionSummary = normalizeTripSummary({ ...fullTrip, version: 2 });
+  saveOfflineTripsCacheDetailed('user-1', [sameVersionSummary], null, undefined, memoryStorage);
+
+  const reloaded = loadOfflineTripsCache('user-1', memoryStorage);
+  assert.ok(reloaded);
+  assert.equal(reloaded.trips.length, 1);
+  assert.equal(reloaded.trips[0].isSummary, undefined);
+  assert.equal(reloaded.trips[0].days.length, fullTrip.days.length);
+
+  const pendingAttempt = markTripPendingOfflineSyncDetailed('user-1', sameVersionSummary, memoryStorage);
+  assert.equal(pendingAttempt.cache, null);
+});
+
+

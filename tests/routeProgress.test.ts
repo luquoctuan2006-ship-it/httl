@@ -253,4 +253,64 @@ test('findMatchingActivityForWaypoint and findMatchingWaypointForActivity share 
   }
 });
 
+test('buildRouteProgress uses OSRM road leg distance, duration, and polyline when provided', async () => {
+  const { makeRoadLegKey } = await import('../src/utils/routeProgress');
+  const trip = makeSampleTrip();
+
+  const dn = { lat: 16.0544, lng: 108.2022 };
+  const ha = { lat: 15.8801, lng: 108.338 };
+  const hue = { lat: 16.4637, lng: 107.5909 };
+
+  const leg1Key = makeRoadLegKey(dn, ha);
+  const leg2Key = makeRoadLegKey(ha, hue);
+
+  const roadLegs = new Map([
+    [
+      leg1Key,
+      {
+        fromKey: '16.05440,108.20220',
+        toKey: '15.88010,108.33800',
+        distanceKm: 29.4,
+        durationMinutes: 42,
+        coordinates: [
+          [16.0544, 108.2022] as [number, number],
+          [15.96, 108.27] as [number, number],
+          [15.8801, 108.338] as [number, number],
+        ],
+      },
+    ],
+  ]);
+
+  const mixedProgress = buildRouteProgress(trip, 'all', roadLegs);
+  assert.equal(mixedProgress.routingSource, 'mixed');
+  assert.equal(mixedProgress.stops[1].legSource, 'osrm');
+  assert.equal(mixedProgress.stops[1].distanceFromPrevKm, 29.4);
+  assert.equal(mixedProgress.stops[1].travelMinutesFromPrev, 42);
+  assert.equal(mixedProgress.stops[1].legCoordinates?.length, 3);
+  assert.equal(mixedProgress.stops[2].legSource, 'estimate');
+
+  const fullRoadLegs = new Map([
+    ...roadLegs.entries(),
+    [
+      leg2Key,
+      {
+        fromKey: '15.88010,108.33800',
+        toKey: '16.46370,107.59090',
+        distanceKm: 124.8,
+        durationMinutes: 145,
+        coordinates: [
+          [15.8801, 108.338] as [number, number],
+          [16.4637, 107.5909] as [number, number],
+        ],
+      },
+    ],
+  ]);
+
+  const osrmProgress = buildRouteProgress(trip, 'all', fullRoadLegs);
+  assert.equal(osrmProgress.routingSource, 'osrm');
+  assert.equal(osrmProgress.totalRouteKm, 154.2);
+  assert.equal(osrmProgress.totalTravelMinutes, 187);
+});
+
+
 

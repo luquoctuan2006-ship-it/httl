@@ -23,6 +23,9 @@ export function createTripSyncRouter({
   const router = Router();
 
   const saveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
+    if (req.body && typeof req.body === 'object' && (req.body as { isSummary?: unknown }).isSummary === true) {
+      return res.status(400).json({ success: false, error: 'Không thể ghi đè chuyến đi bằng dữ liệu tóm tắt' });
+    }
     const trip = normalizeTripData(req.body);
     const routeId = req.params.tripId;
     if (routeId && routeId !== 'active') trip.id = routeId;

@@ -80,7 +80,7 @@ export const ReceiptPreviewModal: React.FC<{
   if (!invoice || (!invoice.receiptImage && !invoice.receiptId)) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 overflow-hidden shadow-2xl">
         <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between text-xs">
           <div>

@@ -1,15 +1,27 @@
 import React from 'react';
-import { ArrowDownRight, CheckCircle2, Clock, Compass, ExternalLink, MapPin, Navigation2 } from 'lucide-react';
+import {
+  ArrowDownRight,
+  CheckCircle2,
+  Clock,
+  CloudSun,
+  Compass,
+  ExternalLink,
+  MapPin,
+  Navigation2,
+} from 'lucide-react';
+import type { RouteStopWeather } from '../../../types/travel';
 import {
   formatTravelDuration,
   type RouteProgressSummary,
   type RouteStopItem,
   type RouteStopStatus,
 } from '../../../utils/routeProgress';
+import { findStopWeather } from './mapHelpers';
 import { getStopKey } from './useLiveRouteMap';
 
 interface RouteStopsPanelProps {
   progress: RouteProgressSummary;
+  stopForecasts?: RouteStopWeather[];
   selectedStopKey: string | null;
   onFocusStop: (stop: RouteStopItem) => void;
   onChangeStopStatus?: (stop: RouteStopItem, nextStatus: RouteStopStatus) => void;
@@ -36,6 +48,7 @@ const STATUS_BADGE: Record<RouteStopStatus, { label: string; badgeClass: string;
 
 export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
   progress,
+  stopForecasts,
   selectedStopKey,
   onFocusStop,
   onChangeStopStatus,
@@ -48,6 +61,7 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
     totalRouteKm,
     totalTravelMinutes,
     stopProgressPercent,
+    routingSource,
     unlocatedStopsCount,
   } = progress;
 
@@ -57,6 +71,13 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
 
   let seenFirstLocatedStop = false;
 
+  const routingFootnote =
+    routingSource === 'osrm'
+      ? 'Quãng đường & thời gian chặng được tính theo tuyến đường bộ từ OSRM; tiến độ cập nhật theo trạng thái điểm dừng trên lịch trình (không sử dụng GPS theo dõi xe).'
+      : routingSource === 'mixed'
+        ? 'Một số chặng sử dụng tuyến đường bộ OSRM, các chặng còn lại tạm ước tính theo tọa độ; tiến độ cập nhật theo trạng thái điểm dừng (không sử dụng GPS xe).'
+        : 'Hiện chưa kết nối được dữ liệu đường bộ OSRM nên khoảng cách & thời gian chặng đang tạm ước tính theo tọa độ; tiến độ cập nhật theo trạng thái điểm dừng (không sử dụng GPS xe).';
+
   return (
     <div className="border-t border-slate-100 bg-slate-50/70 p-4 sm:px-5 space-y-3">
       {/* Section Header & Progress Summary Strip */}
@@ -64,7 +85,7 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
         <div className="flex items-center gap-2">
           <Compass className="w-4 h-4 text-teal-600" />
           <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
-            Thứ tự địa điểm & Chặng di chuyển dự kiến
+            Thứ tự địa điểm & Chặng di chuyển
           </h3>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-semibold">
@@ -73,7 +94,8 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
           </span>
           <span className="text-slate-300">•</span>
           <span>
-            Tổng quãng đường ước tính: <strong className="text-slate-900">{totalRouteKm} km</strong>
+            Tổng quãng đường {routingSource === 'osrm' ? 'đường bộ' : 'ước tính'}:{' '}
+            <strong className="text-slate-900">{totalRouteKm} km</strong>
           </span>
           <span className="text-slate-300">•</span>
           <span>
@@ -92,6 +114,7 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
           if (stop.hasCoordinates) {
             seenFirstLocatedStop = true;
           }
+          const stopWeather = findStopWeather(stop, stopForecasts);
 
           return (
             <div
@@ -134,7 +157,7 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
                         {stop.activityTitle}
                       </p>
                     )}
-                    <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-500">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-500">
                       {stop.timeLabel && (
                         <span className="flex items-center gap-1 font-medium text-slate-600">
                           <Clock className="w-3 h-3 text-slate-400" />
@@ -153,7 +176,17 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
                       ) : (
                         <span className="flex items-center gap-1 font-semibold text-teal-700 bg-teal-50/70 px-1.5 py-0.5 rounded">
                           <ArrowDownRight className="w-3 h-3" />
-                          {stop.distanceFromPrevKm} km • ~{formatTravelDuration(stop.travelMinutesFromPrev)}
+                          {stop.legSource === 'osrm' ? '' : '~'}
+                          {stop.distanceFromPrevKm} km • {formatTravelDuration(stop.travelMinutesFromPrev)}
+                        </span>
+                      )}
+                      {stopWeather && (
+                        <span
+                          className="flex items-center gap-1 font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200/70"
+                          title={`Thời tiết hiện tại (hôm nay) tại điểm: ${stopWeather.description}${stopWeather.rainProbTime ? ` (${stopWeather.rainProbTime})` : ''}`}
+                        >
+                          <CloudSun className="w-3 h-3 text-amber-500" />
+                          {stopWeather.temp}°C{stopWeather.rainProb ? ` • ${stopWeather.rainProb}` : ''}
                         </span>
                       )}
                     </div>
@@ -202,9 +235,7 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
       </div>
 
       <p className="text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
-        <span>
-          Lưu ý: Khoảng cách &amp; thời gian di chuyển là số liệu ước tính từ tọa độ điểm đến (không phải dẫn đường đường bộ thời gian thực).
-        </span>
+        <span>{routingFootnote}</span>
         {unlocatedStopsCount > 0 && (
           <span className="font-semibold text-amber-700">
             {unlocatedStopsCount} địa điểm chưa xác định được tọa độ.

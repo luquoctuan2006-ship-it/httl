@@ -5,6 +5,21 @@ import { isLegacyHashedCoordinate, lookupCoordinates } from './vietnamGeo';
 export type RouteStopStatus = 'completed' | 'current' | 'pending';
 type PendingActivityStatus = 'Đã xác nhận' | 'Cần xử lý' | 'Chờ duyệt';
 
+export interface RoadLegData {
+  fromKey: string;
+  toKey: string;
+  distanceKm: number;
+  durationMinutes: number;
+  coordinates: [number, number][];
+}
+
+export function makeRoadLegKey(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): string {
+  return `${from.lat.toFixed(5)},${from.lng.toFixed(5)}->${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
+}
+
 export interface RouteStopItem {
   id: string;
   order: number;
@@ -21,6 +36,8 @@ export interface RouteStopItem {
   categoryLabel?: string;
   distanceFromPrevKm: number;
   travelMinutesFromPrev: number;
+  legSource?: 'osrm' | 'estimate';
+  legCoordinates?: [number, number][];
   cumulativeKm: number;
   cumulativeTravelMinutes: number;
   waypointRef?: Waypoint;
@@ -41,6 +58,7 @@ export interface RouteProgressSummary {
   remainingKm: number;
   remainingMinutes: number;
   stopProgressPercent: number;
+  routingSource: 'osrm' | 'mixed' | 'estimate';
   /** Tiến độ thực hiện: chỉ tính hoạt động có trạng thái "Hoàn tất" */
   activityProgressPercent: number;
   completedActivitiesCount: number;
@@ -145,12 +163,13 @@ function resolveActivityCoords(
 export function buildRouteProgress(
   trip: TripData,
   dayFilter: number | 'all' = 'all',
+  roadLegsMap?: ReadonlyMap<string, RoadLegData>,
 ): RouteProgressSummary {
   const visibleWaypoints = (trip.waypoints || []).filter((w) => !w.isHidden);
 
   type RawStop = Omit<
     RouteStopItem,
-    'order' | 'code' | 'distanceFromPrevKm' | 'travelMinutesFromPrev' | 'cumulativeKm' | 'cumulativeTravelMinutes'
+    'order' | 'code' | 'distanceFromPrevKm' | 'travelMinutesFromPrev' | 'legSource' | 'legCoordinates' | 'cumulativeKm' | 'cumulativeTravelMinutes'
   >;
 
   const rawStops: RawStop[] = [];
@@ -235,16 +254,32 @@ export function buildRouteProgress(
   let cumulativeKm = 0;
   let cumulativeTravelMinutes = 0;
   let prevLocatedStop: { lat: number; lng: number } | null = null;
+  let osrmLegCount = 0;
+  let estimateLegCount = 0;
 
   const stops: RouteStopItem[] = rawStops.map((stop, index) => {
     let distanceFromPrevKm = 0;
     let travelMinutesFromPrev = 0;
+    let legSource: 'osrm' | 'estimate' | undefined;
+    let legCoordinates: [number, number][] | undefined;
 
     if (stop.hasCoordinates && stop.lat !== null && stop.lng !== null) {
       const currentCoords = { lat: stop.lat, lng: stop.lng };
       if (prevLocatedStop) {
-        distanceFromPrevKm = estimateRoadDistanceKm(prevLocatedStop, currentCoords);
-        travelMinutesFromPrev = estimateSegmentTravelMinutes(distanceFromPrevKm);
+        const legKey = makeRoadLegKey(prevLocatedStop, currentCoords);
+        const osrmLeg = roadLegsMap?.get(legKey);
+        if (osrmLeg) {
+          distanceFromPrevKm = osrmLeg.distanceKm;
+          travelMinutesFromPrev = osrmLeg.durationMinutes;
+          legSource = 'osrm';
+          legCoordinates = osrmLeg.coordinates;
+          osrmLegCount += 1;
+        } else {
+          distanceFromPrevKm = estimateRoadDistanceKm(prevLocatedStop, currentCoords);
+          travelMinutesFromPrev = estimateSegmentTravelMinutes(distanceFromPrevKm);
+          legSource = 'estimate';
+          estimateLegCount += 1;
+        }
         cumulativeKm = Number((cumulativeKm + distanceFromPrevKm).toFixed(1));
         cumulativeTravelMinutes += travelMinutesFromPrev;
       }
@@ -257,10 +292,19 @@ export function buildRouteProgress(
       code: stop.waypointRef?.code || String(index + 1).padStart(2, '0'),
       distanceFromPrevKm,
       travelMinutesFromPrev,
+      ...(legSource ? { legSource } : {}),
+      ...(legCoordinates ? { legCoordinates } : {}),
       cumulativeKm,
       cumulativeTravelMinutes,
     };
   });
+
+  const routingSource: RouteProgressSummary['routingSource'] =
+    osrmLegCount > 0 && estimateLegCount === 0
+      ? 'osrm'
+      : osrmLegCount > 0 && estimateLegCount > 0
+        ? 'mixed'
+        : 'estimate';
 
   const totalStops = stops.length;
   const locatedStopsCount = stops.filter((s) => s.hasCoordinates).length;
@@ -331,6 +375,7 @@ export function buildRouteProgress(
     remainingKm,
     remainingMinutes,
     stopProgressPercent,
+    routingSource,
     activityProgressPercent,
     completedActivitiesCount,
     confirmedActivitiesPercent,

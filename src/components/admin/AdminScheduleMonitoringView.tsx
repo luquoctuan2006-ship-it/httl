@@ -11,14 +11,17 @@ interface AdminScheduleMonitoringProps {
   trip: TripData;
   trips?: TripData[];
   onUpdateTrip?: (updatedTrip: TripData, message?: string) => Promise<void>;
+  onEnsureFullTrip?: (tripId: string) => Promise<TripData | null>;
 }
 
 export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps> = ({
   trip,
   trips = [],
   onUpdateTrip: _onUpdateTrip,
+  onEnsureFullTrip,
 }) => {
   const [selectedTripDetails, setSelectedTripDetails] = useState<TripData | null>(null);
+  const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -47,8 +50,12 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
       const guide = t.members?.find((m) => m.role.toLowerCase().includes('hướng dẫn viên') || m.role.toLowerCase().includes('hdv'))?.name || 'Nguyễn Văn An';
       
       const allActs = t.days?.flatMap((d) => d.activities || []) || [];
-      const startLoc = allActs[0]?.location || t.waypoints?.[0]?.name || 'Điểm khởi hành';
-      const endLoc = allActs[allActs.length - 1]?.location || t.waypoints?.[t.waypoints.length - 1]?.name || 'Điểm kết thúc';
+      const startLoc = allActs[0]?.location || t.waypoints?.[0]?.name || t.originFull || 'Điểm khởi hành';
+      const endLoc =
+        allActs[allActs.length - 1]?.location ||
+        t.waypoints?.[t.waypoints.length - 1]?.name ||
+        t.destinationFull ||
+        'Điểm kết thúc';
       const route = startLoc !== endLoc ? `${startLoc} ➔ ${endLoc}` : startLoc;
 
       const issuesCount = (t.alerts?.length || 0) + (t.days?.filter((d) => d.hasWarning).length || 0);
@@ -144,6 +151,20 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
     showToast(`Đã gửi thông báo cảnh báo lịch trình ${tripCode} đến Điều phối viên!`);
   };
 
+  const handleOpenTripDetails = async (targetTrip: TripData) => {
+    if (!targetTrip.isSummary || !onEnsureFullTrip) {
+      setSelectedTripDetails(targetTrip);
+      return;
+    }
+    setLoadingTripId(targetTrip.id);
+    try {
+      const hydrated = await onEnsureFullTrip(targetTrip.id);
+      setSelectedTripDetails(hydrated || targetTrip);
+    } finally {
+      setLoadingTripId((current) => (current === targetTrip.id ? null : current));
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -213,10 +234,11 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
 
               <div className="md:col-span-2 flex items-center justify-end gap-2 w-full md:w-auto">
                 <button
-                  onClick={() => setSelectedTripDetails(t.fullTrip)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-slate-700 transition"
+                  onClick={() => void handleOpenTripDetails(t.fullTrip)}
+                  disabled={loadingTripId === t.id}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-slate-700 transition disabled:opacity-50"
                 >
-                  Xem Lịch Trình
+                  {loadingTripId === t.id ? 'Đang tải...' : 'Xem Lịch Trình'}
                 </button>
                 <button
                   onClick={() => handleFlagSchedule(t.code)}
@@ -283,7 +305,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
 
       {/* Modal: Xem Chi tiết Lịch Trình */}
       {selectedTripDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in">
           <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
               <div>

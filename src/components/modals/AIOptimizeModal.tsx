@@ -273,7 +273,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
   const isFallback = validation?.source === 'fallback';
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-6 py-4 bg-[#0B1320] text-white flex items-center justify-between border-b border-slate-800 shrink-0">

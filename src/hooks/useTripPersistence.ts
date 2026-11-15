@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { signOut } from 'firebase/auth';
 import { authenticatedFetch, safeJsonResponse } from '../api';
-import { normalizeTripData } from '../data/normalizeTripData';
+import { normalizeTripData, normalizeTripSummary } from '../data/normalizeTripData';
 import { firebaseAuth } from '../firebase';
 import type { TripData } from '../types/travel';
 import {
@@ -53,10 +53,13 @@ export function useTripPersistence({
   const [isResolvingConflict, setIsResolvingConflict] = useState<boolean>(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState<boolean>(false);
   const [isSyncingBeforeLogout, setIsSyncingBeforeLogout] = useState<boolean>(false);
+  const [hydratingTripId, setHydratingTripId] = useState<string | null>(null);
 
   const lastSavedContentByTripIdRef = useRef<Record<string, string>>({});
   const latestServerVersionByTripIdRef = useRef<Record<string, number>>({});
   const latestTripRef = useRef<TripData | null>(trip);
+  const tripsRef = useRef<TripData[]>(trips);
+  const inFlightHydrationsRef = useRef<Map<string, Promise<TripData | null>>>(new Map());
   const saveQueueRef = useRef<SingleFlightQueue>(new SingleFlightQueue());
   const isSyncingOfflineRef = useRef<boolean>(false);
   const lastQuotaWarnAtRef = useRef<number>(0);
@@ -64,6 +67,10 @@ export function useTripPersistence({
   useEffect(() => {
     latestTripRef.current = trip;
   }, [trip]);
+
+  useEffect(() => {
+    tripsRef.current = trips;
+  }, [trips]);
 
   const warnIfQuotaExceeded = useCallback((quotaExceeded: boolean) => {
     if (!quotaExceeded) return;
@@ -153,7 +160,7 @@ export function useTripPersistence({
 
     const loadFromApi = async () => {
       try {
-        const response = await authenticatedFetch('/api/trips');
+        const response = await authenticatedFetch('/api/trips?mode=summary');
         if (response.status === 401 || response.status === 403) {
           throw new AuthSessionError(response.status);
         }
@@ -161,19 +168,28 @@ export function useTripPersistence({
         const { activeTrip, trips: savedTrips } = await safeJsonResponse(response);
         if (cancelled) return;
 
-        const correctedTrips = Array.isArray(savedTrips)
-          ? savedTrips.map((item: unknown) => normalizeTripData(item))
-          : activeTrip
-            ? [normalizeTripData(activeTrip)]
+        const normalizedActiveTrip = activeTrip ? normalizeTripData(activeTrip) : null;
+        const correctedTrips: TripData[] = Array.isArray(savedTrips)
+          ? savedTrips.map((item: unknown) => {
+              const raw = item && typeof item === 'object' ? (item as { id?: unknown; isSummary?: unknown }) : null;
+              if (normalizedActiveTrip && raw?.id === normalizedActiveTrip.id) {
+                return normalizedActiveTrip;
+              }
+              return raw?.isSummary === true ? normalizeTripSummary(item) : normalizeTripData(item);
+            })
+          : normalizedActiveTrip
+            ? [normalizedActiveTrip]
             : [];
 
         const primaryTrip =
-          (activeTrip ? normalizeTripData(activeTrip) : null) || correctedTrips[0] || null;
+          normalizedActiveTrip || correctedTrips.find((t) => !t.isSummary) || correctedTrips[0] || null;
 
         const savedMap: Record<string, string> = {};
         const versionMap: Record<string, number> = {};
         for (const item of correctedTrips) {
-          savedMap[item.id] = getTripComparableJson(item);
+          if (!item.isSummary) {
+            savedMap[item.id] = getTripComparableJson(item);
+          }
           if (typeof item.version === 'number') {
             versionMap[item.id] = item.version;
           }
@@ -266,6 +282,61 @@ export function useTripPersistence({
     }
   }, []);
 
+  const ensureFullTrip = useCallback(async (tripOrId: TripData | string): Promise<TripData | null> => {
+    const targetId = typeof tripOrId === 'string' ? tripOrId : tripOrId.id;
+    if (!targetId) return null;
+
+    if (latestTripRef.current?.id === targetId && !latestTripRef.current.isSummary) {
+      return latestTripRef.current;
+    }
+
+    const existingInList = tripsRef.current.find((t) => t.id === targetId);
+    if (existingInList && !existingInList.isSummary) {
+      return existingInList;
+    }
+
+    const existingPending = inFlightHydrationsRef.current.get(targetId);
+    if (existingPending) return existingPending;
+
+    const hydratePromise = (async () => {
+      setHydratingTripId(targetId);
+      try {
+        const snapshot = await fetchServerTripSnapshot(targetId);
+        if (snapshot) {
+          lastSavedContentByTripIdRef.current[snapshot.id] = getTripComparableJson(snapshot);
+          if (typeof snapshot.version === 'number') {
+            latestServerVersionByTripIdRef.current[snapshot.id] = snapshot.version;
+          }
+          setTrips((prev) => {
+            const idx = prev.findIndex((item) => item.id === snapshot.id);
+            if (idx === -1) return [snapshot, ...prev];
+            const next = [...prev];
+            next[idx] = snapshot;
+            return next;
+          });
+          setTrip((prev) => (prev?.id === snapshot.id ? snapshot : prev));
+          return snapshot;
+        }
+
+        if (authUserId) {
+          const offlineCache = loadOfflineTripsCache(authUserId);
+          const cachedFull = offlineCache?.trips.find((t) => t.id === targetId && !t.isSummary);
+          if (cachedFull) {
+            setTrips((prev) => prev.map((item) => (item.id === cachedFull.id ? cachedFull : item)));
+            return cachedFull;
+          }
+        }
+        return null;
+      } finally {
+        inFlightHydrationsRef.current.delete(targetId);
+        setHydratingTripId((current) => (current === targetId ? null : current));
+      }
+    })();
+
+    inFlightHydrationsRef.current.set(targetId, hydratePromise);
+    return hydratePromise;
+  }, [authUserId, fetchServerTripSnapshot]);
+
   const executeTripPut = useCallback(async (
     candidateTrip: TripData,
     options?: {
@@ -277,6 +348,9 @@ export function useTripPersistence({
     | { status: 'ok'; savedTrip: TripData; version?: number }
     | { status: 'conflict'; localTrip: TripData; serverTrip: TripData | null }
   > => {
+    if (candidateTrip.isSummary) {
+      throw new Error('Không thể lưu dữ liệu tóm tắt lên máy chủ.');
+    }
     const normalized = normalizeTripData(candidateTrip);
     const alignedVersion =
       typeof options?.forceServerVersion === 'number'
@@ -450,7 +524,7 @@ export function useTripPersistence({
 
   // Autosave trip changes qua hàng đợi tuần tự (single-flight)
   useEffect(() => {
-    if (!authUserId || !trip?.id || loadedTripUserId !== authUserId || conflictState) return;
+    if (!authUserId || !trip?.id || trip.isSummary || loadedTripUserId !== authUserId || conflictState) return;
 
     const currentComparable = getTripComparableJson(trip);
     if (!currentComparable || currentComparable === lastSavedContentByTripIdRef.current[trip.id]) return;
@@ -459,7 +533,7 @@ export function useTripPersistence({
     const timeout = window.setTimeout(() => {
       void saveQueueRef.current.enqueue(async () => {
         const liveTrip = latestTripRef.current;
-        if (!liveTrip || liveTrip.id !== tripIdSnapshot) return;
+        if (!liveTrip || liveTrip.id !== tripIdSnapshot || liveTrip.isSummary) return;
 
         const normalized = normalizeTripData(liveTrip);
         const targetComparable = getTripComparableJson(normalized);
@@ -565,6 +639,7 @@ export function useTripPersistence({
   }, [trip, authUserId, loadedTripUserId, conflictState, executeTripPut, performSignOutAndClearCache, showToast, warnIfQuotaExceeded]);
 
   const saveTripToFirestore = useCallback(async (updatedTrip: TripData, successMessage?: string) => {
+    if (updatedTrip.isSummary) return;
     const normalizedTrip = normalizeTripData(updatedTrip);
     setTrip(normalizedTrip);
 
@@ -786,6 +861,8 @@ export function useTripPersistence({
     latestServerVersionByTripIdRef,
     latestTripRef,
     saveQueueRef,
+    hydratingTripId,
+    ensureFullTrip,
     fetchServerTripSnapshot,
     executeTripPut,
     saveTripToFirestore,

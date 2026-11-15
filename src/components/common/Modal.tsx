@@ -33,7 +33,7 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
       <div
         className={`bg-white rounded-3xl ${MAX_WIDTH_CLASSES[maxWidth]} w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${
           scrollable ? 'max-h-[92vh] flex flex-col' : ''

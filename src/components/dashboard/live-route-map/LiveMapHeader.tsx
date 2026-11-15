@@ -1,7 +1,7 @@
 import React from 'react';
 import { Layers, Map, ChevronDown, Check, RefreshCw, Maximize2 } from 'lucide-react';
 import type { TripData } from '../../../types/travel';
-import { formatTravelDuration } from '../../../utils/routeProgress';
+import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/routeProgress';
 import type { MapLayer } from './mapHelpers';
 
 interface LiveMapHeaderProps {
@@ -9,6 +9,8 @@ interface LiveMapHeaderProps {
   stopCount: number;
   totalRouteKm: number;
   totalTravelMinutes: number;
+  routingSource: RouteProgressSummary['routingSource'];
+  isRoutingLoading: boolean;
   dayFilter: number | 'all';
   setDayFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
   mapLayer: MapLayer;
@@ -26,6 +28,8 @@ export const LiveMapHeader: React.FC<LiveMapHeaderProps> = (props) => {
     stopCount,
     totalRouteKm,
     totalTravelMinutes,
+    routingSource,
+    isRoutingLoading,
     dayFilter,
     setDayFilter,
     mapLayer,
@@ -36,6 +40,14 @@ export const LiveMapHeader: React.FC<LiveMapHeaderProps> = (props) => {
     handleFetchLiveWeather,
     handleFitRoute,
   } = props;
+
+  const routeSourceLabel = isRoutingLoading
+    ? 'Đang tính đường bộ OSRM...'
+    : routingSource === 'osrm'
+      ? 'Đường bộ OSRM'
+      : routingSource === 'mixed'
+        ? 'OSRM + ước tính'
+        : 'Ước tính tọa độ';
 
   return (
     <div className="p-4 sm:px-5 border-b border-slate-100 bg-white z-10 space-y-3">
@@ -49,7 +61,7 @@ export const LiveMapHeader: React.FC<LiveMapHeaderProps> = (props) => {
               Bản đồ tuyến đường & Tiến độ lịch trình
             </h2>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              {trip.originFull} → {trip.destinationFull} • {stopCount} địa điểm tham quan • {totalRouteKm} km • ~{formatTravelDuration(totalTravelMinutes)} di chuyển
+              {trip.originFull} → {trip.destinationFull} • {stopCount} địa điểm tham quan • {totalRouteKm} km • ~{formatTravelDuration(totalTravelMinutes)} ({routeSourceLabel})
             </p>
           </div>
         </div>
@@ -70,10 +82,10 @@ export const LiveMapHeader: React.FC<LiveMapHeaderProps> = (props) => {
             onClick={handleFetchLiveWeather}
             disabled={isRefreshingWeather}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition shadow-2xs disabled:opacity-60"
-            title="Cập nhật dự báo thời tiết thực tế dọc tuyến đường"
+            title="Tự động cập nhật thời tiết hiện tại (hôm nay) tại các điểm dọc tuyến mỗi 10 phút khi đang mở; nhấn để làm mới và lưu ngay"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingWeather ? 'animate-spin' : ''}`} />
-            <span>{isRefreshingWeather ? 'Đang cập nhật...' : 'Thời tiết Live API'}</span>
+            <span>{isRefreshingWeather ? 'Đang cập nhật...' : 'Làm mới thời tiết'}</span>
           </button>
 
           <div className="relative">

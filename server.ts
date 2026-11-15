@@ -12,6 +12,7 @@ import { registerGeminiRoutes } from './src/server/routes/gemini';
 import { registerFleetRoutes } from './src/server/routes/fleet';
 import { registerAdminMonitoringRoutes } from './src/server/routes/adminMonitoring';
 import { registerAdminConfigRoutes } from './src/server/routes/adminConfig';
+import { registerRoutingRoutes } from './src/server/routes/routing';
 import { initFirebaseAdmin } from './src/server/services/firebaseAdmin';
 import { createSystemConfigStore, ALLOWED_AI_MODELS } from './src/server/services/systemConfigStore';
 import { createTripStore } from './src/server/services/tripStore';
@@ -212,6 +213,8 @@ registerAdminUserRoutes(app, {
   firestore,
   recordAuditLog,
 });
+
+registerRoutingRoutes(app, { requireAuth });
 
 app.all('/api/*', (req, res) => {
   res.status(404).json({

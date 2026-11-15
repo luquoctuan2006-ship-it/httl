@@ -93,9 +93,24 @@ export interface TripMember {
   specialPreference?: string;
 }
 
+export interface RouteStopWeather {
+  stopId: string;
+  stopName: string;
+  lat: number;
+  lng: number;
+  temp: number;
+  description: string;
+  rainProb: string;
+  rainProbTime: string;
+  humidity?: number;
+  windSpeed?: string;
+  weatherCode?: number;
+}
+
 export interface TripData {
   id: string;
   ownerId?: string; // uid của người tạo chuyến (do server gán, client không được đổi)
+  isSummary?: boolean; // true khi chỉ tải dữ liệu tóm tắt cho danh sách chuyến đi
   code: string; // "VN-1024"
   title: string; // "Khám phá miền Trung 7 ngày"
   status: 'Đang vận hành' | 'Chuẩn bị' | 'Hoàn thành';
@@ -129,6 +144,7 @@ export interface TripData {
     windSpeed?: string;
     isLive?: boolean;
     lastFetched?: string;
+    stopForecasts?: RouteStopWeather[];
   };
   telematics: {
     from: string; // "Sơn Trà"

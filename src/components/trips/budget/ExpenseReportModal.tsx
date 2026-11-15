@@ -32,7 +32,7 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
     <>
       {/* Modal: Báo cáo chi tiêu & In quyết toán */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden shrink-0">
               <div className="flex items-center gap-2">

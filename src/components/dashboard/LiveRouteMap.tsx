@@ -12,6 +12,7 @@ import { LiveMapCanvas } from './live-route-map/LiveMapCanvas';
 import { RouteStopsPanel } from './live-route-map/RouteStopsPanel';
 import { getStopKey, useLiveRouteMap } from './live-route-map/useLiveRouteMap';
 import { useLiveRouteControls } from './live-route-map/useLiveRouteControls';
+import { useRoadRouting } from './live-route-map/useRoadRouting';
 import { STATUS_LABEL, type MapLayer } from './live-route-map/mapHelpers';
 
 interface LiveRouteMapProps {
@@ -33,40 +34,38 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all');
   const [selectedStopKey, setSelectedStopKey] = useState<string | null>(null);
 
-  const progress = useMemo(
+  const baseProgress = useMemo(
     () => buildRouteProgress(trip, dayFilter),
     [trip, dayFilter],
+  );
+
+  const { roadLegsMap, isRoutingLoading } = useRoadRouting(baseProgress.stops);
+
+  const progress = useMemo(
+    () => buildRouteProgress(trip, dayFilter, roadLegsMap),
+    [trip, dayFilter, roadLegsMap],
   );
 
   const handleSelectStopOnMap = useCallback((stop: RouteStopItem) => {
     setSelectedStopKey(getStopKey(stop));
   }, []);
 
+  const controls = useLiveRouteControls({
+    trip,
+    onUpdateTrip,
+    stops: progress.stops,
+    currentStop: progress.currentStop,
+  });
+
   const map = useLiveRouteMap({
     tripId: trip.id,
+    dayFilter,
     stops: progress.stops,
+    stopForecasts: controls.weather?.stopForecasts,
     selectedStopKey,
     onSelectStop: handleSelectStopOnMap,
     mapLayer,
     searchQuery,
-  });
-
-  const weatherCoords = useMemo(() => {
-    const refStop =
-      progress.currentStop?.hasCoordinates &&
-      progress.currentStop.lat !== null &&
-      progress.currentStop.lng !== null
-        ? progress.currentStop
-        : progress.stops.find((s) => s.hasCoordinates && s.lat !== null && s.lng !== null);
-    return refStop && refStop.lat !== null && refStop.lng !== null
-      ? { lat: refStop.lat, lng: refStop.lng }
-      : null;
-  }, [progress.currentStop, progress.stops]);
-
-  const controls = useLiveRouteControls({
-    trip,
-    onUpdateTrip,
-    weatherCoords,
   });
 
   const handleFocusStop = useCallback(
@@ -116,6 +115,8 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         stopCount={progress.totalStops}
         totalRouteKm={progress.totalRouteKm}
         totalTravelMinutes={progress.totalTravelMinutes}
+        routingSource={progress.routingSource}
+        isRoutingLoading={isRoutingLoading}
         dayFilter={dayFilter}
         setDayFilter={setDayFilter}
         mapLayer={mapLayer}
@@ -127,7 +128,8 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         handleFitRoute={map.handleFitRoute}
       />
       <LiveMapCanvas
-        trip={trip}
+        weather={controls.weather}
+        isRefreshingWeather={controls.isRefreshingWeather}
         progress={progress}
         mapContainerRef={map.mapContainerRef}
         weatherNotice={controls.weatherNotice}
@@ -138,6 +140,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
       />
       <RouteStopsPanel
         progress={progress}
+        stopForecasts={controls.weather?.stopForecasts}
         selectedStopKey={selectedStopKey}
         onFocusStop={handleFocusStop}
         onChangeStopStatus={onUpdateTrip ? handleChangeStopStatus : undefined}

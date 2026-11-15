@@ -92,10 +92,14 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
 
   const totalTrips = combinedTrips.length;
   const totalActivitiesCount = useMemo(() => {
-    return combinedTrips.reduce((acc, t) => acc + (t.days?.flatMap((d) => d.activities || []).length || 0), 0);
+    return combinedTrips.reduce(
+      (acc, t) =>
+        acc + (t.isSummary ? t.totalActivities || 0 : t.days?.flatMap((d) => d.activities || []).length || 0),
+      0,
+    );
   }, [combinedTrips]);
   const totalSchedulesCreated = useMemo(() => {
-    return combinedTrips.reduce((acc, t) => acc + (t.days?.length || 0), 0);
+    return combinedTrips.reduce((acc, t) => acc + (t.isSummary ? t.totalDays || 0 : t.days?.length || 0), 0);
   }, [combinedTrips]);
 
   // Chart data based on timeframe dynamically computed from real counts

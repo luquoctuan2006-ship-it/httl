@@ -64,25 +64,36 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
     return alerts;
   }
 
-  // 1. Quét rủi ro thời tiết từ thông tin khí tượng của chuyến đi
+  // 1. Quét rủi ro thời tiết từ thông tin khí tượng dọc tuyến của chuyến đi
   const weather = trip.weather;
+  const stopForecasts = weather?.stopForecasts || [];
+  const riskyStop = stopForecasts
+    .map((sf) => ({
+      sf,
+      prob: sf.rainProb ? Number.parseInt(sf.rainProb.replace(/\D/g, ''), 10) : 0,
+    }))
+    .filter(({ sf, prob }) => prob >= 40 || /mưa|dông|giông|bão/i.test(sf.description || ''))
+    .sort((a, b) => b.prob - a.prob)[0];
+
   const rainProbNum = weather?.rainProb ? Number.parseInt(weather.rainProb.replace(/\D/g, ''), 10) : 0;
-  
-  if (rainProbNum >= 40 || /mưa|dông|giông|bão/i.test(weather?.description || '')) {
-    // Tìm hoạt động ngoài trời hoặc di chuyển qua đèo trong ngày đang vận hành
+
+  if (riskyStop || rainProbNum >= 40 || /mưa|dông|giông|bão/i.test(weather?.description || '')) {
     const targetDay = trip.days.find((d) => d.dayIndex === trip.currentDay) || trip.days[0];
     const outdoorOrPassAct = targetDay?.activities?.find((a) =>
-      /đèo|sơn trà|biển|thuyền|bà nà|hải vân/i.test(`${a.title} ${a.location}`)
+      /đèo|sơn trà|biển|thuyền|bà nà|hải vân/i.test(`${a.title} ${a.location}`),
     ) || targetDay?.activities?.[0];
 
-    const alertLocation = outdoorOrPassAct ? outdoorOrPassAct.location : trip.destinationFull || 'Khu vực tour';
+    const alertLocation = riskyStop?.sf.stopName || outdoorOrPassAct?.location || trip.destinationFull || 'Khu vực tour';
+    const effectiveProbText = riskyStop?.sf.rainProb || weather.rainProb || 'cao';
+    const effectiveTimeText = riskyStop?.sf.rainProbTime || weather.rainProbTime || 'trong ngày';
+    const effectiveTemp = riskyStop ? riskyStop.sf.temp : weather.temp;
     const alertId = `alert-weather-${trip.id}-day-${trip.currentDay || 1}`;
-    
+
     alerts.push({
       id: alertId,
       title: `Dự báo mưa dông & đường trơn trượt tại ${alertLocation}`,
       timeAgo: 'Vừa cập nhật',
-      description: `Khả năng mưa đạt ${weather.rainProb} (${weather.rainProbTime || 'trong ngày'}), nhiệt độ ${weather.temp}°C. Nguy cơ trượt lở hoặc gián đoạn hoạt động ngoài trời. Cần dời lịch hoặc chuẩn bị phương án râm mát/trong nhà.`,
+      description: `Khả năng mưa đạt ${effectiveProbText} (${effectiveTimeText}), nhiệt độ ${effectiveTemp}°C. Nguy cơ trơn trượt hoặc gián đoạn hoạt động ngoài trời. Cần rà soát lịch trình hoặc chuẩn bị phương án dự phòng trong nhà.`,
       severity: 'warning',
       category: 'weather',
     });

@@ -143,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className={`px-4 py-3 sm:px-6 sm:py-4 lg:sticky lg:top-0 z-30 transition-colors backdrop-blur-md ${
+      className={`px-4 py-3 sm:px-6 sm:py-4 lg:sticky lg:top-0 z-30 transition-colors ${
         isAdminMode
           ? 'bg-slate-900/95 border-b border-slate-800 text-slate-200 shadow-md shadow-slate-950/40'
           : 'bg-white/95 border-b border-slate-200/90 text-slate-800'

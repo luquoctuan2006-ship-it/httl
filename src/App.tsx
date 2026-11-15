@@ -3,22 +3,45 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
-import { TripPlannerModal } from './components/modals/TripPlannerModal';
-import { AutoArrangeModal } from './components/modals/AutoArrangeModal';
-import { EditTripModal } from './components/modals/EditTripModal';
-import { AccountModal } from './components/modals/AccountModal';
-import { SyncConflictModal } from './components/modals/SyncConflictModal';
-import { AuthScreen } from './components/auth/AuthScreen';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { UserDashboard } from './components/dashboard/UserDashboard';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useRealtimeAlertScanner } from './hooks/useRealtimeAlertScanner';
 import { useTripActions } from './hooks/useTripActions';
 import { useTripPersistence } from './hooks/useTripPersistence';
 import type { Activity, TripData } from './types/travel';
+
+const AuthScreen = lazy(() =>
+  import('./components/auth/AuthScreen').then((m) => ({ default: m.AuthScreen })),
+);
+const AdminDashboard = lazy(() =>
+  import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })),
+);
+const UserDashboard = lazy(() =>
+  import('./components/dashboard/UserDashboard').then((m) => ({ default: m.UserDashboard })),
+);
+const TripPlannerModal = lazy(() =>
+  import('./components/modals/TripPlannerModal').then((m) => ({ default: m.TripPlannerModal })),
+);
+const AutoArrangeModal = lazy(() =>
+  import('./components/modals/AutoArrangeModal').then((m) => ({ default: m.AutoArrangeModal })),
+);
+const EditTripModal = lazy(() =>
+  import('./components/modals/EditTripModal').then((m) => ({ default: m.EditTripModal })),
+);
+const AccountModal = lazy(() =>
+  import('./components/modals/AccountModal').then((m) => ({ default: m.AccountModal })),
+);
+const SyncConflictModal = lazy(() =>
+  import('./components/modals/SyncConflictModal').then((m) => ({ default: m.SyncConflictModal })),
+);
+
+const FullPageLoadingFallback = ({ message = 'Đang tải giao diện...' }: { message?: string }) => (
+  <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm text-slate-300">
+    {message}
+  </div>
+);
 
 export default function App() {
   const { authUser, authUserId, authLoading, clearAuthUser, updateAuthUserName } = useAuthSession();
@@ -110,6 +133,7 @@ export default function App() {
     saveTripToFirestore: persistence.saveTripToFirestore,
     executeTripPut: persistence.executeTripPut,
     fetchServerTripSnapshot: persistence.fetchServerTripSnapshot,
+    ensureFullTrip: persistence.ensureFullTrip,
     performSignOutAndClearCache: persistence.performSignOutAndClearCache,
     setConflictState: persistence.setConflictState,
     saveQueueRef: persistence.saveQueueRef,
@@ -156,7 +180,11 @@ export default function App() {
   }
 
   if (!authUser) {
-    return <AuthScreen />;
+    return (
+      <Suspense fallback={<FullPageLoadingFallback message="Đang tải trang đăng nhập..." />}>
+        <AuthScreen />
+      </Suspense>
+    );
   }
 
   const sharedDashboardProps = {
@@ -221,73 +249,101 @@ export default function App() {
 
   return (
     <>
-      {authUser.role === 'admin' ? (
-        <AdminDashboard
-          {...sharedDashboardProps}
-          isAdminMode={isAdminMode}
-          handleSelectTab={handleSelectTab}
-          handleApplyGeneratedTrip={actions.handleApplyGeneratedTrip}
-        />
-      ) : (
-        <UserDashboard {...sharedDashboardProps} />
+      <Suspense fallback={<FullPageLoadingFallback message="Đang tải bảng điều phối..." />}>
+        {authUser.role === 'admin' ? (
+          <AdminDashboard
+            {...sharedDashboardProps}
+            isAdminMode={isAdminMode}
+            handleSelectTab={handleSelectTab}
+            handleApplyGeneratedTrip={actions.handleApplyGeneratedTrip}
+            onEnsureFullTrip={persistence.ensureFullTrip}
+          />
+        ) : (
+          <UserDashboard {...sharedDashboardProps} />
+        )}
+      </Suspense>
+
+      {persistence.hydratingTripId && (
+        <div
+          role="status"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-slate-900 text-teal-300 text-xs font-bold border border-teal-500/40 shadow-lg"
+        >
+          Đang tải chi tiết chuyến đi...
+        </div>
       )}
 
-      {/* Modal Lập lịch trình Đa năng */}
-      <TripPlannerModal
-        isOpen={isAIPlannerOpen}
-        onClose={() => setIsAIPlannerOpen(false)}
-        onApplyPlan={actions.handleApplyGeneratedTrip}
-        initialTab={plannerInitialTab}
-      />
+      {/* Modal Lập lịch trình Đa năng — chỉ mount khi mở */}
+      {isAIPlannerOpen && (
+        <Suspense fallback={null}>
+          <TripPlannerModal
+            isOpen={isAIPlannerOpen}
+            onClose={() => setIsAIPlannerOpen(false)}
+            onApplyPlan={actions.handleApplyGeneratedTrip}
+            initialTab={plannerInitialTab}
+          />
+        </Suspense>
+      )}
 
-      {/* Modal Tự động Xếp lịch & Cân bằng thời gian */}
+      {/* Modal Tự động Xếp lịch & Cân bằng thời gian — chỉ mount khi mở */}
       {isAutoArrangeOpen && persistence.trip && (
-        <AutoArrangeModal
-          isOpen={isAutoArrangeOpen}
-          onClose={() => setIsAutoArrangeOpen(false)}
-          currentDay={persistence.trip.days.find((d) => d.dayIndex === currentDayIndex) || persistence.trip.days[0]}
-          trip={persistence.trip}
-          onApplyDay={actions.handleApplyAutoArrangeDay}
-          onApplyTrip={actions.handleApplyAutoArrangeTrip}
-        />
+        <Suspense fallback={null}>
+          <AutoArrangeModal
+            isOpen={isAutoArrangeOpen}
+            onClose={() => setIsAutoArrangeOpen(false)}
+            currentDay={persistence.trip.days.find((d) => d.dayIndex === currentDayIndex) || persistence.trip.days[0]}
+            trip={persistence.trip}
+            onApplyDay={actions.handleApplyAutoArrangeDay}
+            onApplyTrip={actions.handleApplyAutoArrangeTrip}
+          />
+        </Suspense>
       )}
 
-      {/* Modal Chỉnh sửa thông tin chuyến đi */}
+      {/* Modal Chỉnh sửa thông tin chuyến đi — chỉ mount khi mở */}
       {isEditTripModalOpen && tripToEdit && (
-        <EditTripModal
-          isOpen={isEditTripModalOpen}
-          onClose={() => setIsEditTripModalOpen(false)}
-          trip={tripToEdit}
-          onSave={actions.handleSaveEditedTrip}
-        />
+        <Suspense fallback={null}>
+          <EditTripModal
+            isOpen={isEditTripModalOpen}
+            onClose={() => setIsEditTripModalOpen(false)}
+            trip={tripToEdit}
+            onSave={actions.handleSaveEditedTrip}
+          />
+        </Suspense>
       )}
 
-      {/* Modal Quản lý tài khoản */}
-      <AccountModal
-        isOpen={isAccountModalOpen}
-        onClose={() => setIsAccountModalOpen(false)}
-        authUser={authUser}
-        onProfileUpdated={updateAuthUserName}
-        onAccountDeleted={() => {
-          setIsAccountModalOpen(false);
-          void persistence.performSignOutAndClearCache(authUserId);
-        }}
-        onShowToast={(text, type) => showToast(text, type)}
-      />
+      {/* Modal Quản lý tài khoản — chỉ mount khi mở */}
+      {isAccountModalOpen && (
+        <Suspense fallback={null}>
+          <AccountModal
+            isOpen={isAccountModalOpen}
+            onClose={() => setIsAccountModalOpen(false)}
+            authUser={authUser}
+            onProfileUpdated={updateAuthUserName}
+            onAccountDeleted={() => {
+              setIsAccountModalOpen(false);
+              void persistence.performSignOutAndClearCache(authUserId);
+            }}
+            onShowToast={(text, type) => showToast(text, type)}
+          />
+        </Suspense>
+      )}
 
-      {/* Modal xử lý xung đột đồng bộ phiên bản (409) */}
-      <SyncConflictModal
-        localTrip={persistence.conflictState?.localTrip || null}
-        serverTrip={persistence.conflictState?.serverTrip || null}
-        isResolving={persistence.isResolvingConflict}
-        onKeepLocal={() => void persistence.handleKeepLocalConflict()}
-        onUseServer={persistence.handleUseServerConflict}
-        onDismiss={() => persistence.setConflictState(null)}
-      />
+      {/* Modal xử lý xung đột đồng bộ phiên bản (409) — chỉ mount khi có xung đột */}
+      {Boolean(persistence.conflictState) && (
+        <Suspense fallback={null}>
+          <SyncConflictModal
+            localTrip={persistence.conflictState?.localTrip || null}
+            serverTrip={persistence.conflictState?.serverTrip || null}
+            isResolving={persistence.isResolvingConflict}
+            onKeepLocal={() => void persistence.handleKeepLocalConflict()}
+            onUseServer={persistence.handleUseServerConflict}
+            onDismiss={() => persistence.setConflictState(null)}
+          />
+        </Suspense>
+      )}
 
       {/* Modal cảnh báo khi đăng xuất còn dữ liệu ngoại tuyến chưa đồng bộ */}
       {persistence.isLogoutConfirmOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full border border-rose-200 shadow-2xl overflow-hidden">
             <div className="px-5 py-4 bg-rose-600 text-white flex items-center gap-2.5">
               <AlertTriangle className="w-5 h-5 shrink-0" />
@@ -338,7 +394,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold transition-all duration-300 backdrop-blur-md bg-slate-900/95 text-white border-slate-700 animate-in fade-in slide-in-from-bottom-2"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold transition-all duration-300 bg-slate-900/95 text-white border-slate-700 animate-in fade-in slide-in-from-bottom-2"
         >
           <span
             className={`w-2.5 h-2.5 rounded-full shrink-0 ${

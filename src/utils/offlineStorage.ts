@@ -1,7 +1,14 @@
-import { normalizeTripData } from '../data/normalizeTripData';
+import { normalizeTripData, normalizeTripSummary } from '../data/normalizeTripData';
 import type { TripData } from '../types/travel';
 
 const STORAGE_PREFIX = 'voyager_offline_trips_v1_';
+
+function normalizeStoredTrip(raw: unknown): TripData {
+  if (raw && typeof raw === 'object' && (raw as { isSummary?: unknown }).isSummary === true) {
+    return normalizeTripSummary(raw);
+  }
+  return normalizeTripData(raw);
+}
 
 export interface OfflineTripCache {
   trips: TripData[];
@@ -37,7 +44,7 @@ export function loadOfflineTripsCache(uid: string, customStorage?: StorageLike):
     const raw = storage.getItem(getOfflineCacheKey(uid));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<OfflineTripCache>;
-    const trips = Array.isArray(parsed.trips) ? parsed.trips.map((t) => normalizeTripData(t)) : [];
+    const trips = Array.isArray(parsed.trips) ? parsed.trips.map((t) => normalizeStoredTrip(t)) : [];
     const activeTripId = typeof parsed.activeTripId === 'string' ? parsed.activeTripId : trips[0]?.id || null;
     const pendingSyncIds = Array.isArray(parsed.pendingSyncIds)
       ? parsed.pendingSyncIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
@@ -79,12 +86,30 @@ export function saveOfflineTripsCacheDetailed(
   const storage = resolveStorage(customStorage);
   if (!storage || !uid) return { cache: null, quotaExceeded: false };
 
-  const existingPending = pendingSyncIds ?? loadOfflineTripsCache(uid, storage)?.pendingSyncIds ?? [];
+  const existingCache = loadOfflineTripsCache(uid, storage);
+  const existingPending = pendingSyncIds ?? existingCache?.pendingSyncIds ?? [];
+  const existingFullById = new Map(
+    (existingCache?.trips || []).filter((t) => !t.isSummary).map((t) => [t.id, t]),
+  );
   const validTripIds = new Set(trips.map((t) => t.id));
   const cleanedPending = Array.from(new Set(existingPending.filter((id) => validTripIds.has(id))));
 
+  const nextTrips = trips.map((t) => {
+    const normalized = normalizeStoredTrip(t);
+    if (normalized.isSummary) {
+      const existingFull = existingFullById.get(normalized.id);
+      if (
+        existingFull &&
+        (typeof normalized.version !== 'number' || normalized.version === existingFull.version)
+      ) {
+        return existingFull;
+      }
+    }
+    return normalized;
+  });
+
   const payload: OfflineTripCache = {
-    trips: trips.map((t) => normalizeTripData(t)),
+    trips: nextTrips,
     activeTripId,
     cachedAt: new Date().toISOString(),
     pendingSyncIds: cleanedPending,
@@ -114,7 +139,7 @@ export function markTripPendingOfflineSyncDetailed(
   customStorage?: StorageLike,
 ): SaveOfflineCacheResult {
   const storage = resolveStorage(customStorage);
-  if (!storage || !uid) return { cache: null, quotaExceeded: false };
+  if (!storage || !uid || trip.isSummary) return { cache: null, quotaExceeded: false };
 
   const current = loadOfflineTripsCache(uid, storage);
   const normalized = normalizeTripData(trip);

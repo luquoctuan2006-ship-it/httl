@@ -104,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="px-3 pt-4 shrink-0">
-        <div className={`rounded-xl border px-3 py-2 text-center ${isAdmin ? 'border-slate-700 bg-slate-900/80' : 'border-sky-300/30 bg-white/8 backdrop-blur-sm'}`}>
+        <div className={`rounded-xl border px-3 py-2 text-center ${isAdmin ? 'border-slate-700 bg-slate-900/80' : 'border-sky-300/30 bg-white/10'}`}>
           <div className={`text-[10px] font-bold uppercase tracking-[0.2em] ${isAdmin ? 'text-slate-400' : 'text-sky-200/90'}`}>Vai trò</div>
           <div className="mt-1 text-sm font-bold text-white">{userRole === 'admin' ? 'Admin' : 'User'}</div>
         </div>
@@ -249,7 +249,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             aria-label="Đóng menu"
             onClick={onCloseMobile}
-            className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs"
+            className="fixed inset-0 bg-slate-950/65"
           />
           <aside className={`relative z-10 w-72 max-w-[85vw] h-[100dvh] ${asideBg} flex flex-col shadow-2xl select-none`}>
             {renderSidebarBody(true)}

@@ -12,13 +12,22 @@ import {
   MAX_TRIP_DOC_BYTES,
 } from '../../utils/tripRepository';
 import { detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';
+import { buildRouteProgress } from '../../utils/routeProgress';
+import {
+  buildBatchOpenMeteoUrl,
+  buildTripWeatherFromOpenMeteo,
+  type RouteWeatherTarget,
+} from '../../utils/weatherParser';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 
 interface TripManagementRouteDependencies {
   requireAuth: RequestHandler;
   requireFirestore: () => Firestore;
-  listTripsForUser: (user: DecodedIdToken, options?: { limit?: number; startAfterId?: string }) => Promise<{ trips: TripData[]; hasMore: boolean; nextCursor: string | null }>;
+  listTripsForUser: (
+    user: DecodedIdToken,
+    options?: { limit?: number; startAfterId?: string; summaryOnly?: boolean },
+  ) => Promise<{ trips: TripData[]; hasMore: boolean; nextCursor: string | null }>;
   loadUserTrips: (user: DecodedIdToken) => Promise<TripData[]>;
   getTripById: (tripId: string) => Promise<TripData | null>;
   createTripDoc: (trip: TripData) => Promise<void>;
@@ -52,7 +61,22 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       const startAfterId = typeof req.query.startAfter === 'string' && TRIP_ID_PATTERN.test(req.query.startAfter)
         ? req.query.startAfter
         : undefined;
-  
+      const isSummaryMode = req.query.mode === 'summary';
+
+      if (isSummaryMode) {
+        const { trips: summaryTrips, hasMore, nextCursor } = await listTripsForUser(req.authUser!, {
+          limit,
+          startAfterId,
+          summaryOnly: true,
+        });
+        const firstId = summaryTrips[0]?.id;
+        const activeTrip = firstId ? await getTripById(firstId) : null;
+        const trips = activeTrip
+          ? summaryTrips.map((item) => (item.id === activeTrip.id ? activeTrip : item))
+          : summaryTrips;
+        return res.json({ success: true, activeTrip: activeTrip || trips[0] || null, trips, hasMore, nextCursor });
+      }
+
       const { trips, hasMore, nextCursor } = await listTripsForUser(req.authUser!, { limit, startAfterId });
       return res.json({ success: true, activeTrip: trips[0] || null, trips, hasMore, nextCursor });
     } catch (error) {
@@ -382,54 +406,57 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
     }
   });
   
-  async function fetchRealtimeWeather(lat: number, lng: number): Promise<TripData['weather'] | null> {
+  function collectRouteWeatherTargets(trip: TripData): RouteWeatherTarget[] {
+    const progress = buildRouteProgress(trip, 'all');
+    const locatedStops = progress.stops.filter(
+      (s): s is typeof s & { lat: number; lng: number } =>
+        s.hasCoordinates && s.lat !== null && s.lng !== null,
+    );
+    // Prioritize current/upcoming stops first so primary summary reflects current route segment, plus other stops
+    const currentIndex = progress.currentStop
+      ? locatedStops.findIndex((s) => s.id === progress.currentStop?.id && s.order === progress.currentStop?.order)
+      : 0;
+    const orderedStops =
+      currentIndex > 0
+        ? [...locatedStops.slice(currentIndex), ...locatedStops.slice(0, currentIndex)]
+        : locatedStops;
+
+    const seenCoords = new Set<string>();
+    const targets: RouteWeatherTarget[] = [];
+    for (const stop of orderedStops) {
+      const key = `${stop.lat.toFixed(3)},${stop.lng.toFixed(3)}`;
+      if (seenCoords.has(key)) continue;
+      seenCoords.add(key);
+      targets.push({
+        stopId: stop.id,
+        stopName: stop.name,
+        lat: stop.lat,
+        lng: stop.lng,
+      });
+      if (targets.length >= 10) break;
+    }
+    return targets;
+  }
+
+  async function fetchRealtimeWeatherAlongRoute(trip: TripData): Promise<TripData['weather'] | null> {
+    const targets = collectRouteWeatherTargets(trip);
+    if (targets.length === 0) return null;
+
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3500);
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&hourly=precipitation_probability&timezone=Asia%2FBangkok&forecast_days=1`;
+      const timer = setTimeout(() => controller.abort(), 4500);
+      const url = buildBatchOpenMeteoUrl(targets);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       if (!res.ok) return null;
-      const data = (await res.json()) as Record<string, unknown>;
-      const current = (data?.current && typeof data.current === 'object' ? data.current : {}) as Record<string, unknown>;
-      const temp = Math.round(Number(current.temperature_2m) || 28);
-      const code = Number(current.weather_code ?? 0);
-      let description = 'Nắng ấm';
-      if (code >= 95) description = 'Dông bão mạnh';
-      else if (code >= 80) description = 'Mưa rào nặng hạt';
-      else if (code >= 61) description = 'Mưa rào rải rác';
-      else if (code >= 51) description = 'Mưa phùn nhẹ';
-      else if (code >= 3) description = 'Trời nhiều mây';
-      else if (code >= 1) description = 'Nắng ráo có mây';
-  
-      const hourly = (data?.hourly && typeof data.hourly === 'object' ? data.hourly : {}) as Record<string, unknown>;
-      const hourlyProb = Array.isArray(hourly.precipitation_probability) ? (hourly.precipitation_probability as number[]) : [];
-      const maxProb = hourlyProb.length > 0 ? Math.max(...hourlyProb) : 10;
-      const peakHourIdx = hourlyProb.indexOf(maxProb);
-      const rainProbTime = peakHourIdx >= 0 ? `${peakHourIdx.toString().padStart(2, '0')}:00` : '14:00';
-      const humidity = Number.isFinite(Number(current.relative_humidity_2m))
-        ? Math.round(Number(current.relative_humidity_2m))
-        : undefined;
-      const windSpeed = Number.isFinite(Number(current.wind_speed_10m))
-        ? `${Math.round(Number(current.wind_speed_10m))} km/h`
-        : undefined;
-  
-      return {
-        temp,
-        description,
-        rainProb: `${maxProb}%`,
-        rainProbTime,
-        ...(humidity !== undefined ? { humidity } : {}),
-        ...(windSpeed ? { windSpeed } : {}),
-        isLive: true,
-        lastFetched: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      };
+      const payload = (await res.json()) as unknown;
+      return buildTripWeatherFromOpenMeteo(payload, targets);
     } catch (err) {
-      console.warn('[Weather API] Không thể lấy thời tiết trực tuyến, sử dụng dữ liệu chuyến đi:', err);
+      console.warn('[Weather API] Không thể lấy thời tiết trực tuyến dọc tuyến:', err);
       return null;
     }
   }
-  
+
   // Tự động quét và phát hiện cảnh báo vận hành & thời tiết thực tế cho chuyến đi (atomic transaction + version)
   app.post('/api/trips/:tripId/scan-alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
@@ -437,35 +464,16 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       const existing = tripId === 'active'
         ? (await loadUserTrips(req.authUser!))[0]
         : await getTripById(tripId);
-  
+
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
-  
+
       if (!canAccessTrip(existing, req.authUser)) {
         return res.status(403).json({ success: false, error: 'Không có quyền truy cập chuyến đi này' });
       }
-  
-      // Ưu tiên tọa độ GPS thực tế trên xe nếu có, sau đó tới tọa độ hoạt động hoặc waypoint
-      let lat = 16.0544;
-      let lng = 108.2022;
-      const currentDaySchedule = existing.days?.find((d) => d.dayIndex === existing.currentDay);
-      const actWithCoords = currentDaySchedule?.activities?.find((a) => a.coordinates?.lat && a.coordinates?.lng)
-        || existing.days?.flatMap((d) => d.activities || []).find((a) => a.coordinates?.lat && a.coordinates?.lng);
-      const wpWithCoords = existing.waypoints?.find((w) => typeof w.lat === 'number' && typeof w.lng === 'number');
-  
-      if (typeof existing.telematics?.currentLat === 'number' && typeof existing.telematics?.currentLng === 'number') {
-        lat = existing.telematics.currentLat;
-        lng = existing.telematics.currentLng;
-      } else if (actWithCoords?.coordinates) {
-        lat = actWithCoords.coordinates.lat;
-        lng = actWithCoords.coordinates.lng;
-      } else if (wpWithCoords) {
-        lat = wpWithCoords.lat;
-        lng = wpWithCoords.lng;
-      }
-  
-      const liveWeather = await fetchRealtimeWeather(lat, lng);
+
+      const liveWeather = await fetchRealtimeWeatherAlongRoute(existing);
       const db = requireFirestore();
       const tripRef = db.collection('trips').doc(existing.id);
   

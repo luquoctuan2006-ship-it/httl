@@ -1,21 +1,44 @@
-import React, { useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { MetricCards } from "./MetricCards";
-import { LiveRouteMap } from "./LiveRouteMap";
 import { OperationsPanel } from "./OperationsPanel";
 import { TimelineSchedule } from "./TimelineSchedule";
-import { AIOptimizeModal } from "../modals/AIOptimizeModal";
-import { AddActivityModal } from "../modals/AddActivityModal";
-import { AlertsListModal } from "../modals/AlertsListModal";
-import { ActivityDetailModal } from "../modals/ActivityDetailModal";
-import { TripsListView } from "../trips/TripsListView";
-import { MembersView } from "../trips/MembersView";
-import { BudgetView } from "../trips/BudgetView";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
 import { Calendar, Clock, Compass, RotateCcw } from "lucide-react";
+
+const LiveRouteMap = lazy(() =>
+  import("./LiveRouteMap").then((m) => ({ default: m.LiveRouteMap })),
+);
+const TripsListView = lazy(() =>
+  import("../trips/TripsListView").then((m) => ({ default: m.TripsListView })),
+);
+const MembersView = lazy(() =>
+  import("../trips/MembersView").then((m) => ({ default: m.MembersView })),
+);
+const BudgetView = lazy(() =>
+  import("../trips/BudgetView").then((m) => ({ default: m.BudgetView })),
+);
+const AIOptimizeModal = lazy(() =>
+  import("../modals/AIOptimizeModal").then((m) => ({ default: m.AIOptimizeModal })),
+);
+const AddActivityModal = lazy(() =>
+  import("../modals/AddActivityModal").then((m) => ({ default: m.AddActivityModal })),
+);
+const AlertsListModal = lazy(() =>
+  import("../modals/AlertsListModal").then((m) => ({ default: m.AlertsListModal })),
+);
+const ActivityDetailModal = lazy(() =>
+  import("../modals/ActivityDetailModal").then((m) => ({ default: m.ActivityDetailModal })),
+);
+
+const TabLoadingFallback = ({ label = "Đang tải giao diện..." }: { label?: string }) => (
+  <div className="rounded-3xl bg-white border border-slate-200 p-10 text-center text-xs font-semibold text-slate-500 shadow-2xs">
+    {label}
+  </div>
+);
 
 export function UserDashboard({
   trip,
@@ -267,18 +290,20 @@ export function UserDashboard({
                 Đang tải dữ liệu chuyến đi của bạn...
               </div>
             ) : currentTab === 'trips' ? (
-              <TripsListView
-                trips={trips}
-                currentTrip={trip}
-                onSelectTrip={onSelectTrip}
-                onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                onEditTrip={onOpenEditTripModal}
-                onDeleteTrip={onDeleteTrip}
-                onCloneTrip={onCloneTrip}
-                readOnly={false}
-                searchQuery={searchQuery}
-                onClearSearch={() => setSearchQuery('')}
-              />
+              <Suspense fallback={<TabLoadingFallback label="Đang tải danh sách chuyến đi..." />}>
+                <TripsListView
+                  trips={trips}
+                  currentTrip={trip}
+                  onSelectTrip={onSelectTrip}
+                  onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                  onEditTrip={onOpenEditTripModal}
+                  onDeleteTrip={onDeleteTrip}
+                  onCloneTrip={onCloneTrip}
+                  readOnly={false}
+                  searchQuery={searchQuery}
+                  onClearSearch={() => setSearchQuery('')}
+                />
+              </Suspense>
             ) : !trip ? (
               renderEmptyState()
             ) : (
@@ -370,13 +395,15 @@ export function UserDashboard({
                     {/* Operations Panel and Live Route Map */}
                     <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start min-w-0">
                       <div className="xl:col-span-8 min-w-0">
-                        <LiveRouteMap
-                          trip={trip}
-                          onSelectWaypoint={onSelectWaypoint}
-                          onUpdateTrip={handleUpdateTrip}
-                          searchQuery={searchQuery}
-                          onClearSearch={() => setSearchQuery('')}
-                        />
+                        <Suspense fallback={<TabLoadingFallback label="Đang tải bản đồ tuyến đường..." />}>
+                          <LiveRouteMap
+                            trip={trip}
+                            onSelectWaypoint={onSelectWaypoint}
+                            onUpdateTrip={handleUpdateTrip}
+                            searchQuery={searchQuery}
+                            onClearSearch={() => setSearchQuery('')}
+                          />
+                        </Suspense>
                       </div>
 
                       <div className="xl:col-span-4 min-w-0 space-y-4">
@@ -484,36 +511,42 @@ export function UserDashboard({
 
                 {currentTab === 'map' && (
                   <div className="w-full min-w-0">
-                    <LiveRouteMap
-                      trip={trip}
-                      onSelectWaypoint={onSelectWaypoint}
-                      onUpdateTrip={handleUpdateTrip}
-                      searchQuery={searchQuery}
-                      onClearSearch={() => setSearchQuery('')}
-                    />
+                    <Suspense fallback={<TabLoadingFallback label="Đang tải bản đồ tuyến đường..." />}>
+                      <LiveRouteMap
+                        trip={trip}
+                        onSelectWaypoint={onSelectWaypoint}
+                        onUpdateTrip={handleUpdateTrip}
+                        searchQuery={searchQuery}
+                        onClearSearch={() => setSearchQuery('')}
+                      />
+                    </Suspense>
                   </div>
                 )}
 
                 {currentTab === 'members' && (
                   <div className="w-full min-w-0">
-                    <MembersView
-                      members={trip.members}
-                      onToggleStatus={handleToggleMemberAttendance}
-                      onUpdateMembers={handleUpdateMembers}
-                      searchQuery={searchQuery}
-                      onClearSearch={() => setSearchQuery('')}
-                    />
+                    <Suspense fallback={<TabLoadingFallback label="Đang tải danh sách thành viên..." />}>
+                      <MembersView
+                        members={trip.members}
+                        onToggleStatus={handleToggleMemberAttendance}
+                        onUpdateMembers={handleUpdateMembers}
+                        searchQuery={searchQuery}
+                        onClearSearch={() => setSearchQuery('')}
+                      />
+                    </Suspense>
                   </div>
                 )}
 
                 {currentTab === 'budget' && (
                   <div className="w-full min-w-0">
-                    <BudgetView
-                      trip={trip}
-                      onUpdateTripBudget={handleUpdateTripBudget}
-                      searchQuery={searchQuery}
-                      onClearSearch={() => setSearchQuery('')}
-                    />
+                    <Suspense fallback={<TabLoadingFallback label="Đang tải quản lý ngân sách..." />}>
+                      <BudgetView
+                        trip={trip}
+                        onUpdateTripBudget={handleUpdateTripBudget}
+                        searchQuery={searchQuery}
+                        onClearSearch={() => setSearchQuery('')}
+                      />
+                    </Suspense>
                   </div>
                 )}
               </>
@@ -521,8 +554,8 @@ export function UserDashboard({
           </main>
         </div>
 
-        {trip && (
-          <>
+        {trip && isAIOptimizeOpen && (
+          <Suspense fallback={null}>
             <AIOptimizeModal
               isOpen={isAIOptimizeOpen}
               onClose={() => setIsAIOptimizeOpen(false)}
@@ -532,6 +565,10 @@ export function UserDashboard({
               onUndo={onUndo}
               canUndo={canUndo}
             />
+          </Suspense>
+        )}
+        {trip && isAddActivityOpen && (
+          <Suspense fallback={null}>
             <AddActivityModal
               isOpen={isAddActivityOpen}
               onClose={() => setIsAddActivityOpen(false)}
@@ -540,6 +577,10 @@ export function UserDashboard({
               defaultLocation={trip.destinationFull}
               onAdd={handleAddActivity}
             />
+          </Suspense>
+        )}
+        {trip && isAlertsModalOpen && (
+          <Suspense fallback={null}>
             <AlertsListModal
               isOpen={isAlertsModalOpen}
               onClose={() => setIsAlertsModalOpen(false)}
@@ -556,16 +597,20 @@ export function UserDashboard({
               onScanAlerts={onScanAlerts}
               isScanningAlerts={isScanningAlerts}
             />
-          </>
+          </Suspense>
         )}
-        <ActivityDetailModal
-          activity={selectedActivity}
-          onClose={() => setSelectedActivity(null)}
-          onUpdateStatus={handleUpdateActivityStatus}
-          onDeleteActivity={handleDeleteActivity}
-          onEditActivity={handleEditActivity}
-          canEdit
-        />
+        {selectedActivity && (
+          <Suspense fallback={null}>
+            <ActivityDetailModal
+              activity={selectedActivity}
+              onClose={() => setSelectedActivity(null)}
+              onUpdateStatus={handleUpdateActivityStatus}
+              onDeleteActivity={handleDeleteActivity}
+              onEditActivity={handleEditActivity}
+              canEdit
+            />
+          </Suspense>
+        )}
       </div>
     </div>
   );

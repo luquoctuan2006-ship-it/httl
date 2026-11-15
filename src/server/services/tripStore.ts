@@ -1,10 +1,44 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { normalizeTripData } from '../../data/normalizeTripData';
+import { FieldValue, type Firestore, type Query } from 'firebase-admin/firestore';
+import { normalizeTripData, normalizeTripSummary } from '../../data/normalizeTripData';
 import type { TripData } from '../../types/travel';
 import { isAdminUser } from '../../utils/tripRepository';
 
 export const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+const TRIP_SUMMARY_FIELDS = [
+  'id',
+  'ownerId',
+  'code',
+  'title',
+  'status',
+  'dates',
+  'origin',
+  'originFull',
+  'destination',
+  'destinationFull',
+  'destinationsCount',
+  'totalKm',
+  'vehicle',
+  'currentDay',
+  'totalDays',
+  'totalActivities',
+  'confirmedActivities',
+  'pendingActivities',
+  'budgetTotal',
+  'budgetUsed',
+  'budgetRemaining',
+  'budgetUsedPercent',
+  'membersOnline',
+  'membersTotal',
+  'membersStatus',
+  'version',
+  'updatedAt',
+  'telematics.driver',
+  'telematics.vehicleType',
+  'telematics.from',
+  'telematics.to',
+];
 
 export function createTripStore(requireFirestore: () => Firestore) {
   async function getTripById(tripId: string): Promise<TripData | null> {
@@ -15,9 +49,11 @@ export function createTripStore(requireFirestore: () => Firestore) {
 
   async function listTripsForUser(
     user: DecodedIdToken,
-    options: { limit?: number; startAfterId?: string } = {},
+    options: { limit?: number; startAfterId?: string; summaryOnly?: boolean } = {},
   ): Promise<{ trips: TripData[]; hasMore: boolean; nextCursor: string | null }> {
-    const isValid = (t: TripData) => typeof t.id === 'string' && Array.isArray(t.days);
+    const summaryOnly = Boolean(options.summaryOnly);
+    const isValidFull = (t: TripData) => typeof t.id === 'string' && Array.isArray(t.days);
+    const isValidSummary = (t: TripData) => typeof t.id === 'string' && t.id.length > 0;
     const db = requireFirestore();
     const safeLimit = Math.min(Math.max(1, options.limit || 50), 200);
 
@@ -33,14 +69,22 @@ export function createTripStore(requireFirestore: () => Firestore) {
       }
     }
 
+    const applySelect = (q: Query): Query => {
+      if (summaryOnly && typeof q.select === 'function') {
+        return q.select(...TRIP_SUMMARY_FIELDS);
+      }
+      return q;
+    };
+
     let docs;
     try {
-      const snapshot = await query.limit(safeLimit + 1).get();
+      const snapshot = await applySelect(query).limit(safeLimit + 1).get();
       docs = snapshot.docs;
     } catch {
-      const fallbackSnap = isAdminUser(user)
-        ? await col.limit(safeLimit + 1).get()
-        : await col.where('ownerId', '==', user.uid).limit(safeLimit + 1).get();
+      const fallbackBase = isAdminUser(user)
+        ? col.limit(safeLimit + 1)
+        : col.where('ownerId', '==', user.uid).limit(safeLimit + 1);
+      const fallbackSnap = await applySelect(fallbackBase).get();
       docs = [...fallbackSnap.docs].sort((a, b) => b.updateTime.toMillis() - a.updateTime.toMillis());
     }
 
@@ -52,8 +96,8 @@ export function createTripStore(requireFirestore: () => Firestore) {
 
     const trips = pageDocs
       .filter((d) => d.id !== 'active')
-      .map((d) => normalizeTripData(d.data()))
-      .filter(isValid);
+      .map((d) => (summaryOnly ? normalizeTripSummary(d.data(), d.id) : normalizeTripData(d.data())))
+      .filter(summaryOnly ? isValidSummary : isValidFull);
 
     const lastDoc = pageDocs[pageDocs.length - 1];
     return {

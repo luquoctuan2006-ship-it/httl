@@ -1,30 +1,65 @@
-import React, { useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { Sidebar } from "../dashboard/Sidebar";
 import { Header } from "../dashboard/Header";
 import { MetricCards } from "../dashboard/MetricCards";
-import { LiveRouteMap } from "../dashboard/LiveRouteMap";
 import { OperationsPanel } from "../dashboard/OperationsPanel";
 import { TimelineSchedule } from "../dashboard/TimelineSchedule";
-import { AIOptimizeModal } from "../modals/AIOptimizeModal";
-import { AddActivityModal } from "../modals/AddActivityModal";
-import { AlertsListModal } from "../modals/AlertsListModal";
-import { ActivityDetailModal } from "../modals/ActivityDetailModal";
-import { TripsListView } from "../trips/TripsListView";
-import { MembersView } from "../trips/MembersView";
-import { BudgetView } from "../trips/BudgetView";
 import { OfflineIndicator } from "../dashboard/OfflineIndicator";
-import {
-  AdminDashboardView,
-  AdminUsersManagementView,
-  AdminPlanningDataView,
-  AdminDispatchRulesView,
-  AdminAIManagementView,
-  AdminScheduleMonitoringView,
-  AdminSystemManagementView,
-} from "./AdminManagementViews";
 import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
 import { Compass } from "lucide-react";
+
+const LiveRouteMap = lazy(() =>
+  import("../dashboard/LiveRouteMap").then((m) => ({ default: m.LiveRouteMap })),
+);
+const TripsListView = lazy(() =>
+  import("../trips/TripsListView").then((m) => ({ default: m.TripsListView })),
+);
+const MembersView = lazy(() =>
+  import("../trips/MembersView").then((m) => ({ default: m.MembersView })),
+);
+const BudgetView = lazy(() =>
+  import("../trips/BudgetView").then((m) => ({ default: m.BudgetView })),
+);
+const AIOptimizeModal = lazy(() =>
+  import("../modals/AIOptimizeModal").then((m) => ({ default: m.AIOptimizeModal })),
+);
+const AddActivityModal = lazy(() =>
+  import("../modals/AddActivityModal").then((m) => ({ default: m.AddActivityModal })),
+);
+const AlertsListModal = lazy(() =>
+  import("../modals/AlertsListModal").then((m) => ({ default: m.AlertsListModal })),
+);
+const ActivityDetailModal = lazy(() =>
+  import("../modals/ActivityDetailModal").then((m) => ({ default: m.ActivityDetailModal })),
+);
+const AdminDashboardView = lazy(() =>
+  import("./AdminDashboardView").then((m) => ({ default: m.AdminDashboardView })),
+);
+const AdminUsersManagementView = lazy(() =>
+  import("./AdminUsersManagementView").then((m) => ({ default: m.AdminUsersManagementView })),
+);
+const AdminPlanningDataView = lazy(() =>
+  import("./AdminPlanningDataView").then((m) => ({ default: m.AdminPlanningDataView })),
+);
+const AdminDispatchRulesView = lazy(() =>
+  import("./AdminDispatchRulesView").then((m) => ({ default: m.AdminDispatchRulesView })),
+);
+const AdminAIManagementView = lazy(() =>
+  import("./AdminAIManagementView").then((m) => ({ default: m.AdminAIManagementView })),
+);
+const AdminScheduleMonitoringView = lazy(() =>
+  import("./AdminScheduleMonitoringView").then((m) => ({ default: m.AdminScheduleMonitoringView })),
+);
+const AdminSystemManagementView = lazy(() =>
+  import("./AdminSystemManagementView").then((m) => ({ default: m.AdminSystemManagementView })),
+);
+
+const AdminPanelFallback = ({ label = "Đang tải phân hệ..." }: { label?: string }) => (
+  <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-10 text-center text-xs font-semibold text-slate-400">
+    {label}
+  </div>
+);
 
 export function AdminDashboard({
   trip,
@@ -87,6 +122,7 @@ export function AdminDashboard({
   onOpenAIOptimize,
   onOpenAutoArrange,
   onOpenTraditionalPlanner: _onOpenTraditionalPlanner,
+  onEnsureFullTrip,
 }: {
   trip: TripData | null;
   trips: TripData[];
@@ -148,6 +184,7 @@ export function AdminDashboard({
   onOpenAIOptimize?: () => void;
   onOpenAutoArrange?: () => void;
   onOpenTraditionalPlanner?: () => void;
+  onEnsureFullTrip?: (tripId: string) => Promise<TripData | null>;
 }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -226,8 +263,16 @@ export function AdminDashboard({
             </div>
           )}
 
-          {currentTab === 'users' && <AdminUsersManagementView />}
-          {currentTab === 'rules' && <AdminDispatchRulesView />}
+          {currentTab === 'users' && (
+            <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý người dùng..." />}>
+              <AdminUsersManagementView />
+            </Suspense>
+          )}
+          {currentTab === 'rules' && (
+            <Suspense fallback={<AdminPanelFallback label="Đang tải quy tắc điều phối..." />}>
+              <AdminDispatchRulesView />
+            </Suspense>
+          )}
 
           {!tripsLoaded && !['users', 'rules'].includes(currentTab) ? (
             <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-12 text-center text-sm text-slate-400">
@@ -237,22 +282,49 @@ export function AdminDashboard({
             <>
               {currentTab === 'dashboard' && isAdminMode && (
                 trip ? (
-                  <AdminDashboardView
-                    trip={trip}
-                    trips={trips}
-                    firebaseStatus={firebaseStatus}
-                    onNavigate={handleSelectTab}
-                    onOpenAIPlanner={() => setIsAIPlannerOpen(true)}
-                    onOpenAIOptimize={() => setIsAIOptimizeOpen(true)}
-                  />
+                  <Suspense fallback={<AdminPanelFallback label="Đang tải tổng quan quản trị..." />}>
+                    <AdminDashboardView
+                      trip={trip}
+                      trips={trips}
+                      firebaseStatus={firebaseStatus}
+                      onNavigate={handleSelectTab}
+                      onOpenAIPlanner={() => setIsAIPlannerOpen(true)}
+                      onOpenAIOptimize={() => setIsAIOptimizeOpen(true)}
+                    />
+                  </Suspense>
                 ) : emptyTripNotice
               )}
 
-              {currentTab === 'planning' && (trip ? <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} /> : emptyTripNotice)}
-              {currentTab === 'ai' && (trip ? <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} /> : emptyTripNotice)}
-              {currentTab === 'monitoring' && (trip ? <AdminScheduleMonitoringView trip={trip} trips={trips} onUpdateTrip={handleUpdateTrip} /> : emptyTripNotice)}
-              {currentTab === 'system' && (trip ? <AdminSystemManagementView trip={trip} /> : emptyTripNotice)}
-              {currentTab === 'locations' && (trip ? <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} /> : emptyTripNotice)}
+              {currentTab === 'planning' && (trip ? (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải dữ liệu địa điểm..." />}>
+                  <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />
+                </Suspense>
+              ) : emptyTripNotice)}
+              {currentTab === 'ai' && (trip ? (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý AI..." />}>
+                  <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} />
+                </Suspense>
+              ) : emptyTripNotice)}
+              {currentTab === 'monitoring' && (trip ? (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải giám sát lịch trình..." />}>
+                  <AdminScheduleMonitoringView
+                    trip={trip}
+                    trips={trips}
+                    onUpdateTrip={handleUpdateTrip}
+                    onEnsureFullTrip={onEnsureFullTrip}
+                  />
+                </Suspense>
+              ) : emptyTripNotice)}
+              {currentTab === 'system' && (trip ? (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải cấu hình hệ thống..." />}>
+                  <AdminSystemManagementView trip={trip} />
+                </Suspense>
+              ) : emptyTripNotice)}
+              {currentTab === 'locations' && (trip ? (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải danh mục địa điểm..." />}>
+                  <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />
+                </Suspense>
+              ) : emptyTripNotice)}
 
               {currentTab === 'dashboard' && !isAdminMode && (
                 trip ? (
@@ -266,13 +338,15 @@ export function AdminDashboard({
 
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                       <div className="lg:col-span-8">
-                        <LiveRouteMap
-                          trip={trip}
-                          onSelectWaypoint={onSelectWaypoint}
-                          onUpdateTrip={handleUpdateTrip}
-                          searchQuery={searchQuery}
-                          onClearSearch={() => setSearchQuery('')}
-                        />
+                        <Suspense fallback={<AdminPanelFallback label="Đang tải bản đồ tuyến đường..." />}>
+                          <LiveRouteMap
+                            trip={trip}
+                            onSelectWaypoint={onSelectWaypoint}
+                            onUpdateTrip={handleUpdateTrip}
+                            searchQuery={searchQuery}
+                            onClearSearch={() => setSearchQuery('')}
+                          />
+                        </Suspense>
                       </div>
 
                       <div className="lg:col-span-4">
@@ -309,17 +383,19 @@ export function AdminDashboard({
               )}
 
               {currentTab === 'trips' && (
-                <TripsListView
-                  trips={trips}
-                  currentTrip={trip}
-                  onSelectTrip={onSelectTrip}
-                  onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                  onEditTrip={onOpenEditTripModal}
-                  onDeleteTrip={onDeleteTrip}
-                  onCloneTrip={onCloneTrip}
-                  searchQuery={searchQuery}
-                  onClearSearch={() => setSearchQuery('')}
-                />
+                <Suspense fallback={<AdminPanelFallback label="Đang tải danh sách chuyến đi..." />}>
+                  <TripsListView
+                    trips={trips}
+                    currentTrip={trip}
+                    onSelectTrip={onSelectTrip}
+                    onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                    onEditTrip={onOpenEditTripModal}
+                    onDeleteTrip={onDeleteTrip}
+                    onCloneTrip={onCloneTrip}
+                    searchQuery={searchQuery}
+                    onClearSearch={() => setSearchQuery('')}
+                  />
+                </Suspense>
               )}
 
               {currentTab === 'schedule' && (
@@ -382,37 +458,43 @@ export function AdminDashboard({
                         Hiển thị thứ tự điểm tham quan, khoảng cách và thời gian di chuyển dự kiến trên cung đường {trip.originFull} - {trip.destinationFull}
                       </p>
                     </div>
-                    <LiveRouteMap
-                      trip={trip}
-                      onSelectWaypoint={onSelectWaypoint}
-                      onUpdateTrip={handleUpdateTrip}
-                      searchQuery={searchQuery}
-                      onClearSearch={() => setSearchQuery('')}
-                    />
+                    <Suspense fallback={<AdminPanelFallback label="Đang tải bản đồ tuyến đường..." />}>
+                      <LiveRouteMap
+                        trip={trip}
+                        onSelectWaypoint={onSelectWaypoint}
+                        onUpdateTrip={handleUpdateTrip}
+                        searchQuery={searchQuery}
+                        onClearSearch={() => setSearchQuery('')}
+                      />
+                    </Suspense>
                   </div>
                 ) : emptyTripNotice
               )}
 
               {currentTab === 'members' && (
                 trip ? (
-                  <MembersView
-                    members={trip.members}
-                    onToggleStatus={handleToggleMemberAttendance}
-                    onUpdateMembers={handleUpdateMembers}
-                    searchQuery={searchQuery}
-                    onClearSearch={() => setSearchQuery('')}
-                  />
+                  <Suspense fallback={<AdminPanelFallback label="Đang tải danh sách thành viên..." />}>
+                    <MembersView
+                      members={trip.members}
+                      onToggleStatus={handleToggleMemberAttendance}
+                      onUpdateMembers={handleUpdateMembers}
+                      searchQuery={searchQuery}
+                      onClearSearch={() => setSearchQuery('')}
+                    />
+                  </Suspense>
                 ) : emptyTripNotice
               )}
 
               {currentTab === 'budget' && (
                 trip ? (
-                  <BudgetView
-                    trip={trip}
-                    onUpdateTripBudget={handleUpdateTripBudget}
-                    searchQuery={searchQuery}
-                    onClearSearch={() => setSearchQuery('')}
-                  />
+                  <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý ngân sách..." />}>
+                    <BudgetView
+                      trip={trip}
+                      onUpdateTripBudget={handleUpdateTripBudget}
+                      searchQuery={searchQuery}
+                      onClearSearch={() => setSearchQuery('')}
+                    />
+                  </Suspense>
                 ) : emptyTripNotice
               )}
             </>
@@ -421,8 +503,8 @@ export function AdminDashboard({
         </main>
       </div>
 
-      {trip && (
-        <>
+      {trip && isAIOptimizeOpen && (
+        <Suspense fallback={null}>
           <AIOptimizeModal
             isOpen={isAIOptimizeOpen}
             onClose={() => setIsAIOptimizeOpen(false)}
@@ -432,6 +514,10 @@ export function AdminDashboard({
             onUndo={onUndo}
             canUndo={canUndo}
           />
+        </Suspense>
+      )}
+      {trip && isAddActivityOpen && (
+        <Suspense fallback={null}>
           <AddActivityModal
             isOpen={isAddActivityOpen}
             onClose={() => setIsAddActivityOpen(false)}
@@ -440,6 +526,10 @@ export function AdminDashboard({
             defaultLocation={trip.destinationFull}
             onAdd={handleAddActivity}
           />
+        </Suspense>
+      )}
+      {trip && isAlertsModalOpen && (
+        <Suspense fallback={null}>
           <AlertsListModal
             isOpen={isAlertsModalOpen}
             onClose={() => setIsAlertsModalOpen(false)}
@@ -456,15 +546,19 @@ export function AdminDashboard({
             onScanAlerts={onScanAlerts}
             isScanningAlerts={isScanningAlerts}
           />
-        </>
+        </Suspense>
       )}
-      <ActivityDetailModal
-        activity={selectedActivity}
-        onClose={() => setSelectedActivity(null)}
-        onUpdateStatus={handleUpdateActivityStatus}
-        onDeleteActivity={handleDeleteActivity}
-        onEditActivity={handleEditActivity}
-      />
+      {selectedActivity && (
+        <Suspense fallback={null}>
+          <ActivityDetailModal
+            activity={selectedActivity}
+            onClose={() => setSelectedActivity(null)}
+            onUpdateStatus={handleUpdateActivityStatus}
+            onDeleteActivity={handleDeleteActivity}
+            onEditActivity={handleEditActivity}
+          />
+        </Suspense>
+      )}
       </div>
     </div>
   );

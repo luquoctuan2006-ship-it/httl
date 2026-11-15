@@ -38,6 +38,7 @@ interface UseTripActionsOptions {
     | { status: 'conflict'; localTrip: TripData; serverTrip: TripData | null }
   >;
   fetchServerTripSnapshot: (tripId: string) => Promise<TripData | null>;
+  ensureFullTrip: (tripOrId: TripData | string) => Promise<TripData | null>;
   performSignOutAndClearCache: (uidOverride?: string | null) => Promise<void>;
   setConflictState: Dispatch<SetStateAction<{ localTrip: TripData; serverTrip: TripData } | null>>;
   saveQueueRef: MutableRefObject<SingleFlightQueue>;
@@ -71,6 +72,7 @@ export function useTripActions({
   saveTripToFirestore,
   executeTripPut,
   fetchServerTripSnapshot,
+  ensureFullTrip,
   performSignOutAndClearCache,
   setConflictState,
   saveQueueRef,
@@ -93,10 +95,19 @@ export function useTripActions({
     await saveTripToFirestore(previous, 'Đã hoàn tác phương án tối ưu thành công!');
   };
 
-  const handleOpenEditTripModal = (tripTarget?: TripData) => {
+  const handleOpenEditTripModal = async (tripTarget?: TripData) => {
     const resolved = tripTarget || trip;
     if (!resolved) return;
-    setTripToEdit(resolved);
+    let targetToEdit = resolved;
+    if (resolved.isSummary) {
+      const fullTrip = await ensureFullTrip(resolved);
+      if (!fullTrip) {
+        showToast('Không thể tải chi tiết chuyến đi để chỉnh sửa khi đang ngoại tuyến.', 'error');
+        return;
+      }
+      targetToEdit = fullTrip;
+    }
+    setTripToEdit(targetToEdit);
     setIsEditTripModalOpen(true);
   };
 
@@ -150,8 +161,15 @@ export function useTripActions({
 
       if (trip?.id === tripId) {
         if (nextTrips.length > 0) {
-          setTrip(nextTrips[0]);
-          setCurrentDayIndex(nextTrips[0].currentDay || 1);
+          const candidate = nextTrips[0];
+          const resolvedFallback = candidate.isSummary ? await ensureFullTrip(candidate) : candidate;
+          if (resolvedFallback) {
+            setTrip(resolvedFallback);
+            setCurrentDayIndex(resolvedFallback.currentDay || 1);
+          } else {
+            setTrip(null);
+            setCurrentDayIndex(1);
+          }
         } else if (result.activeTrip) {
           const fallbackActive = normalizeTripData(result.activeTrip);
           setTrip(fallbackActive);
@@ -175,7 +193,16 @@ export function useTripActions({
   };
 
   const handleCloneTrip = async (sourceTrip: TripData) => {
-    const clonedPayload = cloneTripForTemplate(sourceTrip, authUserId || undefined);
+    let resolvedSource = sourceTrip;
+    if (sourceTrip.isSummary) {
+      const hydrated = await ensureFullTrip(sourceTrip);
+      if (!hydrated) {
+        showToast('Không thể tải chi tiết chuyến đi để nhân bản.', 'error');
+        return;
+      }
+      resolvedSource = hydrated;
+    }
+    const clonedPayload = cloneTripForTemplate(resolvedSource, authUserId || undefined);
     try {
       const response = await authenticatedFetch('/api/trips', {
         method: 'POST',
@@ -693,10 +720,18 @@ export function useTripActions({
     await saveTripToFirestore(updatedTrip);
   };
 
-  const handleSelectTrip = (selectedTrip: TripData) => {
+  const handleSelectTrip = async (selectedTrip: TripData) => {
     const latestFromList = trips.find((t) => t.id === selectedTrip.id) || selectedTrip;
-    setTrip(latestFromList);
-    setCurrentDayIndex(latestFromList.currentDay || 1);
+    let resolvedTrip: TripData | null = latestFromList;
+    if (latestFromList.isSummary) {
+      resolvedTrip = await ensureFullTrip(latestFromList);
+      if (!resolvedTrip) {
+        showToast('Không thể tải chi tiết chuyến đi khi đang ngoại tuyến.', 'error');
+        return;
+      }
+    }
+    setTrip(resolvedTrip);
+    setCurrentDayIndex(resolvedTrip.currentDay || 1);
     setCurrentTab('dashboard');
   };
 

@@ -2,9 +2,11 @@ import React from 'react';
 import { Clock, CloudSun, Droplets, Maximize2, Minus, Plus, Route, Wind } from 'lucide-react';
 import type { TripData } from '../../../types/travel';
 import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/routeProgress';
+import { findStopWeather } from './mapHelpers';
 
 interface LiveMapCanvasProps {
-  trip: TripData;
+  weather: TripData['weather'];
+  isRefreshingWeather: boolean;
   progress: RouteProgressSummary;
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
   weatherNotice: string | null;
@@ -16,7 +18,8 @@ interface LiveMapCanvasProps {
 
 export const LiveMapCanvas: React.FC<LiveMapCanvasProps> = (props) => {
   const {
-    trip,
+    weather,
+    isRefreshingWeather,
     progress,
     mapContainerRef,
     weatherNotice,
@@ -46,6 +49,22 @@ export const LiveMapCanvas: React.FC<LiveMapCanvasProps> = (props) => {
     totalActivitiesCount,
   } = progress;
 
+  const stopForecasts = weather?.stopForecasts || [];
+  const currentStopWeather = currentStop ? findStopWeather(currentStop, stopForecasts) : undefined;
+  const nextStopWeather = nextStop ? findStopWeather(nextStop, stopForecasts) : undefined;
+
+  const hasWeatherData = Boolean(
+    currentStopWeather || weather.isLive || weather.description || weather.rainProb || weather.temp !== 0,
+  );
+  const displayTemp = currentStopWeather?.temp ?? weather.temp;
+  const displayDesc =
+    currentStopWeather?.description ||
+    weather.description ||
+    (isRefreshingWeather ? 'Đang tải dự báo...' : 'Chưa có dữ liệu');
+  const displayRain = currentStopWeather?.rainProb || weather.rainProb || 'Không có dữ liệu';
+  const displayRainTime = currentStopWeather?.rainProbTime || weather.rainProbTime;
+  const displayHumidity = currentStopWeather?.humidity ?? weather.humidity;
+
   return (
     <>
       {weatherNotice && (
@@ -62,7 +81,7 @@ export const LiveMapCanvas: React.FC<LiveMapCanvasProps> = (props) => {
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
         {locatedStopsCount === 0 && (
-          <div className="absolute inset-0 z-[5] flex items-center justify-center bg-white/70 backdrop-blur-[1px] pointer-events-none">
+          <div className="absolute inset-0 z-[5] flex items-center justify-center bg-white/85 pointer-events-none">
             <p className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
               Chưa có địa điểm tham quan có tọa độ trong phạm vi đang chọn.
             </p>
@@ -70,35 +89,63 @@ export const LiveMapCanvas: React.FC<LiveMapCanvasProps> = (props) => {
         )}
 
         {/* Floating Live Weather Widget (Top Right) */}
-        <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-slate-200/90 flex items-center gap-3 z-10 max-w-xs">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 border border-amber-200">
-            <CloudSun className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-base font-black text-slate-900 leading-tight">
-                {trip.weather.temp}°C
-              </span>
-              <span className="text-xs font-bold text-slate-700 truncate">
-                • {trip.weather.description || 'Thời tiết tuyến'}
-              </span>
+        <div className="absolute top-4 right-4 bg-white/95 rounded-2xl p-3 shadow-lg border border-slate-200/90 z-10 max-w-xs space-y-1.5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 border border-amber-200">
+              <CloudSun className="w-6 h-6" />
             </div>
-            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-              <span className="flex items-center gap-0.5">
-                <Droplets className="w-3 h-3 text-blue-500" /> Mưa: {trip.weather.rainProb || '—'}
-              </span>
-              {trip.weather.humidity && (
-                <span className="flex items-center gap-0.5">
-                  <Wind className="w-3 h-3 text-teal-500" /> {trip.weather.humidity}%
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base font-black text-slate-900 leading-tight">
+                  {hasWeatherData ? `${displayTemp}°C` : '—'}
                 </span>
+                <span className="text-xs font-bold text-slate-700 truncate">
+                  • {displayDesc}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                <span className="flex items-center gap-0.5">
+                  <Droplets className="w-3 h-3 text-blue-500" />
+                  Mưa: {displayRain}
+                  {displayRainTime ? ` (${displayRainTime})` : ''}
+                </span>
+                {typeof displayHumidity === 'number' && displayHumidity > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Wind className="w-3 h-3 text-teal-500" /> {displayHumidity}%
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {(currentStopWeather || nextStopWeather || stopForecasts.length > 1 || weather.lastFetched) && (
+            <div className="pt-1.5 border-t border-slate-100 text-[10px] text-slate-600 space-y-0.5">
+              {currentStopWeather && (
+                <div className="truncate font-semibold text-slate-700">
+                  Hiện tại ở #{currentStop?.order} {currentStopWeather.stopName}
+                </div>
+              )}
+              {nextStopWeather && nextStop && nextStopWeather.stopId !== currentStopWeather?.stopId && (
+                <div className="truncate text-teal-700 font-semibold">
+                  Hiện tại ở #{nextStop.order} {nextStop.name}: {nextStopWeather.temp}°C • {nextStopWeather.description}
+                  {nextStopWeather.rainProb ? ` (Mưa ${nextStopWeather.rainProb})` : ''}
+                </div>
+              )}
+              {(stopForecasts.length > 1 || weather.lastFetched) && (
+                <div className="text-slate-400">
+                  {stopForecasts.length > 1
+                    ? `Thời tiết hôm nay tại ${stopForecasts.length} điểm dọc tuyến`
+                    : 'Thời tiết thực tế hôm nay'}
+                  {weather.lastFetched ? ` • Cập nhật lúc ${weather.lastFetched}` : ''}
+                </div>
               )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Floating Route & Schedule Progress Card (Bottom Left) */}
         {totalStops > 0 && (
-          <div className="absolute bottom-4 left-4 max-w-sm sm:max-w-md bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-xl border border-slate-700/80 z-10 space-y-2">
+          <div className="absolute bottom-4 left-4 max-w-sm sm:max-w-md bg-slate-900/95 text-white rounded-2xl p-3.5 shadow-xl border border-slate-700/80 z-10 space-y-2">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-slate-800 text-teal-400 border border-slate-700 flex items-center justify-center shrink-0">
@@ -139,7 +186,7 @@ export const LiveMapCanvas: React.FC<LiveMapCanvasProps> = (props) => {
                 </span>
               ) : currentStop ? (
                 <span className="truncate">
-                  Điểm trọng tâm: <strong className="text-white">#{currentStop.order} {currentStop.name}</strong>
+                  Đang tham quan: <strong className="text-white">#{currentStop.order} {currentStop.name}</strong>
                 </span>
               ) : null}
               <span className="flex items-center gap-1 text-teal-300 font-semibold shrink-0">

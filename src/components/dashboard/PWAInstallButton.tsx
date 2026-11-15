@@ -29,7 +29,7 @@ export const PWAInstallButton: React.FC = () => {
       </button>
 
       {showIOSGuide && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full border border-slate-200 p-5 shadow-2xl text-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900">Cài đặt Voyager trên iOS</h3>
