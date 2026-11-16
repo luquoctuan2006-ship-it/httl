@@ -100,6 +100,14 @@ test('buildMembers stays backward-compatible when owner is omitted', () => {
   assert.equal(members[0].uid, undefined);
 });
 
+test('buildMembers scopes member IDs to the trip so switching trips cannot reuse member codes', () => {
+  const firstTripMembers = buildMembers(2, undefined, 'trip-one');
+  const secondTripMembers = buildMembers(2, undefined, 'trip-two');
+
+  assert.deepEqual(firstTripMembers.map((member) => member.id), ['trip-one-1', 'trip-one-2']);
+  assert.equal(firstTripMembers.some((member) => secondTripMembers.some((other) => other.id === member.id)), false);
+});
+
 test('normalizeAiGeneratedDays deduplicates activity IDs across days, sorts times, and resolves coordinates', () => {
   const days = normalizeAiGeneratedDays(
     [

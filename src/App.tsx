@@ -269,7 +269,7 @@ export default function App() {
   }, [authLoading, authUser, guestSession, urlGuestCode, handleOpenGuestModeWithCode]);
 
   useEffect(() => {
-    const adminExclusiveTabs = ['planning', 'rules', 'ai', 'monitoring', 'system'];
+    const adminExclusiveTabs = ['ai'];
     if (!isAdminMode && adminExclusiveTabs.includes(currentTab)) {
       setCurrentTab('dashboard');
       return;
@@ -298,7 +298,7 @@ export default function App() {
   }, [persistence.trip, currentDayIndex]);
 
   const handleSelectTab = (tab: string) => {
-    const adminExclusiveTabs = ['planning', 'rules', 'ai', 'monitoring', 'system'];
+    const adminExclusiveTabs = ['ai'];
     if (!isAdminMode && adminExclusiveTabs.includes(tab)) {
       setCurrentTab('dashboard');
       return;

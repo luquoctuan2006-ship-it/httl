@@ -37,23 +37,14 @@ const ActivityDetailModal = lazy(() =>
 const AdminDashboardView = lazy(() =>
   import("./AdminDashboardView").then((m) => ({ default: m.AdminDashboardView })),
 );
+const AdminTripsManagementView = lazy(() =>
+  import("./AdminTripsManagementView").then((m) => ({ default: m.AdminTripsManagementView })),
+);
 const AdminUsersManagementView = lazy(() =>
   import("./AdminUsersManagementView").then((m) => ({ default: m.AdminUsersManagementView })),
 );
-const AdminPlanningDataView = lazy(() =>
-  import("./AdminPlanningDataView").then((m) => ({ default: m.AdminPlanningDataView })),
-);
-const AdminDispatchRulesView = lazy(() =>
-  import("./AdminDispatchRulesView").then((m) => ({ default: m.AdminDispatchRulesView })),
-);
 const AdminAIManagementView = lazy(() =>
   import("./AdminAIManagementView").then((m) => ({ default: m.AdminAIManagementView })),
-);
-const AdminScheduleMonitoringView = lazy(() =>
-  import("./AdminScheduleMonitoringView").then((m) => ({ default: m.AdminScheduleMonitoringView })),
-);
-const AdminSystemManagementView = lazy(() =>
-  import("./AdminSystemManagementView").then((m) => ({ default: m.AdminSystemManagementView })),
 );
 
 const AdminPanelFallback = ({ label = "Đang tải phân hệ..." }: { label?: string }) => (
@@ -246,7 +237,6 @@ export function AdminDashboard({
         onLogout={onLogout}
         onOpenAccount={onOpenAccount}
         onSelectTab={handleSelectTab}
-        alertCount={trip?.alerts.length || 0}
         tripCount={trips.length}
         onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
         isMobileOpen={isMobileSidebarOpen}
@@ -267,8 +257,8 @@ export function AdminDashboard({
             setCurrentDayIndex(dayIdx);
             setCurrentTab('schedule');
           }}
-          onSelectLocation={() => setCurrentTab('locations')}
-          onSelectMember={() => setCurrentTab('members')}
+          onSelectLocation={() => setCurrentTab(isAdminMode ? 'trips' : 'locations')}
+          onSelectMember={() => setCurrentTab(isAdminMode ? 'trips' : 'members')}
           onToggleAttendance={handleToggleMemberAttendance}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
         />
@@ -295,13 +285,7 @@ export function AdminDashboard({
               <AdminUsersManagementView />
             </Suspense>
           )}
-          {currentTab === 'rules' && (
-            <Suspense fallback={<AdminPanelFallback label="Đang tải quy tắc điều phối..." />}>
-              <AdminDispatchRulesView />
-            </Suspense>
-          )}
-
-          {!tripsLoaded && !['users', 'rules'].includes(currentTab) ? (
+          {!tripsLoaded && !['users', 'ai'].includes(currentTab) ? (
             <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-12 text-center text-sm text-slate-400">
               Đang tải dữ liệu hệ thống...
             </div>
@@ -322,36 +306,29 @@ export function AdminDashboard({
                 ) : emptyTripNotice
               )}
 
-              {currentTab === 'planning' && (trip ? (
-                <Suspense fallback={<AdminPanelFallback label="Đang tải dữ liệu địa điểm..." />}>
-                  <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />
-                </Suspense>
-              ) : emptyTripNotice)}
-              {currentTab === 'ai' && (trip ? (
-                <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý AI..." />}>
-                  <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} />
-                </Suspense>
-              ) : emptyTripNotice)}
-              {currentTab === 'monitoring' && (trip ? (
-                <Suspense fallback={<AdminPanelFallback label="Đang tải giám sát lịch trình..." />}>
-                  <AdminScheduleMonitoringView
+              {currentTab === 'trips' && isAdminMode && (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý chuyến đi..." />}>
+                  <AdminTripsManagementView
                     trip={trip}
                     trips={trips}
+                    onSelectTrip={onSelectTrip}
+                    onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                    onEditTrip={onOpenEditTripModal}
+                    onDeleteTrip={onDeleteTrip}
+                    onCloneTrip={onCloneTrip}
+                    currentUserUid={authUser.id}
+                    searchQuery={searchQuery}
+                    onClearSearch={() => setSearchQuery('')}
                     onUpdateTrip={handleUpdateTrip}
                     onEnsureFullTrip={onEnsureFullTrip}
                   />
                 </Suspense>
-              ) : emptyTripNotice)}
-              {currentTab === 'system' && (trip ? (
-                <Suspense fallback={<AdminPanelFallback label="Đang tải cấu hình hệ thống..." />}>
-                  <AdminSystemManagementView trip={trip} />
+              )}
+              {currentTab === 'ai' && (
+                <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý AI..." />}>
+                  <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} />
                 </Suspense>
-              ) : emptyTripNotice)}
-              {currentTab === 'locations' && (trip ? (
-                <Suspense fallback={<AdminPanelFallback label="Đang tải danh mục địa điểm..." />}>
-                  <AdminPlanningDataView trip={trip} onUpdateTrip={handleUpdateTrip} />
-                </Suspense>
-              ) : emptyTripNotice)}
+              )}
 
               {currentTab === 'dashboard' && !isAdminMode && (
                 trip ? (
@@ -408,7 +385,7 @@ export function AdminDashboard({
                 ) : emptyTripNotice
               )}
 
-              {currentTab === 'trips' && (
+              {currentTab === 'trips' && !isAdminMode && (
                 <Suspense fallback={<AdminPanelFallback label="Đang tải danh sách chuyến đi..." />}>
                   <TripsListView
                     trips={trips}
@@ -503,6 +480,7 @@ export function AdminDashboard({
                 trip ? (
                   <Suspense fallback={<AdminPanelFallback label="Đang tải danh sách thành viên..." />}>
                     <MembersView
+                      key={trip.id}
                       tripId={trip.id}
                       members={trip.members}
                       onToggleStatus={handleToggleMemberAttendance}

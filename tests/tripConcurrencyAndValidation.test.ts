@@ -191,7 +191,7 @@ test('Admin config: whitelist filters conflictChecks keys matching UI and schedu
   assert.deepEqual(filtered, ['overlapTime', 'openingHoursMismatch']);
 });
 
-test('Admin config: payload from AdminDispatchRulesView passes key validation using canonical keys', () => {
+test('Admin config: dispatch rules payload passes key validation using canonical keys', () => {
   const allowedConflictKeysSet = new Set<string>(ALLOWED_CONFLICT_CHECK_KEYS);
   const allowedPriorityKeysSet = new Set<string>(ALLOWED_PRIORITY_KEYS);
 

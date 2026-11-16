@@ -1,42 +1,74 @@
 # Voyager — Bảng điều phối du lịch thông minh
 
-Voyager là ứng dụng web quản lý chuyến du lịch: lập và tối ưu lịch trình, theo dõi tuyến đường và phương tiện, quản lý thành viên, ngân sách và hóa đơn. Ứng dụng có chế độ lưu ngoại tuyến (PWA), xác thực Firebase, dữ liệu chuyến đi trên Cloud Firestore và các chức năng AI dùng Gemini.
+Voyager là ứng dụng web hỗ trợ lập kế hoạch và điều phối chuyến du lịch. Người dùng có thể tạo chuyến bằng AI hoặc thủ công, quản lý lịch trình, thành viên, ngân sách và hóa đơn; theo dõi tuyến đường, thời tiết và cảnh báo. Ứng dụng dùng Firebase/Firestore, có giao diện cài đặt dạng PWA và hỗ trợ một số dữ liệu ngoại tuyến.
+
+## Chức năng chính
+
+### Người dùng
+
+- Tạo, sửa, nhân bản và tham gia chuyến bằng mã mời.
+- Quản lý lịch trình, thành viên, điểm danh, ngân sách và hóa đơn.
+- Xem bản đồ tuyến đường, thời tiết dọc tuyến và cảnh báo vận hành.
+- Lập lịch bằng AI Gemini hoặc nhập thủ công.
+
+### Quản trị viên
+
+Menu quản trị có bốn mục chính: **Tổng quan**, **Quản lý người dùng**, **Quản lý chuyến đi** và **Quản lý AI**. Trong quản lý chuyến đi có danh sách chuyến, giám sát lịch trình và dữ liệu hoạch định.
+
+## Công nghệ
+
+- React, TypeScript, Vite, Tailwind CSS và Leaflet.
+- Express cho API; Firebase Authentication, Cloud Firestore và Firebase Admin cho xác thực/dữ liệu.
+- Gemini cho lập kế hoạch và tối ưu lịch trình.
+- Open-Meteo cho thời tiết; OSRM để lấy tuyến đường bộ; CARTO/OpenStreetMap cho bản đồ đường phố.
+- `vite-plugin-pwa` tạo manifest và service worker.
 
 ## Yêu cầu
 
-- Node.js 20 trở lên
-- npm
-- Một dự án Firebase có bật Authentication (Email/Password) và Cloud Firestore
-- Gemini API key nếu cần dùng các chức năng AI
+- Node.js 20 trở lên và npm.
+- Firebase project đã bật Email/Password Authentication và Cloud Firestore.
+- Gemini API key nếu sử dụng chức năng AI.
+- Firebase service account cho server khi cần truy cập Firestore bằng Firebase Admin.
 
 ## Cài đặt và chạy
 
-1. Cài dependency:
+1. Cài dependencies:
 
    ```sh
    npm install
    ```
 
-2. Tạo `.env` từ `.env.example` (trên PowerShell dùng `Copy-Item .env.example .env`; trên macOS/Linux dùng `cp .env.example .env`).
+2. Tạo file `.env` từ `.env.example`.
 
-3. Điền cấu hình Firebase và Gemini:
-   - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` và `VITE_FIREBASE_DATABASE_ID` dành cho Firebase client. Nếu để trống, client dùng giá trị tương ứng trong `firebase-applet-config.json`.
-   - `GEMINI_API_KEY` được dùng ở server; không đổi thành biến `VITE_*` và không đưa vào mã client.
-   - Đặt Firebase Admin service-account JSON tại `secrets/firebase-service-account.json`, hoặc cấu hình `FIREBASE_SERVICE_ACCOUNT_PATH`.
-   - `VITE_CARTO_API_KEY` là tùy chọn cho bản đồ.
-   - `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_CACHE_TTL_MS` và `GEMINI_TIMEOUT_MS` là tùy chọn; mặc định lần lượt là `gemini-3.5-flash`, `gemini-3.1-flash-lite`, 300000 ms và 30000 ms.
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-   `.env`, thư mục `secrets/` và dữ liệu runtime không được commit. Không chia sẻ service account hoặc Gemini API key.
+   Trên macOS/Linux:
+
+   ```sh
+   cp .env.example .env
+   ```
+
+3. Cấu hình môi trường:
+
+   - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` và `VITE_FIREBASE_DATABASE_ID` dùng cho Firebase client. Nếu không đặt, client đọc giá trị trong `firebase-applet-config.json`.
+   - `GEMINI_API_KEY` chỉ dùng phía server; không đổi thành `VITE_*` và không đưa vào mã client.
+   - Đặt Firebase Admin service account ở `secrets/firebase-service-account.json`, hoặc chỉ định đường dẫn bằng `FIREBASE_SERVICE_ACCOUNT_PATH`.
+   - `VITE_CARTO_API_KEY` là tùy chọn. Bản đồ hiện chỉ dùng lớp đường phố.
+   - `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_CACHE_TTL_MS` và `GEMINI_TIMEOUT_MS` là tùy chọn. Mặc định lần lượt là `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `300000` ms và `30000` ms.
+
+   Không commit `.env`, service account hoặc dữ liệu runtime trong `data/`. Không chia sẻ API key và thông tin xác thực.
 
 4. Bật Email/Password trong Firebase Authentication và tạo Firestore database.
 
-5. Chạy ở chế độ phát triển:
+5. Chạy môi trường phát triển:
 
    ```sh
    npm run dev
    ```
 
-   Server Express phục vụ API và tích hợp Vite middleware trong môi trường phát triển. Mặc định ứng dụng chạy tại `http://localhost:3000`; có thể đổi cổng bằng biến `PORT`.
+   Express phục vụ API và tích hợp Vite middleware. Mặc định mở `http://localhost:3000`; có thể đổi cổng bằng `PORT`.
 
 6. Build và chạy production:
 
@@ -45,17 +77,17 @@ Voyager là ứng dụng web quản lý chuyến du lịch: lập và tối ưu 
    npm start
    ```
 
-   Production server phục vụ nội dung trong `dist/`.
+   Build được tạo trong `dist/`; production server phục vụ các file này.
 
 ### Cấp quyền quản trị
 
-Đăng ký người dùng trong ứng dụng, lấy Firebase Authentication UID và chạy lệnh từ môi trường tin cậy có service account:
+Đăng ký người dùng, lấy Firebase Authentication UID và chạy lệnh từ môi trường tin cậy có service account:
 
 ```sh
 npm run set:role -- <firebase-user-uid> admin
 ```
 
-Thu hồi quyền admin:
+Thu hồi quyền quản trị:
 
 ```sh
 npm run set:role -- <firebase-user-uid> user
@@ -63,158 +95,121 @@ npm run set:role -- <firebase-user-uid> user
 
 Người dùng cần đăng nhập lại sau khi thay đổi role.
 
+### Gán chủ sở hữu cho chuyến cũ
+
+Xem trước thay đổi trước khi chạy thật:
+
+```sh
+npm run migrate:owner -- <owner-uid> --dry-run
+```
+
+Lệnh này thay đổi dữ liệu Firestore; hãy xác minh UID và sao lưu dữ liệu trước khi bỏ `--dry-run`.
+
 ## Cấu trúc dự án
 
 ```text
 .
-├── public/                         # Biểu tượng ứng dụng và tài nguyên tĩnh
-├── scripts/                        # Lệnh quản trị/migration Firebase
+├── public/                         # Biểu tượng PWA và tài nguyên tĩnh
+├── scripts/                        # Lệnh cấp role và migration dữ liệu
 ├── src/
 │   ├── components/
-│   │   ├── admin/                  # Dashboard và màn hình quản trị
-│   │   │   └── planning-data/      # Tab, modal, hook dữ liệu địa điểm/phương tiện
+│   │   ├── admin/                  # Tổng quan, người dùng, chuyến đi, AI
+│   │   │   └── planning-data/      # Tab, modal, hook dữ liệu hoạch định
 │   │   ├── auth/                   # Đăng nhập và đăng ký
-│   │   ├── dashboard/              # Dashboard người dùng và thành phần dùng chung
-│   │   │   └── live-route-map/     # Bản đồ trực tiếp, GPS, dữ liệu tuyến và modal xe
-│   │   ├── modals/                 # Các hộp thoại cấp ứng dụng
-│   │   │   └── trip-planner/       # Luồng lập chuyến thủ công và bằng AI
-│   │   └── trips/                  # Danh sách chuyến, thành viên và ngân sách
-│   │       └── budget/             # UI, tính toán và thao tác ngân sách/hóa đơn
+│   │   ├── common/                 # Form field và modal dùng chung
+│   │   ├── dashboard/              # Dashboard người dùng và thành phần chung
+│   │   │   └── live-route-map/     # Bản đồ, tuyến, thời tiết và điều khiển
+│   │   ├── guest/                  # Giao diện khách tham gia chuyến
+│   │   ├── modals/                 # Modal cấp ứng dụng
+│   │   │   └── trip-planner/       # Tạo chuyến thủ công và bằng AI
+│   │   └── trips/                  # Danh sách chuyến, thành viên, ngân sách
+│   │       └── budget/             # Chi tiết ngân sách, hóa đơn, báo cáo
 │   ├── data/                       # Dữ liệu mẫu và chuẩn hóa TripData
-│   ├── hooks/                      # Hook dùng chung
+│   ├── hooks/                      # Hook xác thực, đồng bộ và trạng thái
 │   ├── server/
 │   │   ├── errors/                 # Lỗi nghiệp vụ phía server
-│   │   ├── middleware/             # Middleware và tích hợp giới hạn tần suất
-│   │   ├── routes/                 # Đăng ký API theo nhóm chức năng
-│   │   ├── services/               # Dịch vụ dùng chung phía server
-│   │   └── types/                  # Kiểu cấu hình server
-│   ├── types/                      # Kiểu dữ liệu dùng chung của client
-│   ├── utils/                      # Lịch trình, đồng bộ, offline và tiện ích chuyến đi
-│   ├── App.tsx                     # State cấp ứng dụng và kết nối các màn hình
-│   ├── api.ts                      # Gọi API backend
-│   ├── firebase.ts                 # Firebase client và Authentication
+│   │   ├── middleware/             # Xác thực và rate limiting
+│   │   ├── routes/                 # API theo nhóm chức năng
+│   │   ├── services/               # Firebase, Gemini, cấu hình và nhật ký
+│   │   └── types/                  # Kiểu dữ liệu server
+│   ├── types/                      # Kiểu dữ liệu dùng chung phía client
+│   ├── utils/                      # Cảnh báo, lịch trình, ngân sách, offline
+│   ├── App.tsx                     # Kết nối màn hình và state cấp ứng dụng
+│   ├── api.ts                      # Client gọi API
+│   ├── firebase.ts                 # Firebase client
 │   ├── index.css                   # CSS toàn cục
 │   └── main.tsx                    # Điểm khởi chạy React
-├── tests/                          # Unit test và test tích hợp Firestore Emulator
+├── tests/                          # Unit test và test tích hợp
 ├── data/                           # Dữ liệu runtime cục bộ; không commit
-├── secrets/                        # Service account cục bộ; không commit
-├── server.ts                       # Khởi tạo Express, xác thực và kết nối các route
-├── firebase.json                   # Cấu hình Firebase CLI/Firestore Emulator
+├── secrets/                        # Credential cục bộ; không commit
+├── server.ts                       # Khởi tạo Express và đăng ký API
+├── firebase.json                   # Cấu hình Firebase CLI/Emulator
 ├── firestore.rules                 # Quy tắc truy cập Firestore
 ├── firebase-applet-config.json     # Cấu hình Firebase client
-├── package.json                    # Dependency và lệnh npm
-├── tsconfig.json                   # Cấu hình TypeScript
+├── package.json                    # Dependencies và scripts
 ├── vite.config.ts                  # Vite, Tailwind và PWA
 └── README.md
 ```
 
-### Nhóm giao diện và chức năng
+### Các module quan trọng
 
-#### Quản trị
+- `src/components/admin/AdminDashboard.tsx`: điều phối giao diện và bốn mục quản trị.
+- `src/components/admin/AdminTripsManagementView.tsx`: gom danh sách chuyến, giám sát và dữ liệu hoạch định.
+- `src/components/dashboard/UserDashboard.tsx`: dashboard người dùng.
+- `src/components/dashboard/LiveRouteMap.tsx`: bản đồ tuyến đường; các hook và thành phần con ở `live-route-map/`.
+- `src/components/modals/trip-planner/`: tạo chuyến thủ công, gọi AI và chuẩn hóa kết quả.
+- `src/components/trips/budget/`: tính toán, cập nhật ngân sách, hóa đơn và báo cáo.
+- `src/data/normalizeTripData.ts`: kiểm tra và chuẩn hóa dữ liệu chuyến trước khi sử dụng.
+- `src/utils/alertDetector.ts` và `src/utils/budgetAlerts.ts`: phát hiện cảnh báo lịch trình, thời tiết và ngân sách.
+- `src/server/routes/`: API cho chuyến đi, người dùng, quản trị, Gemini, phương tiện, routing và guest.
+- `server.ts`: cấu hình Express, middleware, Firebase Admin và đăng ký các route.
 
-- `src/components/admin/AdminDashboard.tsx` điều phối màn hình quản trị.
-- `AdminDashboardView.tsx`, `AdminSystemManagementView.tsx`, `AdminUsersManagementView.tsx`, `AdminAIManagementView.tsx`, `AdminScheduleMonitoringView.tsx` và `AdminDispatchRulesView.tsx` đảm nhiệm các màn hình tổng quan, hệ thống, người dùng, AI, lịch trình và quy tắc điều phối.
-- `AdminPlanningDataView.tsx` là điểm ghép các tab dữ liệu hoạch định. Các tab, modal, kiểu và hook của phần này nằm trong `src/components/admin/planning-data/`.
-- `AdminManagementViews.tsx` gom các view quản trị để tái sử dụng.
-
-#### Dashboard và bản đồ tuyến đường
-
-- `src/components/dashboard/UserDashboard.tsx` hiển thị dashboard người dùng.
-- `Header.tsx`, `Sidebar.tsx`, `MetricCards.tsx`, `TimelineSchedule.tsx`, `OperationsPanel.tsx`, `OfflineIndicator.tsx` và `PWAInstallButton.tsx` là các phần giao diện dashboard.
-- `LiveRouteMap.tsx` ghép giao diện bản đồ. Canvas, header, modal telematics, helper bản đồ và hook điều khiển nằm trong `src/components/dashboard/live-route-map/`.
-
-#### Lập chuyến và hộp thoại
-
-- `src/components/modals/TripPlannerModal.tsx` ghép luồng lập chuyến thủ công và AI.
-- `src/components/modals/trip-planner/` chứa các tab, form, danh sách hoạt động, hook và helper riêng cho hai luồng.
-- Các modal độc lập khác như chỉnh sửa chuyến, chi tiết hoạt động, thêm hoạt động, tự sắp xếp, tối ưu AI và xử lý xung đột nằm trực tiếp trong `src/components/modals/`.
-
-#### Thành viên và ngân sách
-
-- `src/components/trips/MembersView.tsx` quản lý thành viên chuyến đi và điểm danh.
-- `src/components/trips/TripsListView.tsx` hiển thị và thao tác với danh sách chuyến đi.
-- `src/components/trips/BudgetView.tsx` ghép màn hình ngân sách. Các component và hook về tổng quan, sổ chi tiêu, hóa đơn, báo cáo, modal, phép tính và cập nhật dữ liệu nằm trong `src/components/trips/budget/`.
-- `src/components/trips/budget/ReceiptImage.tsx` quản lý hiển thị ảnh chứng từ và xem trước ảnh.
-
-### Backend và dữ liệu dùng chung
-
-- `server.ts` khởi tạo Express, cấu hình bảo mật, Firebase Admin, xác thực và các dependency dùng chung; sau đó đăng ký các nhóm route.
-- `src/server/routes/tripManagement.ts` đăng ký API quản lý chuyến đi.
-- `src/server/routes/trips.ts` chứa các thao tác API chuyến đi và hóa đơn.
-- `src/server/routes/gemini.ts` và `geminiJobs.ts` phục vụ tác vụ AI và quản lý job Gemini.
-- `src/server/routes/adminUsers.ts`, `adminConfig.ts`, `adminMonitoring.ts` và `fleet.ts` phục vụ người dùng, cấu hình, giám sát và phương tiện.
-- `src/server/middleware/firestoreRateLimitStore.ts` lưu trạng thái giới hạn tần suất bằng Firestore.
-- `src/server/services/systemLogs.ts` xử lý nhật ký hệ thống, kiểm toán và AI.
-- `src/api.ts` là lớp gọi API từ client; `src/firebase.ts` khởi tạo Firebase client.
-- `src/types/travel.ts` và `src/types/auth.ts` định nghĩa kiểu dữ liệu chuyến đi và xác thực.
-- `src/data/normalizeTripData.ts` chuẩn hóa dữ liệu chuyến; `src/data/mockData.ts` cung cấp dữ liệu mẫu.
-- `src/utils/` chứa các helper về cảnh báo, tối ưu và kiểm tra lịch trình, dữ liệu địa lý, đồng bộ/offline, repository chuyến đi và xuất báo cáo.
-
-## Lệnh thường dùng
+## Scripts
 
 | Lệnh | Mục đích |
 | --- | --- |
 | `npm run dev` | Chạy Express và Vite ở chế độ phát triển |
-| `npm run build` | Build client production |
+| `npm run build` | Build client production và tạo tài nguyên PWA |
 | `npm start` | Chạy server production, phục vụ `dist/` |
-| `npm run preview` | Mở bản build bằng Vite preview |
-| `npm run lint` | Kiểm tra TypeScript (`tsc --noEmit`) |
+| `npm run preview` | Xem trước build bằng Vite |
+| `npm run lint` | Kiểm tra TypeScript bằng `tsc --noEmit` |
 | `npm test` | Chạy toàn bộ test tự động |
-| `npm run test:emulator` | Chạy riêng test route cần Firestore Emulator |
-| `npm run set:role -- <uid> <admin\|user>` | Cấp hoặc thu hồi quyền admin |
-| `npm run migrate:owner -- <uid> --dry-run` | Xem trước việc gán owner cho chuyến cũ |
+| `npm run test:emulator` | Chạy riêng test cần Firestore Emulator |
+| `npm run set:role -- <uid> <admin\|user>` | Cấp hoặc thu hồi role admin |
+| `npm run migrate:owner -- <uid> --dry-run` | Xem trước migration owner |
 
-Để chạy test emulator:
+Chạy test với Firestore Emulator:
 
 ```sh
 firebase emulators:exec --project demo-httl-server-tests --only firestore "npm run test:emulator"
 ```
 
-Test emulator bị bỏ qua khi `FIRESTORE_EMULATOR_HOST` chưa được cấu hình. Các test thông thường vẫn chạy bằng `npm test`.
+Test emulator sẽ bị bỏ qua nếu chưa cấu hình `FIRESTORE_EMULATOR_HOST`; các unit test thông thường vẫn chạy bằng `npm test`.
 
-## Kiểm thử
+## Phân công thành viên
 
-Các file trong `tests/` bao phủ tạo và chuẩn hóa dữ liệu chuyến đi, đồng bộ offline, cạnh tranh phiên bản, phân quyền, AI JSON, tối ưu và xác thực lịch trình, cảnh báo, và các helper liên quan ngân sách. `tests/serverRoutes.emulator.test.ts` là test tích hợp cần Firestore Emulator.
+Tên thành viên được giữ theo danh sách hiện có; phạm vi và file kiểm thử được cập nhật theo cấu trúc mã nguồn hiện tại.
 
-## Phân công thành viên và file theo chức năng
+| Thành viên | Phạm vi phụ trách | Mã nguồn chính | Kiểm thử liên quan |
+| --- | --- | --- | --- |
+| **TV1 — Tín Phát** | Lập chuyến và lịch trình bằng Gemini | `TripPlannerModal.tsx`, `trip-planner/`, `routes/gemini.ts`, `routes/geminiJobs.ts`, `vietnamGeo.ts` | `aiGeneratedTrip.test.ts`, `tripCreationConnections.test.ts`, `geminiJson.test.ts` |
+| **TV2 — Phạm Huy** | Tối ưu và xác thực lịch trình bằng AI | `AIOptimizeModal.tsx`, `scheduleOptimizer.ts`, `scheduleValidator.ts`, `applyOptimization.ts` | `applyOptimizationAndDiff.test.ts`, `scheduleOptimizer.test.ts`, `scheduleValidator.test.ts` |
+| **TV3 — Gia Khánh** | Bản đồ tuyến đường, định tuyến và thời tiết | `LiveRouteMap.tsx`, `live-route-map/`, `routeProgress.ts`, `weatherParser.ts`, `routes/routing.ts` | `routeProgress.test.ts`, `weatherParser.test.ts`, `tripData.test.ts` |
+| **TV4 — Quốc Tuấn** | Thành viên, điểm danh, tham gia và mã mời | `MembersView.tsx`, `tripJoinHelpers.ts`, `useTripActions.ts`, `routes/tripManagement.ts` | `tripJoinAndGuest.test.ts`, `tripConcurrencyAndValidation.test.ts`, `tripSyncHelpers.test.ts` |
+| **TV5 — Minh Tuấn** | Ngân sách, hóa đơn và báo cáo chi phí | `BudgetView.tsx`, `trips/budget/`, `budgetAlerts.ts`, `routes/trips.ts` | `budgetAndMembersIntegrity.test.ts`, `newFeatures.test.ts`, `tripData.test.ts` |
 
-Danh sách dưới đây ghi các file chính liên quan từng use case; những file dùng chung như `App.tsx`, `api.ts`, `server.ts` và `src/types/travel.ts` có thể được nhiều thành viên cùng chạm tới.
+`App.tsx`, `api.ts`, `server.ts`, `src/types/travel.ts` và `normalizeTripData.ts` là các phần dùng chung; thay đổi các file này cần phối hợp với thành viên phụ trách use case liên quan.
 
-### TV1 — Tín Phát: Lập lịch trình du lịch tự động bằng Gemini AI
+## Gợi ý phát triển tiếp
 
-- UI và luồng lập chuyến: `src/components/modals/TripPlannerModal.tsx`, `src/components/modals/trip-planner/`.
-- API Gemini và job: `src/server/routes/gemini.ts`, `src/server/routes/geminiJobs.ts`, đăng ký từ `server.ts`.
-- Xử lý địa lý và dữ liệu chuyến: `src/utils/vietnamGeo.ts`, `src/types/travel.ts`, `src/api.ts`.
-- Kiểm thử: `tests/newFeatures.test.ts`, `tests/tripData.test.ts`.
-
-### TV2 — Phạm Huy: Tối ưu lịch trình bằng AI
-
-- UI: `src/components/modals/AIOptimizeModal.tsx`.
-- Tối ưu, xác thực và áp dụng đề xuất: `src/utils/scheduleOptimizer.ts`, `src/utils/scheduleValidator.ts`, `src/utils/applyOptimization.ts`.
-- Đồng bộ và API: `src/utils/tripSyncHelpers.ts`, `src/api.ts`, `src/server/routes/gemini.ts`, `src/server/routes/geminiJobs.ts`.
-- Kiểm thử: `tests/applyOptimizationAndDiff.test.ts`, `tests/scheduleOptimizer.test.ts`, `tests/scheduleValidator.test.ts`.
-
-### TV3 — Gia Khánh: Theo dõi bản đồ tuyến đường và trạng thái xe
-
-- UI và logic bản đồ: `src/components/dashboard/LiveRouteMap.tsx`, `src/components/dashboard/live-route-map/`.
-- Hiển thị dashboard: `src/components/dashboard/UserDashboard.tsx`.
-- Kiểu, dữ liệu và helper: `src/types/travel.ts`, `src/utils/tripRepository.ts`, `src/utils/tripHelpers.ts`.
-- Kiểm thử dữ liệu liên quan bản đồ: `tests/tripData.test.ts`, `tests/newFeatures.test.ts`.
-
-### TV4 — Quốc Tuấn: Quản lý thành viên và điểm danh đoàn
-
-- UI: `src/components/trips/MembersView.tsx`, `src/components/dashboard/UserDashboard.tsx`.
-- State, lưu dữ liệu và API: `src/App.tsx`, `src/api.ts`, `src/utils/tripRepository.ts`, `src/server/routes/trips.ts`.
-- Kiểu dữ liệu: `src/types/travel.ts`.
-- Kiểm thử đồng bộ và dữ liệu: `tests/tripSyncHelpers.test.ts`, `tests/tripConcurrencyAndValidation.test.ts`.
-
-### TV5 — Minh Tuấn: Quản lý ngân sách và hóa đơn chuyến đi
-
-- UI: `src/components/trips/BudgetView.tsx`, `src/components/trips/budget/`.
-- Ảnh chứng từ: `src/components/trips/budget/ReceiptImage.tsx`.
-- API, dữ liệu và báo cáo: `src/api.ts`, `src/server/routes/trips.ts`, `src/utils/tripHelpers.ts`, `src/types/travel.ts`.
-- Kiểm thử báo cáo và dữ liệu chuyến: `tests/newFeatures.test.ts`, `tests/tripData.test.ts`.
+1. **Thiết lập CI và Firestore Emulator ổn định**: chạy lint, toàn bộ unit test và test API trên pull request; giữ emulator test tách biệt nhưng không để bị bỏ qua trong pipeline.
+2. **Thay dữ liệu mẫu trong trang quản trị bằng trạng thái thực**: một số dashboard/log hiện có giá trị khởi tạo minh họa. Nên phân biệt rõ dữ liệu demo với dữ liệu API, đồng thời hiển thị loading, lỗi và trạng thái chưa có dữ liệu.
+3. **Bổ sung kiểm thử luồng người dùng end-to-end**: đăng nhập, tạo chuyến, chuyển chuyến, đổi mã mời, cập nhật thành viên và ngân sách; ưu tiên kiểm thử trên màn hình nhỏ.
+4. **Tiếp tục chuẩn hóa dữ liệu đầu vào**: kiểm tra ngày, trùng mã chuyến/thành viên, số lượng thành viên, chi phí và tọa độ ở cả API lẫn client; giữ server là nguồn dữ liệu chuẩn.
+5. **Theo dõi độ tin cậy của dịch vụ ngoài**: có trạng thái lỗi/rate limit và phương án dự phòng cho Gemini, OSRM, Open-Meteo và CARTO; tránh hiển thị dữ liệu lỗi như dữ liệu mới.
+6. **Chia nhỏ các route server lớn**: tách `tripManagement.ts` theo miền chức năng (thành viên, mã mời, lịch trình) khi tiếp tục phát triển để dễ kiểm thử và bảo trì.
+7. **Rà soát bảo mật trước khi triển khai**: kiểm tra Firestore rules, phân quyền admin, rate limit, log chứa dữ liệu cá nhân và đảm bảo `.env`/`secrets/` không được commit.
 
 ## PWA và file sinh tự động
 
-`vite.config.ts` cấu hình manifest, cache tài nguyên bản đồ/font và service worker. Biểu tượng nằm trong `public/`. Các file trong `dist/` và `dev-dist/` là đầu ra build/PWA; thông thường không chỉnh sửa thủ công, hãy sửa cấu hình hoặc mã nguồn tương ứng rồi build lại.
+`vite.config.ts` cấu hình manifest, cache tài nguyên và service worker. Ứng dụng cache một số tài nguyên tĩnh và tile bản đồ đường phố; bản đồ và dữ liệu thời tiết/định tuyến từ dịch vụ ngoài vẫn cần kết nối mạng để cập nhật. Sửa mã nguồn hoặc cấu hình rồi chạy build thay vì sửa thủ công các file trong `dist/` hoặc `dev-dist/`.

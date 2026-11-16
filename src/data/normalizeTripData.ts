@@ -56,12 +56,15 @@ function normalizeActivity(raw: unknown, idx: number, dayIdx: number): Activity 
   const title = rawTitle.length > 0 ? rawTitle.slice(0, 200) : `Hoạt động ${idx + 1}`;
 
   const rawStart = typeof item.timeStart === 'string' ? item.timeStart.trim() : '';
-  const hasValidStart = /^\d{1,2}:\d{2}$/.test(rawStart);
-  const timeStart = hasValidStart ? rawStart : '08:00';
-
   const rawEnd = typeof item.timeEnd === 'string' ? item.timeEnd.trim() : '';
-  const hasValidEnd = /^\d{1,2}:\d{2}$/.test(rawEnd);
-  const timeEnd = hasValidEnd ? rawEnd : '09:30';
+  const hasValidStart = isValidClock(rawStart);
+  const hasValidEnd = isValidClock(rawEnd);
+  const startMinutes = hasValidStart ? clockToMinutes(rawStart) : null;
+  const endMinutes = hasValidEnd ? clockToMinutes(rawEnd) : null;
+  const hasValidTimeRange =
+    startMinutes !== null && endMinutes !== null && endMinutes > startMinutes;
+  const timeStart = hasValidTimeRange ? rawStart : '08:00';
+  const timeEnd = hasValidTimeRange ? rawEnd : '09:30';
 
   const location = typeof item.location === 'string'
     ? item.location.trim().slice(0, 200)
@@ -69,7 +72,7 @@ function normalizeActivity(raw: unknown, idx: number, dayIdx: number): Activity 
 
   const hasValidStatus = typeof item.status === 'string' && VALID_STATUSES.includes(item.status as Activity['status']);
   // If activity was corrupted or lacked required fields, set status to 'Chờ duyệt' for human dispatcher review
-  const isCorrupted = !isObject || rawTitle.length === 0 || !hasValidStart || !hasValidEnd || !hasValidStatus;
+  const isCorrupted = !isObject || rawTitle.length === 0 || !hasValidTimeRange || !hasValidStatus;
   const status: Activity['status'] = isCorrupted
     ? 'Chờ duyệt'
     : (item.status as Activity['status']);
@@ -114,6 +117,10 @@ function normalizeActivity(raw: unknown, idx: number, dayIdx: number): Activity 
       typeof c.lng === 'number' &&
       Number.isFinite(c.lat) &&
       Number.isFinite(c.lng) &&
+      c.lat >= -90 &&
+      c.lat <= 90 &&
+      c.lng >= -180 &&
+      c.lng <= 180 &&
       !isLegacyHashedCoordinate(location || title, c.lat, c.lng)
     ) {
       res.coordinates = { lat: c.lat, lng: c.lng };
@@ -121,6 +128,64 @@ function normalizeActivity(raw: unknown, idx: number, dayIdx: number): Activity 
   }
 
   return res;
+}
+
+function clockToMinutes(value: string): number | null {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function isValidClock(value: string): boolean {
+  return clockToMinutes(value) !== null;
+}
+
+function normalizeWaypoint(raw: unknown, index: number): Waypoint | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const item = raw as Record<string, unknown>;
+  const name = typeof item.name === 'string' ? item.name.trim().slice(0, 150) : '';
+  if (!name) return null;
+
+  const rawLat = item.lat;
+  const rawLng = item.lng;
+  const hasValidCoordinates =
+    typeof rawLat === 'number' &&
+    typeof rawLng === 'number' &&
+    Number.isFinite(rawLat) &&
+    Number.isFinite(rawLng) &&
+    rawLat >= -90 &&
+    rawLat <= 90 &&
+    rawLng >= -180 &&
+    rawLng <= 180 &&
+    !isLegacyHashedCoordinate(name, rawLat, rawLng);
+
+  const waypoint: Waypoint = {
+    id: typeof item.id === 'string' && item.id.trim() ? item.id.trim().slice(0, 128) : `wp-${index + 1}`,
+    code: typeof item.code === 'string' && item.code.trim() ? item.code.trim().slice(0, 30) : String(index + 1).padStart(2, '0'),
+    name,
+    status: item.status === 'completed' || item.status === 'current' || item.status === 'pending'
+      ? item.status
+      : 'pending',
+    lat: hasValidCoordinates ? rawLat : 0,
+    lng: hasValidCoordinates ? rawLng : 0,
+    xPercent: typeof item.xPercent === 'number' && Number.isFinite(item.xPercent)
+      ? Math.min(100, Math.max(0, item.xPercent))
+      : 50,
+    yPercent: typeof item.yPercent === 'number' && Number.isFinite(item.yPercent)
+      ? Math.min(100, Math.max(0, item.yPercent))
+      : 50,
+  };
+
+  for (const key of ['arrivalTime', 'departureTime', 'category', 'categoryLabel', 'openHours', 'ticketPrice', 'description'] as const) {
+    const value = item[key];
+    if (typeof value === 'string' && value.trim()) waypoint[key] = value.trim().slice(0, 300);
+  }
+  if (typeof item.isHidden === 'boolean') waypoint.isHidden = item.isHidden;
+
+  return waypoint;
 }
 
 const MAX_DAYS = 30;
@@ -252,7 +317,17 @@ export function normalizeTripData(value: unknown): TripData {
           const lat = typeof sf.lat === 'number' && Number.isFinite(sf.lat) ? sf.lat : NaN;
           const lng = typeof sf.lng === 'number' && Number.isFinite(sf.lng) ? sf.lng : NaN;
           const temp = typeof sf.temp === 'number' && Number.isFinite(sf.temp) ? sf.temp : NaN;
-          if (!stopId || !stopName || Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(temp)) {
+          if (
+            !stopId ||
+            !stopName ||
+            Number.isNaN(lat) ||
+            Number.isNaN(lng) ||
+            lat < -90 ||
+            lat > 90 ||
+            lng < -180 ||
+            lng > 180 ||
+            Number.isNaN(temp)
+          ) {
             return [];
           }
           return [{
@@ -336,18 +411,12 @@ export function normalizeTripData(value: unknown): TripData {
       };
 
   const waypoints: Waypoint[] = Array.isArray(candidate.waypoints)
-    ? (candidate.waypoints as Waypoint[]).slice(0, 50).map((wp) => {
-        if (
-          wp &&
-          typeof wp === 'object' &&
-          typeof wp.lat === 'number' &&
-          typeof wp.lng === 'number' &&
-          isLegacyHashedCoordinate(wp.name || '', wp.lat, wp.lng)
-        ) {
-          return { ...wp, lat: 0, lng: 0 };
-        }
-        return wp;
-      })
+    ? candidate.waypoints
+        .slice(0, 50)
+        .flatMap((wp, index) => {
+          const normalizedWaypoint = normalizeWaypoint(wp, index);
+          return normalizedWaypoint ? [normalizedWaypoint] : [];
+        })
     : [];
 
   const alerts: OperationalAlert[] = Array.isArray(candidate.alerts)

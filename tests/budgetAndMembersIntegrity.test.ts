@@ -8,6 +8,8 @@ import {
   detectBudgetAlerts,
   getIsoDateForTripDay,
   getTripDayIndexForIsoDate,
+  resolveCategoryAllocations,
+  resolveInitialTripCategoryAllocations,
   resolveScaledAllocationsForBudget,
 } from '../src/utils/budgetAlerts';
 import { buildExpenseReportCsv } from '../src/utils/tripHelpers';
@@ -226,6 +228,66 @@ test('Budget #4-#6: MAX_INVOICES_PER_TRIP = 100, proportional allocation scaling
   assert.equal(getIsoDateForTripDay(trip, 3), '2026-10-22');
   assert.equal(getTripDayIndexForIsoDate(trip, '2026-10-21'), 2);
   assert.equal(getTripDayIndexForIsoDate(trip, '2026-10-25'), null);
+});
+
+test('Budget allocations created above the trip total are capped proportionally', () => {
+  const trip = normalizeTripData({
+    id: 'trip-overallocated',
+    budgetTotal: 10_000_000,
+    customCategoryAllocations: {
+      transport: 6_000_000,
+      hotel: 5_000_000,
+      meal: 4_000_000,
+    },
+    days: [],
+  });
+
+  const allocations = resolveCategoryAllocations(trip);
+  const total = Object.values(allocations).reduce((sum, amount) => sum + amount, 0);
+  assert.equal(total, 10_000_000);
+
+  const scaled = resolveScaledAllocationsForBudget(trip, trip.budgetTotal);
+  assert.ok(scaled);
+  assert.ok(Object.values(scaled!).reduce((sum, amount) => sum + amount, 0) <= trip.budgetTotal);
+});
+
+test('New trip category allocations cover planned costs without false over-limit alerts', () => {
+  const trip = normalizeTripData({
+    id: 'trip-initial-category-limits',
+    budgetTotal: 10_000_000,
+    days: [
+      {
+        dayIndex: 1,
+        dateLabel: '',
+        dayName: 'T2',
+        dateNum: 1,
+        fullDate: 'Ngày 1',
+        confirmedCount: 1,
+        pendingCount: 0,
+        dispatcherNote: '',
+        activities: [
+          {
+            id: 'act-tour-ticket',
+            timeStart: '09:00',
+            timeEnd: '10:00',
+            title: 'Vé tham quan',
+            location: 'Đà Nẵng',
+            type: 'sightseeing',
+            status: 'Đã xác nhận',
+            cost: 2_000_000,
+          },
+        ],
+      },
+    ],
+  });
+
+  const allocations = resolveInitialTripCategoryAllocations(trip);
+  assert.ok(allocations);
+  assert.equal(Object.values(allocations).reduce((sum, amount) => sum + amount, 0), trip.budgetTotal);
+  const initializedTrip = { ...trip, customCategoryAllocations: allocations };
+  const sightseeing = computeBudgetMetrics(initializedTrip).categories.find((category) => category.id === 'sightseeing');
+  assert.equal(sightseeing?.level, 'normal');
+  assert.ok(sightseeing && sightseeing.allocated >= sightseeing.spent);
 });
 
 test('Budget alerts include clear planned vs actual breakdown', () => {

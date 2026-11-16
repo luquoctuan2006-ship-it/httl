@@ -1,6 +1,9 @@
 import type { DaySchedule, TripData } from '../../../types/travel';
 import { detectScheduleAndWeatherAlerts } from '../../../utils/alertDetector';
-import { computeTripBudgetSummaryFields } from '../../../utils/budgetAlerts';
+import {
+  computeTripBudgetSummaryFields,
+  resolveInitialTripCategoryAllocations,
+} from '../../../utils/budgetAlerts';
 import { countPassengerMembers } from '../../../utils/tripJoinHelpers';
 import { buildDynamicWaypoints } from '../../../utils/vietnamGeo';
 import {
@@ -86,7 +89,7 @@ export function buildManualTrip({
     .filter(Boolean);
   const dynamicWaypoints = buildDynamicWaypoints(cleanOrigin, cleanDestination, allActivityLocations);
   const estimatedKm = computeEstimatedRouteKm(dynamicWaypoints, totalDays * 75);
-  const members = buildMembers(membersCount, owner);
+  const members = buildMembers(membersCount, owner, `trip-manual-${stamp}`);
   const membersOnline = members.filter((m) => m.status === 'online').length;
   const resolvedActivitiesCount = enrichedDays.reduce((sum, d) => sum + d.activities.length, 0) || totalActivitiesCount;
   const resolvedConfirmedCount = enrichedDays.reduce((sum, d) => sum + d.confirmedCount, 0);
@@ -147,6 +150,8 @@ export function buildManualTrip({
     days: enrichedDays,
   };
 
+  const initialAllocations = resolveInitialTripCategoryAllocations(trip);
+  if (initialAllocations) trip.customCategoryAllocations = initialAllocations;
   Object.assign(trip, computeTripBudgetSummaryFields(trip));
 
   const detectedAlerts = detectScheduleAndWeatherAlerts(trip);

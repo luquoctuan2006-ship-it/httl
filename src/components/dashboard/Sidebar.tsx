@@ -6,11 +6,8 @@ import {
   MapPin,
   Users,
   Wallet,
-  Sliders,
   Plus,
   Cpu,
-  ShieldAlert,
-  Settings,
   UserCog,
   LogOut,
   X,
@@ -26,7 +23,6 @@ interface SidebarProps {
   userRole: AppRole;
   onLogout: () => void;
   onSelectTab: (tab: string) => void;
-  alertCount?: number;
   tripCount?: number;
   onOpenAIPlanner: () => void;
   onOpenJoinTrip?: () => void;
@@ -42,7 +38,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRole,
   onLogout,
   onSelectTab,
-  alertCount = 0,
   tripCount = 0,
   onOpenAIPlanner,
   onOpenJoinTrip,
@@ -62,13 +57,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const mainNav = userRole === 'admin'
     ? [
-        { id: 'dashboard', label: 'Dashboard / Thống kê', icon: LayoutDashboard },
+        { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
         { id: 'users', label: 'Quản lý người dùng', icon: Users },
-        { id: 'planning', label: 'Dữ liệu hoạch định', icon: MapPin },
-        { id: 'rules', label: 'Quy tắc vận hành', icon: Sliders },
-        { id: 'ai', label: 'Cấu hình tự động hóa', icon: Cpu },
-        { id: 'monitoring', label: 'Giám sát lịch trình', icon: ShieldAlert, badge: alertCount },
-        { id: 'system', label: 'Hệ thống', icon: Settings },
+        { id: 'trips', label: 'Quản lý chuyến đi', icon: Compass, badge: tripCount },
+        { id: 'ai', label: 'Quản lý AI', icon: Cpu },
       ]
     : userNav;
 

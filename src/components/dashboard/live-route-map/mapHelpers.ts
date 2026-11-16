@@ -3,8 +3,6 @@ import type { RouteStopItem } from '../../../utils/routeProgress';
 
 export { getWeatherDescription } from '../../../utils/weatherParser';
 
-export type MapLayer = 'streets' | 'satellite';
-
 export const escapeHtml = (value: unknown): string =>
   String(value ?? '').replace(/[&<>"']/g, (character) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[character],

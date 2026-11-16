@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import type { RouteStopWeather } from '../../../types/travel';
 import { formatTravelDuration, type RouteStopItem } from '../../../utils/routeProgress';
-import { escapeHtml, findStopWeather, STATUS_LABEL, type MapLayer } from './mapHelpers';
+import { escapeHtml, findStopWeather, STATUS_LABEL } from './mapHelpers';
 
 interface UseLiveRouteMapOptions {
   tripId: string;
@@ -11,7 +11,6 @@ interface UseLiveRouteMapOptions {
   stopForecasts?: RouteStopWeather[];
   selectedStopKey: string | null;
   onSelectStop?: (stop: RouteStopItem) => void;
-  mapLayer: MapLayer;
   searchQuery: string;
 }
 
@@ -148,12 +147,10 @@ export function useLiveRouteMap({
   stopForecasts,
   selectedStopKey,
   onSelectStop,
-  mapLayer,
   searchQuery,
 }: UseLiveRouteMapOptions) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const routeLayerRef = useRef<L.LayerGroup | null>(null);
   const segmentLabelLayerRef = useRef<L.LayerGroup | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
@@ -182,13 +179,25 @@ export function useLiveRouteMap({
       zoomControl: false,
     });
     mapInstanceRef.current = map;
+    L.tileLayer(
+      `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${
+        import.meta.env.VITE_CARTO_API_KEY
+          ? `?key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY)}`
+          : ''
+      }`,
+      {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19,
+        referrerPolicy: 'strict-origin-when-cross-origin',
+      },
+    ).addTo(map);
     routeLayerRef.current = L.layerGroup().addTo(map);
     segmentLabelLayerRef.current = L.layerGroup().addTo(map);
     markerLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       markersRef.current.clear();
-      tileLayerRef.current = null;
       routeLayerRef.current = null;
       segmentLabelLayerRef.current = null;
       markerLayerRef.current = null;
@@ -198,44 +207,7 @@ export function useLiveRouteMap({
     };
   }, []);
 
-  // 2. Swap only tile layer when mapLayer changes (never rebuild routes or markers)
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = null;
-    }
-
-    const nextTileLayer =
-      mapLayer === 'satellite'
-        ? L.tileLayer(
-            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            {
-              attribution: '&copy; Esri &mdash; Satellite Imagery',
-              maxZoom: 18,
-            },
-          )
-        : L.tileLayer(
-            `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${
-              import.meta.env.VITE_CARTO_API_KEY
-                ? `?key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY)}`
-                : ''
-            }`,
-            {
-              attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-              subdomains: 'abcd',
-              maxZoom: 19,
-              referrerPolicy: 'strict-origin-when-cross-origin',
-            },
-          );
-
-    nextTileLayer.addTo(map);
-    tileLayerRef.current = nextTileLayer;
-  }, [mapLayer]);
-
-  // 3. Draw route segments & distance pills (real OSRM road path when available, dashed fallback otherwise)
+  // 2. Draw route segments & distance pills (real OSRM road path when available, dashed fallback otherwise)
   const routeDrawSignature = useMemo(
     () =>
       locatedStops

@@ -16,6 +16,27 @@ function parseClock(timeStr: string): number | null {
   return hours * 60 + minutes;
 }
 
+function parseRainProbability(value?: string): number {
+  const numbers = value?.match(/\d+(?:[.,]\d+)?/g) || [];
+  return numbers.reduce((highest, raw) => {
+    const probability = Number(raw.replace(',', '.'));
+    return Number.isFinite(probability) && probability >= 0 && probability <= 100
+      ? Math.max(highest, probability)
+      : highest;
+  }, 0);
+}
+
+function isGeneratedScheduleAlert(alert: OperationalAlert, tripId: string): boolean {
+  return (
+    alert.id.startsWith(`alert-weather-${tripId}-day-`) ||
+    alert.id.startsWith('alert-noon-') ||
+    alert.id.startsWith('alert-late-') ||
+    alert.id.startsWith('alert-overlap-') ||
+    alert.id.startsWith('alert-buffer-') ||
+    alert.id.startsWith('alert-checkin-early-')
+  );
+}
+
 export function createAiRiskAlerts(tripId: string, value: unknown): OperationalAlert[] {
   if (!Array.isArray(value)) return [];
 
@@ -65,7 +86,9 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
   const budgetAlerts = detectBudgetAlerts(trip);
 
   if (!trip.days || !Array.isArray(trip.days)) {
-    const existingNonBudget = (trip.alerts || []).filter((a) => !isBudgetAlert(a));
+    const existingNonBudget = (trip.alerts || []).filter(
+      (a) => !isBudgetAlert(a) && !isGeneratedScheduleAlert(a, trip.id),
+    );
     return [...budgetAlerts, ...existingNonBudget].slice(0, 50);
   }
 
@@ -75,12 +98,12 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
   const riskyStop = stopForecasts
     .map((sf) => ({
       sf,
-      prob: sf.rainProb ? Number.parseInt(sf.rainProb.replace(/\D/g, ''), 10) : 0,
+      prob: parseRainProbability(sf.rainProb),
     }))
     .filter(({ sf, prob }) => prob >= 40 || /mưa|dông|giông|bão/i.test(sf.description || ''))
     .sort((a, b) => b.prob - a.prob)[0];
 
-  const rainProbNum = weather?.rainProb ? Number.parseInt(weather.rainProb.replace(/\D/g, ''), 10) : 0;
+  const rainProbNum = parseRainProbability(weather?.rainProb);
 
   if (riskyStop || rainProbNum >= 40 || /mưa|dông|giông|bão/i.test(weather?.description || '')) {
     const targetDay = trip.days.find((d) => d.dayIndex === trip.currentDay) || trip.days[0];
@@ -106,7 +129,14 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
 
   // 2. Quét xung đột lịch trình trong từng ngày
   for (const day of trip.days) {
-    const activities = day.activities || [];
+    const activities = (day.activities || [])
+      .map((activity, index) => ({ activity, index, start: parseClock(activity.timeStart) }))
+      .sort((a, b) => {
+        if (a.start === null) return b.start === null ? a.index - b.index : 1;
+        if (b.start === null) return -1;
+        return a.start - b.start || a.index - b.index;
+      })
+      .map(({ activity }) => activity);
     if (activities.length === 0) continue;
 
     for (let i = 0; i < activities.length; i++) {
@@ -197,7 +227,9 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
   // Kết hợp cảnh báo mới phát hiện (thay thế nhóm cảnh báo ngân sách bằng trạng thái mới nhất để tự dọn cảnh báo cũ khi đã sửa hạn mức)
   const mergedAlerts: OperationalAlert[] = [
     ...budgetAlerts,
-    ...trip.alerts.filter((a) => !isBudgetAlert(a)),
+    ...trip.alerts.filter(
+      (a) => !isBudgetAlert(a) && !isGeneratedScheduleAlert(a, trip.id),
+    ),
   ];
   for (const newAlert of alerts) {
     const isDuplicate = mergedAlerts.some(

@@ -15,7 +15,7 @@ import { authenticatedFetch } from '../../api';
 
 export interface AdminAIManagementProps {
   onOpenAIPlanner?: () => void;
-  trip?: TripData;
+  trip?: TripData | null;
   isAIApplied?: boolean;
 }
 
@@ -44,7 +44,6 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
   ]);
 
   const [aiErrors, setAiErrors] = useState<any[]>([
-    { id: 'err-1', time: '05/10 14:20', code: 'TIMEOUT_408', detail: 'Quá thời gian phản hồi mạng khi tải hình ảnh vệ tinh', resolved: true },
     { id: 'err-2', time: '02/10 09:12', code: 'JSON_SYNTAX_FALLBACK', detail: 'Mô hình trả thiếu ngoặc nhọn, fallback parser đã tự sửa', resolved: true },
   ]);
 

@@ -329,7 +329,6 @@ export function UserDashboard({
           onLogout={onLogout}
           onOpenAccount={onOpenAccount}
           onSelectTab={(tab) => setCurrentTab(tab)}
-          alertCount={visibleTripAlerts.length}
           tripCount={trips.length}
           onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
           onOpenJoinTrip={onOpenJoinModal}
@@ -844,6 +843,7 @@ export function UserDashboard({
                   <div className="w-full min-w-0">
                     <Suspense fallback={<TabLoadingFallback label="Đang tải danh sách thành viên..." />}>
                       <MembersView
+                        key={trip.id}
                         tripId={trip.id}
                         members={trip.members}
                         onToggleStatus={handleToggleMemberAttendance}

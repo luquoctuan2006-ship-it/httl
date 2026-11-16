@@ -47,6 +47,82 @@ test('normalizeTripData sets status to "Chờ duyệt" for corrupted single acti
   assert.equal(act.timeEnd, '09:30');
 });
 
+test('normalizeTripData rejects impossible clocks and out-of-range map coordinates', () => {
+  const normalized = normalizeTripData({
+    id: 'test-trip-invalid-fields',
+    days: [
+      {
+        dayIndex: 1,
+        activities: [
+          {
+            id: 'act-invalid-clock',
+            timeStart: '25:70',
+            timeEnd: '26:90',
+            title: 'Hoạt động sai giờ',
+            location: 'Đà Nẵng',
+            status: 'Đã xác nhận',
+            type: 'sightseeing',
+            coordinates: { lat: 999, lng: 999 },
+          },
+          {
+            id: 'act-reversed-clock',
+            timeStart: '12:00',
+            timeEnd: '11:00',
+            title: 'Hoạt động đảo giờ',
+            location: 'Đà Nẵng',
+            status: 'Đã xác nhận',
+            type: 'sightseeing',
+          },
+        ],
+      },
+    ],
+    waypoints: [
+      null,
+      {
+        id: 'wp-invalid',
+        code: '01',
+        name: 'Điểm tọa độ lỗi',
+        status: 'not-a-status',
+        lat: 91,
+        lng: 181,
+        xPercent: 120,
+        yPercent: -10,
+      },
+    ],
+    weather: {
+      temp: 25,
+      description: 'Mưa nhẹ',
+      rainProb: '15%',
+      rainProbTime: '15:00',
+      stopForecasts: [
+        {
+          stopId: 'stop-invalid',
+          stopName: 'Tọa độ ngoài biên',
+          lat: 999,
+          lng: 999,
+          temp: 25,
+          description: 'Mưa nhẹ',
+          rainProb: '15%',
+          rainProbTime: '15:00',
+        },
+      ],
+    },
+  });
+
+  assert.equal(normalized.days[0].activities[0].status, 'Chờ duyệt');
+  assert.equal(normalized.days[0].activities[0].timeStart, '08:00');
+  assert.equal(normalized.days[0].activities[0].timeEnd, '09:30');
+  assert.equal(normalized.days[0].activities[0].coordinates, undefined);
+  assert.equal(normalized.days[0].activities[1].status, 'Chờ duyệt');
+  assert.equal(normalized.waypoints.length, 1);
+  assert.equal(normalized.waypoints[0].status, 'pending');
+  assert.equal(normalized.waypoints[0].lat, 0);
+  assert.equal(normalized.waypoints[0].lng, 0);
+  assert.equal(normalized.waypoints[0].xPercent, 100);
+  assert.equal(normalized.waypoints[0].yPercent, 0);
+  assert.equal(normalized.weather.stopForecasts, undefined);
+});
+
 test('normalizeTripData preserves LiveRouteMap telematics and weather fields', () => {
   const trip = {
     id: 'test-trip-live',

@@ -13,7 +13,7 @@ import { RouteStopsPanel } from './live-route-map/RouteStopsPanel';
 import { getStopKey, useLiveRouteMap } from './live-route-map/useLiveRouteMap';
 import { useLiveRouteControls } from './live-route-map/useLiveRouteControls';
 import { useRoadRouting } from './live-route-map/useRoadRouting';
-import { STATUS_LABEL, type MapLayer } from './live-route-map/mapHelpers';
+import { STATUS_LABEL } from './live-route-map/mapHelpers';
 
 interface LiveRouteMapProps {
   trip: TripData;
@@ -33,8 +33,6 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   readOnly = false,
   guestJoinCode,
 }) => {
-  const [mapLayer, setMapLayer] = useState<MapLayer>('streets');
-  const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all');
   const [selectedStopKey, setSelectedStopKey] = useState<string | null>(null);
 
@@ -68,7 +66,6 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     stopForecasts: controls.weather?.stopForecasts,
     selectedStopKey,
     onSelectStop: handleSelectStopOnMap,
-    mapLayer,
     searchQuery,
   });
 
@@ -123,10 +120,6 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         isRoutingLoading={isRoutingLoading}
         dayFilter={dayFilter}
         setDayFilter={setDayFilter}
-        mapLayer={mapLayer}
-        setMapLayer={setMapLayer}
-        layerDropdownOpen={layerDropdownOpen}
-        setLayerDropdownOpen={setLayerDropdownOpen}
         isRefreshingWeather={controls.isRefreshingWeather}
         handleFetchLiveWeather={controls.handleFetchLiveWeather}
         handleFitRoute={map.handleFitRoute}

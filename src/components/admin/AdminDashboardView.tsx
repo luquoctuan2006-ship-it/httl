@@ -4,7 +4,6 @@ import {
   MapPin,
   Sliders,
   Sparkles,
-  Settings,
   Calendar,
   TrendingUp,
   Cpu,
@@ -225,7 +224,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
 
         {/* Metric 2: Chuyến đi & Lịch trình */}
         <div
-          onClick={() => onNavigate('monitoring')}
+          onClick={() => onNavigate('trips')}
           className="cursor-pointer group rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl hover:border-emerald-500/50 transition-all"
         >
           <div className="flex items-center justify-between">
@@ -271,7 +270,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
 
         {/* Metric 4: Địa điểm & Dữ liệu hoạch định */}
         <div
-          onClick={() => onNavigate('locations')}
+          onClick={() => onNavigate('trips')}
           className="cursor-pointer group rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl hover:border-amber-500/50 transition-all"
         >
           <div className="flex items-center justify-between">
@@ -367,7 +366,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* Lối tắt 6 Nhóm Quản trị (4 cols) */}
+        {/* Lối tắt quản trị */}
         <div className="lg:col-span-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
           <h3 className="font-black text-white text-base pb-3 border-b border-slate-800 flex items-center gap-2">
             <Sliders className="w-4 h-4 text-emerald-400" />
@@ -390,14 +389,14 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
-              onClick={() => onNavigate('locations')}
+              onClick={() => onNavigate('trips')}
               className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-amber-500/50 text-left transition group"
             >
               <div className="flex items-center gap-3">
                 <MapPin className="w-4 h-4 text-amber-400" />
                 <div>
-                  <strong className="text-xs text-white block">Quản lý Địa điểm Du lịch</strong>
-                  <span className="text-[10px] text-slate-400">Thêm, sửa, xóa, ẩn, kiểm tra lỗi tọa độ</span>
+                  <strong className="text-xs text-white block">Quản lý Chuyến đi</strong>
+                  <span className="text-[10px] text-slate-400">Danh sách, lịch trình và dữ liệu hoạch định</span>
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-1 transition" />
@@ -417,47 +416,6 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
               <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition" />
             </button>
 
-            <button
-              onClick={() => onNavigate('monitoring')}
-              className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-emerald-500/50 text-left transition group"
-            >
-              <div className="flex items-center gap-3">
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                <div>
-                  <strong className="text-xs text-white block">Quản lý & Kiểm tra Lịch trình</strong>
-                  <span className="text-[10px] text-slate-400">Phát hiện xung đột giờ, kiểm tra bất khả thi</span>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition" />
-            </button>
-
-            <button
-              onClick={() => onNavigate('rules')}
-              className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-teal-500/50 text-left transition group"
-            >
-              <div className="flex items-center gap-3">
-                <Sliders className="w-4 h-4 text-teal-400" />
-                <div>
-                  <strong className="text-xs text-white block">Quy tắc Điều phối & Ràng buộc</strong>
-                  <span className="text-[10px] text-slate-400">Định mức thời gian đệm, trần ngân sách</span>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-teal-400 group-hover:translate-x-1 transition" />
-            </button>
-
-            <button
-              onClick={() => onNavigate('system')}
-              className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-rose-500/50 text-left transition group"
-            >
-              <div className="flex items-center gap-3">
-                <Settings className="w-4 h-4 text-rose-400" />
-                <div>
-                  <strong className="text-xs text-white block">Cấu hình Hệ thống & Audit Log</strong>
-                  <span className="text-[10px] text-slate-400">Chế độ bảo trì, sao lưu JSON, nhật ký</span>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-rose-400 group-hover:translate-x-1 transition" />
-            </button>
           </div>
         </div>
       </div>

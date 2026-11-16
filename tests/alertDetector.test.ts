@@ -7,6 +7,7 @@ import { TripData } from '../src/types/travel';
 test('detectScheduleAndWeatherAlerts detects rain alert when weather rain probability >= 40%', () => {
   const trip: TripData = {
     ...initialTripData,
+    days: [],
     weather: {
       ...initialTripData.weather,
       rainProb: '65%',
@@ -18,6 +19,23 @@ test('detectScheduleAndWeatherAlerts detects rain alert when weather rain probab
   const rainAlert = alerts.find((a) => a.title.includes('mưa') || a.title.includes('Mưa'));
   assert.ok(rainAlert, 'Should generate weather rain alert when rain probability >= 40%');
   assert.equal(rainAlert?.severity, 'warning');
+});
+
+test('rain percentage parsing does not turn decimal probabilities into false high-risk alerts', () => {
+  const trip: TripData = {
+    ...initialTripData,
+    days: [],
+    weather: {
+      ...initialTripData.weather,
+      description: '',
+      rainProb: '10.5%',
+      stopForecasts: [],
+    },
+    alerts: [],
+  };
+
+  const alerts = detectScheduleAndWeatherAlerts(trip);
+  assert.equal(alerts.some((alert) => alert.category === 'weather'), false);
 });
 
 test('detectScheduleAndWeatherAlerts detects midday outdoor activity alert', () => {
@@ -136,6 +154,61 @@ test('detectScheduleAndWeatherAlerts detects early hotel check-in before 13:00',
   const checkinAlert = alerts.find((a) => a.title.includes('giờ nhận phòng') || a.title.includes('Check-in'));
   assert.ok(checkinAlert, 'Should flag hotel check-in scheduled before standard check-in hour');
   assert.equal(checkinAlert?.category, 'hotel');
+});
+
+test('alert scan sorts activities by time and removes stale generated schedule warnings', () => {
+  const trip: TripData = {
+    ...initialTripData,
+    id: 'trip-alert-order',
+    days: [
+      {
+        dayIndex: 1,
+        dateLabel: 'T2 12',
+        dayName: 'T2',
+        dateNum: 12,
+        fullDate: 'Thứ Hai, 12 tháng 10',
+        hasWarning: false,
+        pendingCount: 0,
+        confirmedCount: 2,
+        activities: [
+          {
+            id: 'act-later',
+            timeStart: '09:00',
+            timeEnd: '10:00',
+            title: 'Hoạt động sau',
+            location: 'Điểm B',
+            type: 'sightseeing',
+            details: '',
+            status: 'Đã xác nhận',
+          },
+          {
+            id: 'act-earlier',
+            timeStart: '08:00',
+            timeEnd: '09:30',
+            title: 'Hoạt động trước',
+            location: 'Điểm A',
+            type: 'sightseeing',
+            details: '',
+            status: 'Đã xác nhận',
+          },
+        ],
+      },
+    ],
+    alerts: [
+      {
+        id: 'alert-buffer-1-old',
+        title: 'Cảnh báo đệm cũ',
+        timeAgo: 'Ngày 1',
+        description: 'Cảnh báo lịch trình đã hết hiệu lực.',
+        severity: 'warning',
+        category: 'traffic',
+      },
+    ],
+  };
+
+  const alerts = detectScheduleAndWeatherAlerts(trip);
+  assert.ok(alerts.some((alert) => alert.id === 'alert-overlap-1-act-earlier-act-later'));
+  assert.equal(alerts.some((alert) => alert.id === 'alert-buffer-1-old'), false);
 });
 
 test('detectScheduleAndWeatherAlerts detects category and total budget overruns & near-limit warnings', async () => {

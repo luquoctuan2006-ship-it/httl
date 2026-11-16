@@ -76,13 +76,90 @@ export function resolveCategoryAllocations(trip: TripData): ResolvedCategoryAllo
     return Math.round(totalBudget * ratio);
   };
 
-  return {
+  const allocations = {
     transport: pick('transport', 0.28),
     hotel: pick('hotel', 0.35),
     meal: pick('meal', 0.22),
     sightseeing: pick('sightseeing', 0.10),
     contingency: pick('contingency', 0.05),
   };
+
+  return totalBudget > 0 ? capCategoryAllocationsToBudget(allocations, totalBudget) : allocations;
+}
+
+function capCategoryAllocationsToBudget(
+  allocations: ResolvedCategoryAllocations,
+  budgetTotal: number,
+): ResolvedCategoryAllocations {
+  const keys: BudgetCategoryId[] = ['transport', 'hotel', 'meal', 'sightseeing', 'contingency'];
+  const budget = Math.max(0, Math.round(budgetTotal));
+  const total = keys.reduce((sum, key) => sum + allocations[key], 0);
+  if (total <= budget || total === 0) return allocations;
+
+  const scaled: ResolvedCategoryAllocations = {
+    transport: Math.round((allocations.transport / total) * budget),
+    hotel: Math.round((allocations.hotel / total) * budget),
+    meal: Math.round((allocations.meal / total) * budget),
+    sightseeing: Math.round((allocations.sightseeing / total) * budget),
+    contingency: Math.round((allocations.contingency / total) * budget),
+  };
+  let excess = keys.reduce((sum, key) => sum + scaled[key], 0) - budget;
+  for (const key of [...keys].sort((a, b) => scaled[b] - scaled[a])) {
+    if (excess <= 0) break;
+    const reduction = Math.min(scaled[key], excess);
+    scaled[key] -= reduction;
+    excess -= reduction;
+  }
+  return scaled;
+}
+
+export function resolveInitialTripCategoryAllocations(
+  trip: TripData,
+): TripData['customCategoryAllocations'] | undefined {
+  const budget =
+    typeof trip.budgetTotal === 'number' && Number.isFinite(trip.budgetTotal) && trip.budgetTotal > 0
+      ? Math.round(trip.budgetTotal)
+      : 0;
+  if (budget <= 0) return trip.customCategoryAllocations;
+
+  const current = resolveCategoryAllocations(trip);
+  const metrics = computeBudgetMetrics(trip);
+  const spendByCategory = Object.fromEntries(
+    metrics.categories.map((category) => [category.id, category.spent]),
+  ) as ResolvedCategoryAllocations;
+  const totalSpent = Object.values(spendByCategory).reduce((sum, amount) => sum + amount, 0);
+
+  if (totalSpent <= 0) {
+    return trip.customCategoryAllocations
+      ? capCategoryAllocationsToBudget(current, budget)
+      : undefined;
+  }
+  if (totalSpent > budget) {
+    return capCategoryAllocationsToBudget(current, budget);
+  }
+
+  const currentTotal = Object.values(current).reduce((sum, amount) => sum + amount, 0);
+  const remainingBudget = budget - totalSpent;
+  const allocations = {} as ResolvedCategoryAllocations;
+  const fractionalShares: Array<{ id: BudgetCategoryId; fraction: number }> = [];
+  for (const category of BUDGET_CATEGORY_CONFIGS) {
+    const weight =
+      currentTotal > 0
+        ? current[category.id] / currentTotal
+        : category.defaultRatio;
+    const exactShare = remainingBudget * weight;
+    const wholeShare = Math.floor(exactShare);
+    allocations[category.id] = spendByCategory[category.id] + wholeShare;
+    fractionalShares.push({ id: category.id, fraction: exactShare - wholeShare });
+  }
+
+  let unallocated = budget - Object.values(allocations).reduce((sum, amount) => sum + amount, 0);
+  for (const share of fractionalShares.sort((a, b) => b.fraction - a.fraction)) {
+    if (unallocated <= 0) break;
+    allocations[share.id] += 1;
+    unallocated -= 1;
+  }
+  return allocations;
 }
 
 /**
@@ -106,7 +183,6 @@ export function resolveScaledAllocationsForBudget(
   }
 
   const ratio = cleanNewBudget / oldTotal;
-  const keys: BudgetCategoryId[] = ['transport', 'hotel', 'meal', 'sightseeing', 'contingency'];
   const scaled: ResolvedCategoryAllocations = {
     transport: Math.round(current.transport * ratio),
     hotel: Math.round(current.hotel * ratio),
@@ -115,20 +191,7 @@ export function resolveScaledAllocationsForBudget(
     contingency: Math.round(current.contingency * ratio),
   };
 
-  const sumScaled = keys.reduce((s, k) => s + scaled[k], 0);
-  if (sumScaled > cleanNewBudget) {
-    let excess = sumScaled - cleanNewBudget;
-    // Trừ phần làm tròn dư vào hạng mục lớn nhất để tổng <= tổng ngân sách mới
-    const sortedBySize = [...keys].sort((a, b) => scaled[b] - scaled[a]);
-    for (const k of sortedBySize) {
-      if (excess <= 0) break;
-      const deduct = Math.min(scaled[k], excess);
-      scaled[k] -= deduct;
-      excess -= deduct;
-    }
-  }
-
-  return scaled;
+  return capCategoryAllocationsToBudget(scaled, cleanNewBudget);
 }
 
 export function getIsoDateForTripDay(trip: Pick<TripData, 'dates' | 'totalDays' | 'days'>, dayIndex: number): string {

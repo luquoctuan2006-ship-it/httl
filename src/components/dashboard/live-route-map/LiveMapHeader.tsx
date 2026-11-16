@@ -1,8 +1,7 @@
 import React from 'react';
-import { Layers, Map, ChevronDown, Check, RefreshCw, Maximize2 } from 'lucide-react';
+import { Map, RefreshCw, Maximize2 } from 'lucide-react';
 import type { TripData } from '../../../types/travel';
 import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/routeProgress';
-import type { MapLayer } from './mapHelpers';
 
 interface LiveMapHeaderProps {
   trip: TripData;
@@ -13,10 +12,6 @@ interface LiveMapHeaderProps {
   isRoutingLoading: boolean;
   dayFilter: number | 'all';
   setDayFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
-  mapLayer: MapLayer;
-  setMapLayer: React.Dispatch<React.SetStateAction<MapLayer>>;
-  layerDropdownOpen: boolean;
-  setLayerDropdownOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isRefreshingWeather: boolean;
   handleFetchLiveWeather: () => Promise<void>;
   handleFitRoute: () => void;
@@ -32,10 +27,6 @@ export const LiveMapHeader: React.FC<LiveMapHeaderProps> = (props) => {
     isRoutingLoading,
     dayFilter,
     setDayFilter,
-    mapLayer,
-    setMapLayer,
-    layerDropdownOpen,
-    setLayerDropdownOpen,
     isRefreshingWeather,
     handleFetchLiveWeather,
     handleFitRoute,
@@ -88,44 +79,6 @@ export const LiveMapHeader: React.FC<LiveMapHeaderProps> = (props) => {
             <span>{isRefreshingWeather ? 'Đang cập nhật...' : 'Làm mới thời tiết'}</span>
           </button>
 
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setLayerDropdownOpen(!layerDropdownOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition"
-            >
-              <Layers className="w-3.5 h-3.5 text-slate-500" />
-              <span>{mapLayer === 'satellite' ? 'Ảnh vệ tinh' : 'Bản đồ đường phố'}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {layerDropdownOpen && (
-              <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 text-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMapLayer('streets');
-                    setLayerDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${mapLayer === 'streets' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
-                >
-                  <span>Bản đồ đường phố</span>
-                  {mapLayer === 'streets' && <Check className="w-3.5 h-3.5 text-teal-600" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMapLayer('satellite');
-                    setLayerDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 ${mapLayer === 'satellite' ? 'text-teal-700 font-bold bg-teal-50/50' : 'text-slate-700'}`}
-                >
-                  <span>Ảnh vệ tinh (Esri)</span>
-                  {mapLayer === 'satellite' && <Check className="w-3.5 h-3.5 text-teal-600" />}
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

@@ -35,9 +35,10 @@ export function parseGroupSize(groupType: string): number {
   return Math.min(Math.max(Number.isFinite(count) ? count : 10, 1), 100);
 }
 
-export function buildMembers(count: number, owner?: TripCreatorOwner): TripMember[] {
+export function buildMembers(count: number, owner?: TripCreatorOwner, idPrefix?: string): TripMember[] {
   const safeCount = Math.min(Math.max(Math.round(count) || 1, 1), 100);
   const stamp = Date.now();
+  const memberIdPrefix = idPrefix?.trim() || `member-${stamp}`;
   const hasOwner = Boolean(owner && (owner.uid?.trim() || owner.name?.trim()));
 
   return Array.from({ length: safeCount }, (_, index) => {
@@ -45,7 +46,7 @@ export function buildMembers(count: number, owner?: TripCreatorOwner): TripMembe
       const ownerName = owner?.name?.trim() || 'Trưởng đoàn';
       const ownerUid = owner?.uid?.trim();
       return {
-        id: `member-${stamp}-1`,
+        id: `${memberIdPrefix}-1`,
         name: ownerName,
         avatar: getMemberInitials(ownerName),
         role: 'Trưởng đoàn',
@@ -58,7 +59,7 @@ export function buildMembers(count: number, owner?: TripCreatorOwner): TripMembe
     }
 
     return {
-      id: `member-${stamp}-${index + 1}`,
+      id: `${memberIdPrefix}-${index + 1}`,
       name: `Thành viên ${index + 1}`,
       avatar: String((index % 10) + 1),
       role: index === 0 ? 'Trưởng đoàn' : 'Khách du lịch',

@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { authenticatedFetch, safeJsonResponse } from '../../../api';
 import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../../../utils/alertDetector';
-import { computeTripBudgetSummaryFields } from '../../../utils/budgetAlerts';
+import {
+  computeTripBudgetSummaryFields,
+  resolveInitialTripCategoryAllocations,
+} from '../../../utils/budgetAlerts';
 import { countPassengerMembers } from '../../../utils/tripJoinHelpers';
 import { buildAIPlanWaypoints } from '../../../utils/vietnamGeo';
 import type { TripData } from '../../../types/travel';
@@ -223,7 +226,7 @@ export function useAiTripPlanner({
         aiGeneratedPlan.aiConfidence,
       );
 
-      const members = buildMembers(memberCount, owner);
+      const members = buildMembers(memberCount, owner, `trip-ai-${stamp}`);
       const membersOnline = members.filter((m) => m.status === 'online').length;
 
       const newTrip: TripData = {
@@ -278,6 +281,9 @@ export function useAiTripPlanner({
         members,
         days: formattedDays,
       };
+
+      const initialAllocations = resolveInitialTripCategoryAllocations(newTrip);
+      if (initialAllocations) newTrip.customCategoryAllocations = initialAllocations;
 
       Object.assign(newTrip, computeTripBudgetSummaryFields(newTrip));
 
