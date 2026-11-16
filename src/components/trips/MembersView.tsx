@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Users,
   Phone,
@@ -19,15 +19,19 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { TripMember } from '../../types/travel';
-import { buildGuestInviteUrl } from '../../utils/tripJoinHelpers';
+import {
+  buildGuestInviteUrl,
+  isStaffRole,
+  MAX_GUEST_COMPANIONS_PER_PASSENGER,
+  MEMBER_ROLES,
+} from '../../utils/tripJoinHelpers';
 import { Modal, ModalFooter } from '../common/Modal';
 import { Field, SelectInput, TextInput } from '../common/Field';
 
-const MEMBER_ROLES = ['Khách du lịch', 'Khách VIP', 'Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế'] as const;
-
 interface MembersViewProps {
+  tripId?: string;
   members: TripMember[];
-  onToggleStatus: (id: string) => Promise<void>;
+  onToggleStatus: (id: string, nextStatus?: TripMember['attendanceStatus']) => Promise<void>;
   onUpdateMembers?: (updatedMembers: TripMember[]) => Promise<void>;
   searchQuery?: string;
   onClearSearch?: () => void;
@@ -43,6 +47,7 @@ interface MembersViewProps {
 }
 
 export const MembersView: React.FC<MembersViewProps> = ({
+  tripId,
   members,
   onToggleStatus,
   onUpdateMembers,
@@ -74,6 +79,9 @@ export const MembersView: React.FC<MembersViewProps> = ({
   const [guestPreviewName, setGuestPreviewName] = useState('');
   const [isOpeningGuestPreview, setIsOpeningGuestPreview] = useState(false);
 
+  // Filter tabs
+  const [memberFilter, setMemberFilter] = useState<'all' | 'passenger' | 'staff' | 'guest'>('all');
+
   // Leave confirmation
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -95,9 +103,40 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
   // Delete confirm state (Owner/Admin)
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [isSavingMember, setIsSavingMember] = useState(false);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
+
+  useEffect(() => {
+    setErrorMessage(null);
+    setMemberFilter('all');
+    setIsCompanionModalOpen(false);
+    setCompanionName('');
+    setCompanionPhone('');
+    setCompanionPreference('');
+    setGuestPreviewName('');
+    setIsAddModalOpen(false);
+    setEditingMember(null);
+    setDeletingMemberId(null);
+    setIsLeaveConfirmOpen(false);
+    setIsSavingMember(false);
+    setIsDeletingMember(false);
+  }, [tripId]);
+
+  const passengerCount = members.filter((m) => !isStaffRole(m.role) && m.memberType !== 'guest').length;
+  const staffCount = members.filter((m) => isStaffRole(m.role)).length;
+  const guestCount = members.filter((m) => m.memberType === 'guest').length;
 
   const normalizedQuery = (searchQuery || '').trim().toLowerCase();
   const filteredMembers = members.filter((member) => {
+    if (memberFilter === 'passenger' && (isStaffRole(member.role) || member.memberType === 'guest')) {
+      return false;
+    }
+    if (memberFilter === 'staff' && !isStaffRole(member.role)) {
+      return false;
+    }
+    if (memberFilter === 'guest' && member.memberType !== 'guest') {
+      return false;
+    }
     if (!normalizedQuery) return true;
     return (
       member.name.toLowerCase().includes(normalizedQuery) ||
@@ -110,6 +149,16 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
   const presentCount = members.filter((member) => member.attendanceStatus === 'Có mặt').length;
   const onlineCount = members.filter((member) => member.status === 'online').length;
+  const myCompanionCount = currentUserUid
+    ? members.filter((m) => m.memberType === 'guest' && m.invitedByUid === currentUserUid).length
+    : 0;
+  const companionLimitReached = !isTripOwner && myCompanionCount >= MAX_GUEST_COMPANIONS_PER_PASSENGER;
+
+  const deletingTarget = deletingMemberId ? members.find((m) => m.id === deletingMemberId) || null : null;
+  const cascadeCompanionsCount =
+    deletingTarget?.uid && deletingTarget.memberType !== 'guest'
+      ? members.filter((m) => m.memberType === 'guest' && m.invitedByUid === deletingTarget.uid).length
+      : 0;
 
   const getInitials = (name: string): string => {
     const parts = name.trim().split(/\s+/);
@@ -144,11 +193,11 @@ export const MembersView: React.FC<MembersViewProps> = ({
     }
   };
 
-  const toggleAttendance = async (memberId: string) => {
+  const setAttendance = async (memberId: string, nextStatus: TripMember['attendanceStatus']) => {
     setUpdatingMemberId(memberId);
     setErrorMessage(null);
     try {
-      await onToggleStatus(memberId);
+      await onToggleStatus(memberId, nextStatus);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Không thể cập nhật điểm danh');
     } finally {
@@ -203,46 +252,56 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || !newPhone.trim()) return;
+    if (!newName.trim() || isSavingMember) return;
 
+    setIsSavingMember(true);
+    setErrorMessage(null);
     const newMember: TripMember = {
       id: `member-${Date.now()}`,
       name: newName.trim(),
       avatar: getInitials(newName),
-      role: newRole.trim(),
+      role: newRole.trim() || 'Khách du lịch',
       phone: newPhone.trim(),
-      status: 'online',
+      status: 'offline',
       attendanceStatus: newAttendance,
       specialPreference: newPreference.trim() || undefined,
       memberType: 'manual',
     };
 
-    const updated = [...members, newMember];
-    if (onUpdateMembers) {
-      await onUpdateMembers(updated);
+    try {
+      const updated = [...members, newMember];
+      if (onUpdateMembers) {
+        await onUpdateMembers(updated);
+      }
+      setIsAddModalOpen(false);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Không thể thêm thành viên mới');
+    } finally {
+      setIsSavingMember(false);
     }
-    setIsAddModalOpen(false);
   };
 
   const handleOpenEditModal = (member: TripMember) => {
     setEditingMember(member);
     setEditName(member.name);
     setEditRole(member.role);
-    setEditPhone(member.phone);
+    setEditPhone(member.phone || '');
     setEditPreference(member.specialPreference || '');
   };
 
   const handleSaveEditMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingMember || !editName.trim() || !editPhone.trim()) return;
+    if (!editingMember || !editName.trim() || isSavingMember) return;
 
+    setIsSavingMember(true);
+    setErrorMessage(null);
     const updated = members.map((m) => {
       if (m.id === editingMember.id) {
         return {
           ...m,
           name: editName.trim(),
           avatar: getInitials(editName),
-          role: editRole.trim(),
+          role: editRole.trim() || m.role,
           phone: editPhone.trim(),
           specialPreference: editPreference.trim() || undefined,
         };
@@ -250,67 +309,78 @@ export const MembersView: React.FC<MembersViewProps> = ({
       return m;
     });
 
-    if (onUpdateMembers) {
-      await onUpdateMembers(updated);
+    try {
+      if (onUpdateMembers) {
+        await onUpdateMembers(updated);
+      }
+      setEditingMember(null);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Không thể cập nhật thông tin thành viên');
+    } finally {
+      setIsSavingMember(false);
     }
-    setEditingMember(null);
   };
 
   const handleDeleteMember = async (id: string) => {
-    const target = members.find((m) => m.id === id);
-    if (!isTripOwner && target?.invitedByUid === currentUserUid && onRemoveGuestCompanion) {
-      await onRemoveGuestCompanion(id);
+    if (isDeletingMember) return;
+    setIsDeletingMember(true);
+    setErrorMessage(null);
+    try {
+      const target = members.find((m) => m.id === id);
+      if (!isTripOwner && target?.invitedByUid === currentUserUid && onRemoveGuestCompanion) {
+        await onRemoveGuestCompanion(id);
+        setDeletingMemberId(null);
+        return;
+      }
+      const removedOwnerUid =
+        target?.uid && target.memberType !== 'guest' ? target.uid : null;
+      const updated = members.filter(
+        (m) =>
+          m.id !== id &&
+          !(removedOwnerUid && m.memberType === 'guest' && m.invitedByUid === removedOwnerUid),
+      );
+      if (onUpdateMembers) {
+        await onUpdateMembers(updated);
+      }
       setDeletingMemberId(null);
-      return;
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Không thể xóa thành viên');
+    } finally {
+      setIsDeletingMember(false);
     }
-    const updated = members.filter((m) => m.id !== id);
-    if (onUpdateMembers) {
-      await onUpdateMembers(updated);
-    }
-    setDeletingMemberId(null);
-  };
-
-  const getRoleBadge = (role: string) => {
-    if (role === 'Trưởng đoàn') {
-      return 'bg-purple-50 text-purple-700 border-purple-200';
-    }
-    if (role === 'Hướng dẫn viên') {
-      return 'bg-teal-50 text-teal-700 border-teal-200';
-    }
-    if (role === 'Tài xế') {
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-    }
-    if (role === 'Khách VIP') {
-      return 'bg-rose-50 text-rose-700 border-rose-200';
-    }
-    return 'bg-slate-100 text-slate-600 border-slate-200';
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900">Danh sách Thành viên &amp; Mời Hành khách</h2>
-          <p className="text-xs text-slate-500 font-medium">
-            Quản lý {members.length} thành viên đoàn, mã tham gia cho hành khách có tài khoản và người thân không tài khoản
+          <h2 className="text-xl font-bold text-slate-900">Thành viên &amp; Mời Hành khách</h2>
+          <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+            {members.length} thành viên · {presentCount} có mặt · {onlineCount} trực tuyến
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 tabular-nums">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{presentCount}/{members.length} có mặt · {onlineCount} trực tuyến</span>
-          </span>
-
           {onAddGuestCompanion && (
             <button
               type="button"
               onClick={() => setIsCompanionModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition"
+              title={
+                companionLimitReached
+                  ? `Mỗi hành khách chỉ có thể thêm tối đa ${MAX_GUEST_COMPANIONS_PER_PASSENGER} người thân đi cùng`
+                  : 'Đăng ký người thân không có tài khoản'
+              }
+              className={`h-9 flex items-center gap-1.5 px-3.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                companionLimitReached
+                  ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+              }`}
             >
-              <UserPlus className="w-4 h-4" />
-              <span>Thêm người thân (không TK)</span>
+              <UserPlus className="w-3.5 h-3.5 text-teal-600" />
+              <span>
+                Thêm người thân{!isTripOwner ? ` (${myCompanionCount}/${MAX_GUEST_COMPANIONS_PER_PASSENGER})` : ''}
+              </span>
             </button>
           )}
 
@@ -318,9 +388,9 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <button
               type="button"
               onClick={handleOpenAddModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition"
+              className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               <span>Thêm thành viên</span>
             </button>
           )}
@@ -329,7 +399,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <button
               type="button"
               onClick={() => setIsLeaveConfirmOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition"
+              className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Rời chuyến</span>
@@ -340,42 +410,40 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Share / Join Code Management & Guest Handoff Card */}
       {(joinCode || (isTripOwner && onManageJoinCode)) && (
-        <div className="rounded-2xl bg-white border border-slate-200 p-5 shadow-2xs grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-          <div className="lg:col-span-7 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-teal-700">
-                <KeyRound className="w-4 h-4" />
-                <span>Mã tham gia chuyến đi (Join Code)</span>
+        <div className="rounded-xl bg-white border border-slate-200 p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <div className="lg:col-span-7 space-y-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <KeyRound className="w-4 h-4 text-teal-600" />
+                <span>Mã tham gia chuyến đi</span>
               </span>
               {joinCode && (
                 <span
-                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border ${
-                    joinCodeEnabled
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  className={`text-xs font-semibold ${
+                    joinCodeEnabled ? 'text-emerald-700' : 'text-slate-500'
                   }`}
                 >
-                  {joinCodeEnabled ? 'Đang mở cho HK' : 'Đang tạm khóa'}
+                  · {joinCodeEnabled ? 'Đang mở tham gia' : 'Đang tạm khóa'}
                 </span>
               )}
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-500 leading-relaxed">
               {isTripOwner
-                ? 'Chia sẻ mã này để bạn bè tham gia chuyến với tư cách Hành khách (HK), hoặc nhập giúp cho người thân không có tài khoản để xem lịch trình riêng.'
-                : 'Bạn đang tham gia chuyến với tư cách Hành khách (HK). Dùng mã này để mời thêm người thân không có tài khoản cùng theo dõi lịch trình.'}
+                ? 'Chia sẻ mã này để bạn bè tham gia chuyến với tư cách Hành khách có tài khoản, hoặc nhập giúp cho người thân không tài khoản.'
+                : 'Dùng mã này để mời thêm người thân không tài khoản cùng theo dõi lịch trình.'}
             </p>
 
             {joinCode ? (
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <div className="px-4 py-2 rounded-xl bg-slate-900 text-white font-mono text-lg font-black tracking-[0.22em] select-all">
+                <div className="px-3.5 py-2 rounded-lg bg-slate-900 text-white font-mono text-base font-bold tracking-[0.2em] select-all">
                   {joinCode}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => void handleCopy('code')}
-                  className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold inline-flex items-center gap-1.5 transition"
+                  className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
                   {copiedType === 'code' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedType === 'code' ? 'Đã chép mã' : 'Sao chép mã'}</span>
@@ -384,7 +452,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <button
                   type="button"
                   onClick={() => void handleCopy('link')}
-                  className="min-h-[40px] px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold inline-flex items-center gap-1.5 transition"
+                  className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-teal-700 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
                   {copiedType === 'link' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Link2 className="w-3.5 h-3.5" />}
                   <span>{copiedType === 'link' ? 'Đã chép link mời' : 'Sao chép link mời'}</span>
@@ -396,7 +464,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                       type="button"
                       disabled={isManagingCode}
                       onClick={() => void handleCodeAction('rotate')}
-                      className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition disabled:opacity-50"
+                      className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
                       title="Đổi sang mã mời mới (mã cũ sẽ hết hiệu lực)"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isManagingCode ? 'animate-spin' : ''}`} />
@@ -407,7 +475,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                       type="button"
                       disabled={isManagingCode}
                       onClick={() => void handleCodeAction('toggle')}
-                      className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition disabled:opacity-50"
+                      className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
                     >
                       {joinCodeEnabled ? <Lock className="w-3.5 h-3.5 text-amber-600" /> : <Unlock className="w-3.5 h-3.5 text-emerald-600" />}
                       <span>{joinCodeEnabled ? 'Khóa mã' : 'Mở lại mã'}</span>
@@ -422,7 +490,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   type="button"
                   disabled={isManagingCode}
                   onClick={() => void handleCodeAction('generate')}
-                  className="mt-1 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition disabled:opacity-50"
+                  className="mt-1 h-9 px-3.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>{isManagingCode ? 'Đang tạo mã...' : 'Tạo mã mời vào chuyến'}</span>
@@ -431,14 +499,14 @@ export const MembersView: React.FC<MembersViewProps> = ({
             )}
           </div>
 
-          {/* Direct Guest Portal Handoff Box */}
+          {/* Direct Guest Portal Handoff */}
           {joinCode && joinCodeEnabled && onOpenGuestModeWithCode && (
-            <div className="lg:col-span-5 rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2.5 text-xs">
-              <div className="font-extrabold text-slate-900">
+            <div className="lg:col-span-5 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-5 space-y-2.5 text-xs">
+              <div className="font-bold text-slate-900">
                 Mở giao diện Hành khách (Không tài khoản)
               </div>
-              <p className="text-[11px] text-slate-500">
-                Nhập tên người thân (nếu cần) và mở ngay giao diện Hành khách gọn nhẹ trên thiết bị này bằng mã <strong className="font-mono text-slate-800">{joinCode}</strong>.
+              <p className="text-xs text-slate-500">
+                Nhập tên người thân (nếu cần) và mở nhanh bằng mã <strong className="font-mono text-slate-800">{joinCode}</strong>.
               </p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
@@ -446,16 +514,16 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   value={guestPreviewName}
                   onChange={(e) => setGuestPreviewName(e.target.value)}
                   placeholder="Tên người thân (tùy chọn)"
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-teal-500"
+                  className="flex-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-teal-500"
                 />
                 <button
                   type="button"
                   disabled={isOpeningGuestPreview}
                   onClick={() => void handleOpenGuestForRelative()}
-                  className="min-h-[38px] px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold inline-flex items-center justify-center gap-1.5 shrink-0 transition disabled:opacity-50"
+                  className="h-9 px-3.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold inline-flex items-center justify-center gap-1.5 shrink-0 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>{isOpeningGuestPreview ? 'Đang mở...' : 'Mở giao diện HK'}</span>
+                  <span>{isOpeningGuestPreview ? 'Đang mở...' : 'Mở giao diện'}</span>
                 </button>
               </div>
             </div>
@@ -469,6 +537,36 @@ export const MembersView: React.FC<MembersViewProps> = ({
         </p>
       )}
 
+      {/* Quick Filter Tabs */}
+      {members.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap border-b border-slate-200 pb-3">
+          {(
+            [
+              { id: 'all', label: 'Tất cả', count: members.length },
+              { id: 'passenger', label: 'Hành khách', count: passengerCount },
+              { id: 'staff', label: 'Điều hành / Xe', count: staffCount },
+              { id: 'guest', label: 'Người thân không TK', count: guestCount },
+            ] as const
+          ).map((tab) => {
+            const active = memberFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setMemberFilter(tab.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer tabular-nums whitespace-nowrap ${
+                  active
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Search active notice */}
       {normalizedQuery && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
@@ -477,7 +575,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <button
               type="button"
               onClick={onClearSearch}
-              className="font-bold text-amber-800 hover:underline"
+              className="font-bold text-amber-800 hover:underline cursor-pointer"
             >
               Xóa bộ lọc
             </button>
@@ -487,7 +585,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Members Grid */}
       {filteredMembers.length === 0 ? (
-        <div className="p-10 text-center bg-white rounded-2xl border border-dashed border-slate-200 text-xs text-slate-500">
+        <div className="p-10 text-center bg-white rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
           {normalizedQuery ? (
             <>
               Không tìm thấy thành viên nào khớp với từ khóa &quot;{searchQuery}&quot;.
@@ -495,11 +593,22 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <button
                   type="button"
                   onClick={onClearSearch}
-                  className="block mx-auto mt-2 text-teal-600 font-bold hover:underline"
+                  className="block mx-auto mt-2 text-teal-600 font-semibold hover:underline cursor-pointer"
                 >
                   Xem tất cả thành viên
                 </button>
               )}
+            </>
+          ) : memberFilter !== 'all' ? (
+            <>
+              Không có thành viên nào trong nhóm lọc này.
+              <button
+                type="button"
+                onClick={() => setMemberFilter('all')}
+                className="block mx-auto mt-2 text-teal-600 font-semibold hover:underline cursor-pointer"
+              >
+                Xem tất cả thành viên
+              </button>
             </>
           ) : (
             <>
@@ -508,7 +617,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <button
                   type="button"
                   onClick={handleOpenAddModal}
-                  className="block mx-auto mt-2 text-teal-600 font-bold hover:underline"
+                  className="block mx-auto mt-2 text-teal-600 font-semibold hover:underline cursor-pointer"
                 >
                   + Thêm thành viên đầu tiên
                 </button>
@@ -526,50 +635,73 @@ export const MembersView: React.FC<MembersViewProps> = ({
               (isTripOwner && Boolean(onUpdateMembers)) ||
               (!isTripOwner && isInvitedByMe && Boolean(onRemoveGuestCompanion));
 
+            const accountLabel =
+              member.memberType === 'account'
+                ? 'Có tài khoản'
+                : member.memberType === 'guest'
+                  ? 'Không tài khoản'
+                  : 'Thêm thủ công';
+
+            const roleColor =
+              member.role === 'Trưởng đoàn'
+                ? 'text-purple-700'
+                : member.role === 'Hướng dẫn viên'
+                  ? 'text-teal-700'
+                  : member.role === 'Tài xế'
+                    ? 'text-amber-700'
+                    : member.role === 'Khách VIP'
+                      ? 'text-rose-700'
+                      : 'text-slate-600';
+
             return (
               <div
                 key={member.id}
-                className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md transition flex flex-col justify-between group"
+                className="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 transition flex flex-col justify-between group"
               >
                 <div>
-                  {/* Header row with Avatar, Name, Role & Status */}
+                  {/* Header row with Avatar, Name, Role & Account status */}
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 text-white font-extrabold text-sm flex items-center justify-center shadow-xs shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
                         {member.avatar || getInitials(member.name)}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-sm font-extrabold text-slate-900 leading-snug truncate">
+                        <h4 className="text-sm font-bold text-slate-900 leading-snug truncate">
                           {member.name}
                           {isOwnMember && (
-                            <span className="ml-1.5 text-[10px] font-bold text-teal-700">(Bạn)</span>
+                            <span className="ml-1.5 text-xs font-semibold text-teal-700">(Bạn)</span>
                           )}
                         </h4>
-                        <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                          <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadge(member.role)}`}>
-                            {member.role}
-                          </span>
-                          {member.memberType === 'account' && (
-                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border bg-sky-50 text-sky-700 border-sky-200">
-                              Tài khoản HK
-                            </span>
-                          )}
-                          {member.memberType === 'guest' && (
-                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border bg-amber-50 text-amber-800 border-amber-200">
-                              Không TK
-                            </span>
-                          )}
+                        <div className="text-xs mt-0.5 truncate">
+                          <span className={`font-semibold ${roleColor}`}>{member.role}</span>
+                          <span aria-hidden="true" className="text-slate-300 mx-1.5">·</span>
+                          <span className="text-slate-500">{accountLabel}</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" title="Trực tuyến" />
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          member.status === 'online'
+                            ? 'bg-emerald-500'
+                            : member.status === 'busy'
+                              ? 'bg-amber-500'
+                              : 'bg-slate-300'
+                        }`}
+                        title={
+                          member.status === 'online'
+                            ? 'Trực tuyến'
+                            : member.status === 'busy'
+                              ? 'Đang bận'
+                              : 'Ngoại tuyến'
+                        }
+                      />
                       {isTripOwner && onUpdateMembers && (
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(member)}
-                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-800 transition"
+                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-800 transition cursor-pointer"
                           title="Chỉnh sửa thông tin"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
@@ -579,7 +711,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setDeletingMemberId(member.id)}
-                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition"
+                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
                           title="Xóa thành viên"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -589,72 +721,80 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   </div>
 
                   {/* Details */}
-                  <div className="space-y-2 text-xs text-slate-600 mt-2">
+                  <div className="space-y-2 text-xs text-slate-600">
                     {member.phone ? (
                       <div className="flex items-center gap-1.5">
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <a
                           href={`tel:${member.phone}`}
-                          className="font-mono text-slate-700 hover:text-teal-700 hover:underline"
+                          className="font-mono text-slate-700 hover:text-teal-700 hover:underline tabular-nums"
                         >
                           {member.phone}
                         </a>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-400">Chưa bổ sung số điện thoại</div>
+                      <div className="text-[11px] text-slate-400">Chưa có số điện thoại</div>
                     )}
 
                     {member.invitedByName && (
-                      <div className="text-[11px] font-semibold text-teal-700 bg-teal-50/70 border border-teal-200/70 rounded-lg px-2.5 py-1">
-                        Người thân đi cùng: {member.invitedByName}
+                      <div className="text-[11px] font-medium text-teal-700">
+                        Đi cùng: <span className="font-semibold">{member.invitedByName}</span>
                       </div>
                     )}
 
-                    {member.specialPreference ? (
-                      <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-1.5">
+                    {member.specialPreference && (
+                      <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-200/70 text-[11px] text-amber-900 flex items-start gap-1.5">
                         <Heart className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                        <span><strong>Sở thích / Dị ứng:</strong> {member.specialPreference}</span>
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-400 italic">
-                        Chưa có ghi chú sở thích đặc biệt
+                        <span><strong>Lưu ý:</strong> {member.specialPreference}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Attendance toggle footer */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-3 text-[11px]">
-                  <span className="text-slate-400 font-medium">Điểm danh:</span>
+                {/* Attendance segmented control (supports all 3 states) */}
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-[11px]">
+                  <span className="text-slate-500 font-medium shrink-0">Điểm danh:</span>
                   {canToggleAttendance ? (
-                    <button
-                      type="button"
-                      disabled={updatingMemberId === member.id}
-                      onClick={() => void toggleAttendance(member.id)}
-                      aria-pressed={member.attendanceStatus === 'Có mặt'}
-                      className={`font-bold px-3 py-1 rounded-lg border flex items-center gap-1.5 transition disabled:opacity-50 ${
-                        member.attendanceStatus === 'Có mặt'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                          : member.attendanceStatus === 'Vắng mặt'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <CheckCircle2 className={`w-3.5 h-3.5 ${member.attendanceStatus === 'Có mặt' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                      <span>
-                        {updatingMemberId === member.id
-                          ? 'Đang lưu...'
-                          : member.attendanceStatus || 'Chưa điểm danh'}
-                      </span>
-                    </button>
+                    <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
+                      {(
+                        [
+                          { value: 'Chưa điểm danh', label: 'Chưa ĐD', activeCls: 'bg-white text-slate-800 shadow-2xs border-slate-200' },
+                          { value: 'Có mặt', label: 'Có mặt', activeCls: 'bg-emerald-600 text-white border-emerald-600' },
+                          { value: 'Vắng mặt', label: 'Vắng mặt', activeCls: 'bg-rose-600 text-white border-rose-600' },
+                        ] as const
+                      ).map((opt) => {
+                        const normalizedStatus =
+                          member.attendanceStatus === 'Có mặt' || member.attendanceStatus === 'Vắng mặt'
+                            ? member.attendanceStatus
+                            : 'Chưa điểm danh';
+                        const isActive = normalizedStatus === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={updatingMemberId === member.id}
+                            title={`Đặt trạng thái: ${opt.value}`}
+                            aria-pressed={isActive}
+                            onClick={() => void setAttendance(member.id, opt.value)}
+                            className={`px-2 py-1 rounded-md text-[10px] font-semibold transition disabled:opacity-50 cursor-pointer ${
+                              isActive
+                                ? opt.activeCls
+                                : 'text-slate-500 hover:text-slate-800 hover:bg-white/70'
+                            }`}
+                          >
+                            {updatingMemberId === member.id && isActive ? '...' : opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <span
-                      className={`font-bold px-3 py-1 rounded-lg border flex items-center gap-1.5 ${
+                      className={`font-semibold flex items-center gap-1 ${
                         member.attendanceStatus === 'Có mặt'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          ? 'text-emerald-700'
                           : member.attendanceStatus === 'Vắng mặt'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                            ? 'text-rose-700'
+                            : 'text-slate-500'
                       }`}
                     >
                       <CheckCircle2 className={`w-3.5 h-3.5 ${member.attendanceStatus === 'Có mặt' ? 'text-emerald-600' : 'text-slate-400'}`} />
@@ -672,16 +812,31 @@ export const MembersView: React.FC<MembersViewProps> = ({
       <Modal
         isOpen={isCompanionModalOpen}
         onClose={() => setIsCompanionModalOpen(false)}
-        title="Thêm người thân (không cần tài khoản)"
+        title="Thêm người thân đi cùng (không cần tài khoản)"
         subtitle="Đăng ký tên người thân vào danh sách đoàn và dùng chung mã mời để xem giao diện Hành khách"
         icon={<UserPlus className="w-4 h-4" />}
       >
         <form onSubmit={handleCreateCompanion} className="p-6 space-y-4 text-xs">
+          {!isTripOwner && (
+            <div
+              className={`rounded-xl border px-3 py-2 text-[11px] font-semibold ${
+                companionLimitReached
+                  ? 'bg-rose-50 border-rose-200 text-rose-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}
+            >
+              {companionLimitReached
+                ? `Bạn đã thêm đủ tối đa ${MAX_GUEST_COMPANIONS_PER_PASSENGER} người thân đi cùng cho chuyến đi này.`
+                : `Số người thân bạn đã thêm: ${myCompanionCount}/${MAX_GUEST_COMPANIONS_PER_PASSENGER}.`}
+            </div>
+          )}
+
           <Field label="Họ và tên người thân *">
             <TextInput
               type="text"
               required
               autoFocus
+              disabled={companionLimitReached}
               value={companionName}
               onChange={(e) => setCompanionName(e.target.value)}
               placeholder="Ví dụ: Cô Lan / Bé Minh"
@@ -691,6 +846,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
           <Field label="Số điện thoại (tùy chọn)">
             <TextInput
               type="tel"
+              disabled={companionLimitReached}
               value={companionPhone}
               onChange={(e) => setCompanionPhone(e.target.value)}
               placeholder="Nếu chưa có điện thoại có thể bỏ trống"
@@ -701,6 +857,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
           <Field label="Lưu ý ăn uống / sức khỏe (tùy chọn)">
             <TextInput
               type="text"
+              disabled={companionLimitReached}
               value={companionPreference}
               onChange={(e) => setCompanionPreference(e.target.value)}
               placeholder="Ví dụ: Say xe, ăn chay, người lớn tuổi..."
@@ -710,7 +867,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
           <ModalFooter
             onCancel={() => setIsCompanionModalOpen(false)}
             submitLabel={isSavingCompanion ? 'Đang lưu...' : 'Thêm vào đoàn'}
-            disabled={isSavingCompanion}
+            disabled={isSavingCompanion || companionLimitReached}
           />
         </form>
       </Modal>
@@ -754,13 +911,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
             </Field>
           </div>
 
-          <Field label="Số điện thoại liên hệ *">
+          <Field label="Số điện thoại liên hệ (tùy chọn)">
             <TextInput
               type="tel"
-              required
               value={newPhone}
               onChange={(e) => setNewPhone(e.target.value)}
-              placeholder="Ví dụ: 0912 345 678"
+              placeholder="Ví dụ: 0912 345 678 (có thể bỏ trống)"
               className="font-mono"
             />
           </Field>
@@ -776,7 +932,9 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
           <ModalFooter
             onCancel={() => setIsAddModalOpen(false)}
-            submitLabel="Thêm thành viên & Lưu Firestore"
+            cancelDisabled={isSavingMember}
+            disabled={isSavingMember}
+            submitLabel={isSavingMember ? 'Đang lưu...' : 'Thêm thành viên mới'}
           />
         </form>
       </Modal>
@@ -807,12 +965,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
               </SelectInput>
             </Field>
 
-            <Field label="Số điện thoại *">
+            <Field label="Số điện thoại (tùy chọn)">
               <TextInput
                 type="tel"
-                required
                 value={editPhone}
                 onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="Bỏ trống nếu chưa có"
                 className="font-mono"
               />
             </Field>
@@ -829,7 +987,9 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
           <ModalFooter
             onCancel={() => setEditingMember(null)}
-            submitLabel="Cập nhật & Lưu Firestore"
+            cancelDisabled={isSavingMember}
+            disabled={isSavingMember}
+            submitLabel={isSavingMember ? 'Đang lưu...' : 'Lưu thay đổi'}
           />
         </form>
       </Modal>
@@ -837,7 +997,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
       {/* Modal: Xác nhận xóa thành viên */}
       <Modal
         isOpen={Boolean(deletingMemberId)}
-        onClose={() => setDeletingMemberId(null)}
+        onClose={() => !isDeletingMember && setDeletingMemberId(null)}
         maxWidth="sm"
         hideHeader
       >
@@ -847,14 +1007,21 @@ export const MembersView: React.FC<MembersViewProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-extrabold text-slate-900">Xóa thành viên khỏi đoàn?</h3>
-            <p className="text-slate-500 mt-1">
-              Hành động này sẽ xóa thành viên này khỏi đoàn và đồng bộ ngay lên Firestore.
+            <p className="text-slate-500 mt-1 leading-relaxed">
+              Hành động này sẽ xóa {deletingTarget?.name ? <strong>&quot;{deletingTarget.name}&quot;</strong> : 'thành viên này'} khỏi danh sách đoàn.
+              {cascadeCompanionsCount > 0 && (
+                <span className="block mt-1.5 text-rose-700 font-semibold">
+                  Đồng thời sẽ xóa {cascadeCompanionsCount} người thân đi cùng do thành viên này đăng ký.
+                </span>
+              )}
             </p>
           </div>
           <ModalFooter
             cancelLabel="Hủy bỏ"
             onCancel={() => setDeletingMemberId(null)}
-            submitLabel="Xác nhận xóa"
+            cancelDisabled={isDeletingMember}
+            disabled={isDeletingMember}
+            submitLabel={isDeletingMember ? 'Đang xóa...' : 'Xác nhận xóa'}
             submitType="button"
             onSubmitClick={() => deletingMemberId && void handleDeleteMember(deletingMemberId)}
             submitVariant="rose"

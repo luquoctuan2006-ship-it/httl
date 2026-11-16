@@ -111,8 +111,9 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
                           <option value="sightseeing">Tham quan</option>
                           <option value="meal">Ăn uống</option>
                           <option value="transport">Di chuyển</option>
-                          <option value="hotel">Lưu trú / Khách sạn</option>
-                          <option value="other">Tự do / Khác</option>
+                          <option value="hotel">Khách sạn / Lưu trú</option>
+                          <option value="checkin">Check-in / Nhận phòng</option>
+                          <option value="briefing">Điều hành / Tập trung</option>
                         </select>
                       </div>
 
@@ -152,7 +153,7 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
                         <input
                           type="number"
                           min={0}
-                          step={50000}
+                          step={1}
                           value={actCost}
                           onChange={(e) => setActCost(e.target.value === '' ? '' : Number(e.target.value))}
                           placeholder="VD: 500000"

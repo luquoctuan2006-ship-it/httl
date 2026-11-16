@@ -67,7 +67,7 @@ export function buildOptimizePrompt(payload: Record<string, unknown>, rules: Sch
   return `Bạn là chuyên gia điều phối tour du lịch cao cấp tại Việt Nam. Dựa trên chuyến đi thật dưới đây và các cảnh báo vận hành, hãy đề xuất phương án điều phối lại lịch trình. Chỉ trả về JSON hợp lệ.
 Chuyến đi (đầy đủ hoạt động từng ngày, kèm tọa độ khi có): ${JSON.stringify(payload.currentTrip)}
 Cảnh báo vận hành: ${JSON.stringify(payload.alertDetails || [])}
-Mục tiêu người dùng: ${typeof payload.userGoal === 'string' ? payload.userGoal : 'An toàn, đúng lịch trình, tránh mưa đèo dốc, giảm chi phí'}
+Mục tiêu người dùng: ${typeof payload.userGoal === 'string' ? payload.userGoal : 'An toàn, đúng lịch trình, tránh thời tiết xấu, giảm chi phí'}
 
 ${buildRulesPromptSection(rules)}
 

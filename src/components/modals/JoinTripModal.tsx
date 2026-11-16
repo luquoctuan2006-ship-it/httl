@@ -62,7 +62,7 @@ export const JoinTripModal: React.FC<JoinTripModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Tham gia chuyến đi bằng mã mời"
-      subtitle="Nhập mã do trưởng đoàn hoặc chủ chuyến cung cấp để tham gia với tư cách Hành khách (HK)"
+      subtitle="Nhập mã do trưởng đoàn hoặc chủ chuyến cung cấp để tham gia với tư cách Hành khách"
       icon={<KeyRound className="w-4 h-4" />}
       maxWidth="md"
     >

@@ -3,7 +3,7 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
 import { createTripSyncRouter } from './trips';
-import { normalizeTripData } from '../../data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../../data/normalizeTripData';
 import type { TripData, TripMember } from '../../types/travel';
 import {
   canAccessTrip,
@@ -16,6 +16,7 @@ import {
   generateTripJoinCode,
   getMemberInitials,
   isValidJoinCodeFormat,
+  MAX_GUEST_COMPANIONS_PER_PASSENGER,
   normalizeJoinCode,
 } from '../../utils/tripJoinHelpers';
 import { detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';
@@ -140,6 +141,13 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   }));
   
   app.post('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const rawInvoices = (req.body as { invoices?: unknown } | undefined)?.invoices;
+    if (Array.isArray(rawInvoices) && rawInvoices.length > MAX_INVOICES_PER_TRIP) {
+      return res.status(400).json({
+        success: false,
+        error: `Mỗi chuyến đi chỉ hỗ trợ tối đa ${MAX_INVOICES_PER_TRIP} hóa đơn.`,
+      });
+    }
     const body = normalizeTripData(req.body);
     if (typeof body.id !== 'string' || body.id === 'active' || !TRIP_ID_PATTERN.test(body.id) || !Array.isArray(body.days)) {
       return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
@@ -287,7 +295,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
             role: 'Khách du lịch',
             phone: cleanPhone,
             status: 'online',
-            attendanceStatus: 'Có mặt',
+            attendanceStatus: 'Chưa điểm danh',
             ...(cleanPref ? { specialPreference: cleanPref } : {}),
             uid: user.uid,
             memberType: 'account',
@@ -318,6 +326,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           membersTotal: updatedTrip.membersTotal,
           membersOnline: updatedTrip.membersOnline,
           membersStatus: updatedTrip.membersStatus,
+          'telematics.passengerCount': updatedTrip.telematics.passengerCount,
           version: nextVersion,
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -362,7 +371,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         alreadyJoined: txResult.alreadyJoined,
         message: txResult.alreadyJoined
           ? `Bạn đã ở trong chuyến đi "${txResult.trip.title}".`
-          : `Đã tham gia chuyến đi "${txResult.trip.title}" với tư cách Hành khách (HK)!`,
+          : `Đã tham gia chuyến đi "${txResult.trip.title}" với tư cách Hành khách!`,
       });
     } catch (error) {
       console.error('Error joining trip by code:', error);
@@ -765,7 +774,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   
   app.patch('/api/trips/:tripId/members/:memberId/attendance', requireAuth, async (req: AuthenticatedRequest, res) => {
     const { attendanceStatus, version: clientVersion } = req.body || {};
-    if (!['Có mặt', 'Vắng mặt'].includes(attendanceStatus)) {
+    if (!['Chưa điểm danh', 'Có mặt', 'Vắng mặt'].includes(attendanceStatus)) {
       return res.status(400).json({ success: false, error: 'Trạng thái điểm danh không hợp lệ' });
     }
   
@@ -973,6 +982,12 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         if (members.length >= 100) {
           return { kind: 'full' as const };
         }
+        const myGuestCount = members.filter(
+          (m) => m.memberType === 'guest' && m.invitedByUid === user.uid,
+        ).length;
+        if (!isTripOwnerOrAdmin(latest, user) && myGuestCount >= MAX_GUEST_COMPANIONS_PER_PASSENGER) {
+          return { kind: 'guest_quota_exceeded' as const };
+        }
 
         const companion: TripMember = {
           id: `guest-${Date.now()}-${randomUUID().slice(0, 6)}`,
@@ -980,7 +995,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           avatar: getMemberInitials(cleanName),
           role: 'Khách du lịch',
           phone: cleanPhone,
-          status: 'online',
+          status: 'offline',
           attendanceStatus: 'Chưa điểm danh',
           ...(cleanPref ? { specialPreference: cleanPref } : {}),
           memberType: 'guest',
@@ -1009,6 +1024,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           membersTotal: updatedTrip.membersTotal,
           membersOnline: updatedTrip.membersOnline,
           membersStatus: updatedTrip.membersStatus,
+          'telematics.passengerCount': updatedTrip.telematics.passengerCount,
           version: nextVersion,
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -1024,6 +1040,12 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       }
       if (txResult.kind === 'full') {
         return res.status(400).json({ success: false, error: 'Đoàn đã đạt tối đa 100 thành viên' });
+      }
+      if (txResult.kind === 'guest_quota_exceeded') {
+        return res.status(400).json({
+          success: false,
+          error: `Mỗi hành khách chỉ được đăng ký tối đa ${MAX_GUEST_COMPANIONS_PER_PASSENGER} người thân đi cùng.`,
+        });
       }
       if (txResult.kind === 'too_large') {
         return res.status(413).json({ success: false, error: 'Dung lượng chuyến đi vượt giới hạn Firestore' });
@@ -1085,6 +1107,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           membersTotal: updatedTrip.membersTotal,
           membersOnline: updatedTrip.membersOnline,
           membersStatus: updatedTrip.membersStatus,
+          'telematics.passengerCount': updatedTrip.telematics.passengerCount,
           version: nextVersion,
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -1128,7 +1151,10 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           return { kind: 'owner_cannot_leave' as const };
         }
         const nextParticipantUids = (latest.participantUids || []).filter((u) => u !== user.uid);
-        const nextMembers = (latest.members || []).filter((m) => m.uid !== user.uid);
+        // Xóa luôn người thân không tài khoản đi cùng hành khách này để không bỏ lại bản ghi mồ côi
+        const nextMembers = (latest.members || []).filter(
+          (m) => m.uid !== user.uid && m.invitedByUid !== user.uid,
+        );
         const authoritative = computeAuthoritativeTripDerivedFields({
           ...latest,
           participantUids: nextParticipantUids,
@@ -1142,6 +1168,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           membersTotal: authoritative.membersTotal,
           membersOnline: authoritative.membersOnline,
           membersStatus: authoritative.membersStatus,
+          'telematics.passengerCount': authoritative.telematics.passengerCount,
           version: nextVersion,
           updatedAt: FieldValue.serverTimestamp(),
         });

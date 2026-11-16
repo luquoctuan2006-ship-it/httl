@@ -23,6 +23,7 @@ interface TripPlannerModalProps {
   onClose: () => void;
   onApplyPlan: (newTrip: TripData) => Promise<void>;
   initialTab?: 'traditional' | 'ai';
+  owner?: { uid?: string; name?: string };
 }
 
 export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
@@ -30,6 +31,7 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
   onClose,
   onApplyPlan,
   initialTab = 'traditional',
+  owner,
 }) => {
   // Tab chính: 'traditional' (Lập lịch truyền thống / thủ công) | 'ai' (Lập lịch tự động bằng AI)
   const [activeTab, setActiveTab] = useState<'traditional' | 'ai'>(initialTab);
@@ -39,8 +41,8 @@ export const TripPlannerModal: React.FC<TripPlannerModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const manualPlanner = useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving });
-  const aiPlanner = useAiTripPlanner({ isOpen, initialTab, onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving });
+  const manualPlanner = useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving });
+  const aiPlanner = useAiTripPlanner({ owner, isOpen, initialTab, onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving });
 
   useEffect(() => {
     setActiveTab(initialTab);

@@ -1,11 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { authenticatedFetch, safeJsonResponse } from '../../../api';
 import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../../../utils/alertDetector';
+import { computeTripBudgetSummaryFields } from '../../../utils/budgetAlerts';
+import { countPassengerMembers } from '../../../utils/tripJoinHelpers';
 import { buildAIPlanWaypoints } from '../../../utils/vietnamGeo';
-import type { DaySchedule, TripData } from '../../../types/travel';
-import { buildMembers, formatDateDisplay, getEndLocation, getStartLocation, getTodayISODate, parseGroupSize } from './helpers';
+import type { TripData } from '../../../types/travel';
+import {
+  buildMembers,
+  buildTripDatesLabel,
+  computeEstimatedRouteKm,
+  getEndLocation,
+  getStartLocation,
+  getTodayISODate,
+  mapAiBudgetBreakdownToAllocations,
+  normalizeAiGeneratedDays,
+  normalizeAiMoney,
+  normalizeAiSuggestions,
+  parseGroupSize,
+  type TripCreatorOwner,
+} from './helpers';
 
 interface UseAiTripPlannerOptions {
+  owner?: TripCreatorOwner;
   isOpen: boolean;
   initialTab: 'traditional' | 'ai';
   onApplyPlan: (trip: TripData) => Promise<void>;
@@ -15,7 +31,16 @@ interface UseAiTripPlannerOptions {
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export function useAiTripPlanner({ isOpen, initialTab, onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving }: UseAiTripPlannerOptions) {
+export function useAiTripPlanner({
+  owner,
+  isOpen,
+  initialTab,
+  onApplyPlan,
+  onClose,
+  setErrorMsg,
+  setSuccessMsg,
+  setIsSaving,
+}: UseAiTripPlannerOptions) {
   // ==========================================
   // STATE CHO LẬP LỊCH TỰ ĐỘNG BẰNG GEMINI AI
   // ==========================================
@@ -26,7 +51,7 @@ export function useAiTripPlanner({ isOpen, initialTab, onApplyPlan, onClose, set
   const [aiTravelStyle, setAiTravelStyle] = useState('Văn hóa, Di sản & Ẩm thực bản địa');
   const [aiGroupType, setAiGroupType] = useState('Đoàn gia đình & bạn bè (15 người)');
   const [aiPreferences, setAiPreferences] = useState(
-    'Ưu tiên điểm tham quan mát mẻ buổi trưa, ẩm thực địa phương đặc sắc, hành trình di chuyển hợp lý'
+    'Ưu tiên điểm tham quan mát mẻ buổi trưa, ẩm thực địa phương đặc sắc, hành trình di chuyển hợp lý',
   );
   const [aiIsLoading, setAiIsLoading] = useState(false);
   const [aiJobStatus, setAiJobStatus] = useState<string | null>(null);
@@ -148,78 +173,89 @@ export function useAiTripPlanner({ isOpen, initialTab, onApplyPlan, onClose, set
     setIsSaving(true);
     setErrorMsg(null);
     try {
+      const stamp = Date.now();
       const memberCount = parseGroupSize(aiGroupType);
-      const generatedDays = Array.isArray(aiGeneratedPlan.days) ? aiGeneratedPlan.days : [];
-      const generatedActivities = generatedDays.flatMap((day: any) =>
-        Array.isArray(day?.activities) ? day.activities : [],
-      );
-      if (generatedActivities.length === 0) {
+      const unitHint = typeof aiGeneratedPlan.budget?.unit === 'string' ? aiGeneratedPlan.budget.unit : undefined;
+      const formattedDays = normalizeAiGeneratedDays(aiGeneratedPlan.days, aiStartDate, unitHint, stamp);
+      const formattedActivities = formattedDays.flatMap((day) => day.activities);
+      if (formattedActivities.length === 0) {
         throw new Error('Gemini chưa tạo hoạt động nào cho lịch trình. Vui lòng tạo lại.');
       }
-      const totalActs = generatedActivities.length;
+      const totalActs = formattedActivities.length;
+      const resolvedDaysCount = formattedDays.length || aiDays;
 
-      const startName = typeof aiGeneratedPlan.routeSummary?.origin === 'string' && aiGeneratedPlan.routeSummary.origin.trim()
-        ? aiGeneratedPlan.routeSummary.origin.trim()
-        : getStartLocation(aiDestination);
-      const endName = typeof aiGeneratedPlan.routeSummary?.destination === 'string' && aiGeneratedPlan.routeSummary.destination.trim()
-        ? aiGeneratedPlan.routeSummary.destination.trim()
-        : getEndLocation(aiDestination);
+      const startName =
+        typeof aiGeneratedPlan.routeSummary?.origin === 'string' && aiGeneratedPlan.routeSummary.origin.trim()
+          ? aiGeneratedPlan.routeSummary.origin.trim()
+          : getStartLocation(aiDestination);
+      const endName =
+        typeof aiGeneratedPlan.routeSummary?.destination === 'string' && aiGeneratedPlan.routeSummary.destination.trim()
+          ? aiGeneratedPlan.routeSummary.destination.trim()
+          : getEndLocation(aiDestination);
 
-      const aiWaypoints = buildAIPlanWaypoints(startName, endName, generatedActivities);
+      const aiWaypoints = buildAIPlanWaypoints(startName, endName, formattedActivities);
 
-      const totalKm = aiGeneratedPlan.routeSummary?.totalKm || aiDays * 80;
-      const vehicleType = aiGeneratedPlan.routeSummary?.vehicle || (memberCount > 16 ? 'Xe 29 chỗ' : 'Xe 16 chỗ');
+      const rawTotalKm = Number(aiGeneratedPlan.routeSummary?.totalKm);
+      const totalKm =
+        Number.isFinite(rawTotalKm) && rawTotalKm > 0
+          ? Math.round(rawTotalKm)
+          : computeEstimatedRouteKm(aiWaypoints, resolvedDaysCount * 80);
 
-      const formattedDays: DaySchedule[] = generatedDays.map((d: any, idx: number) => {
-        const activities = Array.isArray(d.activities) ? d.activities : [];
-        return {
-          dayIndex: idx + 1,
-          dateLabel: d.dateLabel || `Ngày ${idx + 1}`,
-          dayName: `N${idx + 1}`,
-          dateNum: idx + 1,
-          fullDate: d.fullDate || `Ngày ${idx + 1}: Khám phá`,
-          confirmedCount: activities.length,
-          pendingCount: 0,
-          dispatcherNote: d.summary || d.dispatcherNote || 'Theo dõi hành trình',
-          activities,
-        };
-      });
+      const vehicleType =
+        (typeof aiGeneratedPlan.routeSummary?.vehicle === 'string' && aiGeneratedPlan.routeSummary.vehicle.trim()) ||
+        (memberCount > 16 ? 'Xe 29 chỗ' : 'Xe 16 chỗ');
 
-      const realActivityCosts = formattedDays
-        .flatMap((d) => d.activities)
-        .reduce((sum, a) => sum + (Number(a.cost) || 0), 0);
-      const budgetTotal = typeof aiGeneratedPlan.budget?.total === 'number' && aiGeneratedPlan.budget.total > 0
-        ? aiGeneratedPlan.budget.total
-        : Math.max(realActivityCosts, 0);
-      const budgetUsed = typeof aiGeneratedPlan.budget?.used === 'number'
-        ? aiGeneratedPlan.budget.used
-        : realActivityCosts;
+      const realActivityCosts = formattedActivities.reduce((sum, a) => sum + (Number(a.cost) || 0), 0);
+      const parsedBudgetTotal = normalizeAiMoney(aiGeneratedPlan.budget?.total, unitHint);
+      const budgetTotal =
+        parsedBudgetTotal > 0
+          ? parsedBudgetTotal
+          : Math.max(Math.round(realActivityCosts * 1.15), 0);
+
+      const customCategoryAllocations = mapAiBudgetBreakdownToAllocations(
+        aiGeneratedPlan.budget?.breakdown,
+        unitHint,
+      );
+
+      const { aiSuggestions, aiSavingsEstimate, aiConfidence } = normalizeAiSuggestions(
+        aiGeneratedPlan.aiOperationalSuggestions,
+        aiGeneratedPlan.aiSavingsEstimate,
+        aiGeneratedPlan.aiConfidence,
+      );
+
+      const members = buildMembers(memberCount, owner);
+      const membersOnline = members.filter((m) => m.status === 'online').length;
 
       const newTrip: TripData = {
-        id: `trip-ai-${Date.now()}`,
-        code: aiGeneratedPlan.tripCode || `VN-${Math.floor(100 + Math.random() * 900)}`,
-        title: aiGeneratedPlan.title || `Hành trình khám phá ${aiDestination} ${aiDays} ngày`,
+        id: `trip-ai-${stamp}`,
+        code:
+          (typeof aiGeneratedPlan.tripCode === 'string' && aiGeneratedPlan.tripCode.trim().toUpperCase()) ||
+          `VN-${Math.floor(100 + Math.random() * 900)}`,
+        title:
+          (typeof aiGeneratedPlan.title === 'string' && aiGeneratedPlan.title.trim()) ||
+          `Hành trình khám phá ${aiDestination} ${resolvedDaysCount} ngày`,
         status: 'Chuẩn bị',
-        dates: `${formatDateDisplay(aiStartDate)} (${aiDays} ngày)`,
+        dates: buildTripDatesLabel(aiStartDate, resolvedDaysCount),
         origin: startName.slice(0, 3).toUpperCase(),
         originFull: startName,
         destination: endName.slice(0, 3).toUpperCase(),
         destinationFull: endName,
-        destinationsCount: aiWaypoints.length || aiDays,
+        destinationsCount: aiWaypoints.length || resolvedDaysCount,
         totalKm,
         vehicle: vehicleType,
         currentDay: 1,
-        totalDays: aiDays,
+        totalDays: resolvedDaysCount,
         totalActivities: totalActs,
         confirmedActivities: totalActs,
         pendingActivities: 0,
         budgetTotal,
-        budgetUsed,
-        budgetRemaining: Math.max(0, budgetTotal - budgetUsed),
-        budgetUsedPercent: budgetTotal > 0 ? Math.min(100, Math.round((budgetUsed / budgetTotal) * 100)) : 0,
-        membersOnline: 0,
-        membersTotal: memberCount,
-        membersStatus: `0/${memberCount} đã điểm danh`,
+        budgetUsed: 0,
+        budgetRemaining: budgetTotal,
+        budgetUsedPercent: 0,
+        ...(customCategoryAllocations ? { customCategoryAllocations } : {}),
+        membersOnline,
+        membersTotal: members.length,
+        membersStatus: `0/${members.length} đã điểm danh`,
         weather: {
           temp: 0,
           description: '',
@@ -232,28 +268,25 @@ export function useAiTripPlanner({ isOpen, initialTab, onApplyPlan, onClose, set
           vehicleType,
           driver: 'Chưa phân công',
           driverPhone: '',
-          passengerCount: memberCount,
+          passengerCount: countPassengerMembers(members),
         },
         waypoints: aiWaypoints,
         alerts: [],
-        aiSuggestions: aiGeneratedPlan.aiOperationalSuggestions || [
-          {
-            id: `sug-${Date.now()}`,
-            title: 'Lịch trình được sắp xếp tự động',
-            badge: 'Tự động',
-            description: 'Lộ trình và các chặng đã được tính toán cân bằng thời gian tham quan và di chuyển.',
-          },
-        ],
-        aiSavingsEstimate: typeof aiGeneratedPlan.aiSavingsEstimate === 'string' ? aiGeneratedPlan.aiSavingsEstimate : '',
-        aiConfidence: typeof aiGeneratedPlan.aiConfidence === 'string' ? aiGeneratedPlan.aiConfidence : '',
-        members: buildMembers(memberCount),
+        aiSuggestions,
+        aiSavingsEstimate,
+        aiConfidence,
+        members,
         days: formattedDays,
       };
+
+      Object.assign(newTrip, computeTripBudgetSummaryFields(newTrip));
 
       newTrip.alerts = createAiRiskAlerts(newTrip.id, aiGeneratedPlan.potentialRisks);
       newTrip.alerts = detectScheduleAndWeatherAlerts(newTrip);
 
       await onApplyPlan(newTrip);
+      setAiGeneratedPlan(null);
+      setAiJobStatus(null);
       onClose();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Không thể lưu chuyến đi.');

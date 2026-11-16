@@ -96,7 +96,14 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
           issues.push({
             id: `alert-${t.id}-${alert.id}`,
             tripCode: code,
-            type: alert.category === 'weather' ? 'Thời tiết & Địa hình' : alert.category === 'traffic' ? 'Giao thông' : 'Vận hành',
+            type:
+              alert.category === 'weather'
+                ? 'Thời tiết & Địa hình'
+                : alert.category === 'traffic'
+                  ? 'Giao thông'
+                  : alert.category === 'budget'
+                    ? 'Ngân sách'
+                    : 'Vận hành',
             severity: alert.severity === 'error' ? 'Khẩn cấp' : 'Cảnh báo',
             description: alert.title ? `${alert.title}: ${alert.description || ''}` : alert.description,
             status: alert.severity === 'error' ? 'Cần can thiệp' : 'Đã có giải pháp AI',

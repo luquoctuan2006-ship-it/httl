@@ -1,12 +1,13 @@
 import React, { useState, type Dispatch, type SetStateAction } from 'react';
 import type { Activity, DaySchedule, TripData } from '../../../types/travel';
 import { autoArrangeDayActivities } from '../../../utils/scheduleAutoArranger';
-import { getTodayISODate } from './helpers';
+import { getTodayISODate, resolveActivityCoordinatesWithFallback, type TripCreatorOwner } from './helpers';
 import { buildManualTrip } from './buildManualTrip';
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 
 interface UseManualTripPlannerOptions {
+  owner?: TripCreatorOwner;
   onApplyPlan: (trip: TripData) => Promise<void>;
   onClose: () => void;
   setErrorMsg: StateSetter<string | null>;
@@ -14,23 +15,8 @@ interface UseManualTripPlannerOptions {
   setIsSaving: StateSetter<boolean>;
 }
 
-export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving }: UseManualTripPlannerOptions) {
-  // ==========================================
-  // STATE CHO LẬP LỊCH TRUYỀN THỐNG (THỦ CÔNG)
-  // Không có bất kỳ dữ liệu mẫu hay dữ liệu tĩnh nào
-  // ==========================================
-  const [tripTitle, setTripTitle] = useState('');
-  const [tripCode, setTripCode] = useState(() => `VN-${Math.floor(100 + Math.random() * 900)}`);
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [startDate, setStartDate] = useState(getTodayISODate());
-  const [totalDays, setTotalDays] = useState(3);
-  const [vehicle, setVehicle] = useState('Xe 29 chỗ tiêu chuẩn');
-  const [membersCount, setMembersCount] = useState(15);
-  const [budgetEstimated, setBudgetEstimated] = useState<number | ''>('');
-
-  // Danh sách các ngày trong lịch trình thủ công
-  const [manualDays, setManualDays] = useState<DaySchedule[]>(() => [
+function createInitialManualDays(): DaySchedule[] {
+  return [
     {
       dayIndex: 1,
       dateLabel: 'Ngày 1',
@@ -64,7 +50,30 @@ export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuc
       dispatcherNote: '',
       activities: [],
     },
-  ]);
+  ];
+}
+
+function generateRandomTripCode(): string {
+  return `VN-${Math.floor(100 + Math.random() * 900)}`;
+}
+
+export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg, setSuccessMsg, setIsSaving }: UseManualTripPlannerOptions) {
+  // ==========================================
+  // STATE CHO LẬP LỊCH TRUYỀN THỐNG (THỦ CÔNG)
+  // Không có bất kỳ dữ liệu mẫu hay dữ liệu tĩnh nào
+  // ==========================================
+  const [tripTitle, setTripTitle] = useState('');
+  const [tripCode, setTripCode] = useState(generateRandomTripCode);
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+  const [startDate, setStartDate] = useState(getTodayISODate());
+  const [totalDays, setTotalDays] = useState(3);
+  const [vehicle, setVehicle] = useState('Xe 29 chỗ tiêu chuẩn');
+  const [membersCount, setMembersCount] = useState(15);
+  const [budgetEstimated, setBudgetEstimated] = useState<number | ''>('');
+
+  // Danh sách các ngày trong lịch trình thủ công
+  const [manualDays, setManualDays] = useState<DaySchedule[]>(createInitialManualDays);
   const [activeDayIndex, setActiveDayIndex] = useState(1);
 
   // State thêm / sửa hoạt động trong ngày
@@ -178,6 +187,8 @@ export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuc
     }
 
     const costNum = typeof actCost === 'number' ? actCost : Number(actCost) || 0;
+    const cleanActLocation = actLocation.trim() || destination || 'Điểm tham quan';
+    const resolvedCoords = resolveActivityCoordinatesWithFallback(cleanActLocation, cleanTitle);
 
     setManualDays((prevDays) =>
       prevDays.map((day) => {
@@ -186,20 +197,23 @@ export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuc
         let updatedActivities: Activity[];
         if (editingActivityId) {
           // Cập nhật
-          updatedActivities = day.activities.map((a) =>
-            a.id === editingActivityId
-              ? {
-                  ...a,
-                  title: cleanTitle,
-                  timeStart: actTimeStart,
-                  timeEnd: actTimeEnd,
-                  location: actLocation.trim() || destination || 'Điểm tham quan',
-                  type: actType,
-                  cost: costNum,
-                  details: actDetails.trim(),
-                }
-              : a
-          );
+          updatedActivities = day.activities.map((a) => {
+            if (a.id !== editingActivityId) return a;
+            const locationUnchanged = (a.location || '').trim().toLowerCase() === cleanActLocation.toLowerCase();
+            const nextCoords = resolvedCoords || (locationUnchanged ? a.coordinates : undefined);
+            const { coordinates: _oldCoords, ...restAct } = a;
+            return {
+              ...restAct,
+              title: cleanTitle,
+              timeStart: actTimeStart,
+              timeEnd: actTimeEnd,
+              location: cleanActLocation,
+              type: actType,
+              cost: costNum,
+              details: actDetails.trim(),
+              ...(nextCoords ? { coordinates: nextCoords } : {}),
+            };
+          });
         } else {
           // Thêm mới
           const newAct: Activity = {
@@ -207,11 +221,12 @@ export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuc
             title: cleanTitle,
             timeStart: actTimeStart,
             timeEnd: actTimeEnd,
-            location: actLocation.trim() || destination || 'Điểm tham quan',
+            location: cleanActLocation,
             status: 'Đã xác nhận',
             type: actType,
             cost: costNum,
             details: actDetails.trim(),
+            ...(resolvedCoords ? { coordinates: resolvedCoords } : {}),
           };
           updatedActivities = [...day.activities, newAct];
         }
@@ -323,6 +338,23 @@ export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuc
 
   const totalActivitiesCount = manualDays.reduce((sum, d) => sum + d.activities.length, 0);
 
+  const resetManualForm = () => {
+    setTripTitle('');
+    setTripCode(generateRandomTripCode());
+    setOrigin('');
+    setDestination('');
+    setStartDate(getTodayISODate());
+    setTotalDays(3);
+    setVehicle('Xe 29 chỗ tiêu chuẩn');
+    setMembersCount(15);
+    setBudgetEstimated('');
+    setManualDays(createInitialManualDays());
+    setActiveDayIndex(1);
+    setIsActivityFormOpen(false);
+    setEditingActivityId(null);
+    setActFormError(null);
+  };
+
   // Xử lý nạp lịch trình truyền thống vào hệ thống
   const handleApplyTraditionalSchedule = async () => {
     setErrorMsg(null);
@@ -348,8 +380,10 @@ export function useManualTripPlanner({ onApplyPlan, onClose, setErrorMsg, setSuc
         totalCalculatedCost,
         totalActivitiesCount,
         manualDays,
+        owner,
       });
       await onApplyPlan(newTrip);
+      resetManualForm();
       onClose();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Không thể lưu chuyến đi truyền thống.');

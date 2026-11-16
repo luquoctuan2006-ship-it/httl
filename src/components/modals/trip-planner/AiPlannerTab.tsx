@@ -176,7 +176,7 @@ export function AiPlannerTab(props: AiPlannerTabProps) {
               <div>
                 <label className="block font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <span>Yêu cầu điều phối & Tối ưu hóa đặc biệt</span>
+                    <span>Yêu cầu & Lưu ý tối ưu lịch trình</span>
                   </span>
                 </label>
                 <textarea
@@ -253,7 +253,7 @@ export function AiPlannerTab(props: AiPlannerTabProps) {
                     <span>
                       {isSaving
                         ? 'Đang lưu chuyến đi...'
-                        : 'Nạp lịch trình tự động này vào Bảng điều phối'}
+                        : 'Lưu lịch trình tự động này vào chuyến đi'}
                     </span>
                     {!isSaving && <ArrowRight className="w-3.5 h-3.5" />}
                   </button>

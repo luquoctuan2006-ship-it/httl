@@ -137,3 +137,132 @@ test('detectScheduleAndWeatherAlerts detects early hotel check-in before 13:00',
   assert.ok(checkinAlert, 'Should flag hotel check-in scheduled before standard check-in hour');
   assert.equal(checkinAlert?.category, 'hotel');
 });
+
+test('detectScheduleAndWeatherAlerts detects category and total budget overruns & near-limit warnings', async () => {
+  const { computeBudgetMetrics, syncBudgetAlertsIntoTrip } = await import('../src/utils/budgetAlerts');
+  const trip: TripData = {
+    ...initialTripData,
+    id: 'trip-budget-test',
+    budgetTotal: 10_000_000,
+    customCategoryAllocations: {
+      transport: 3_000_000,
+      hotel: 3_000_000,
+      meal: 2_000_000,
+      sightseeing: 1_000_000,
+      contingency: 1_000_000,
+    },
+    days: [
+      {
+        dayIndex: 1,
+        dateLabel: 'T2 12',
+        dayName: 'T2',
+        dateNum: 12,
+        fullDate: 'Thứ Hai, 12 tháng 10',
+        hasWarning: false,
+        pendingCount: 0,
+        confirmedCount: 1,
+        activities: [
+          {
+            id: 'act-meal-1',
+            timeStart: '12:00',
+            timeEnd: '13:00',
+            title: 'Ăn trưa hải sản',
+            location: 'Đà Nẵng',
+            type: 'meal',
+            details: '',
+            status: 'Đã xác nhận',
+            cost: 2_500_000, // Vượt hạn mức meal (2M) -> +500.000
+          },
+          {
+            id: 'act-transport-1',
+            timeStart: '08:00',
+            timeEnd: '10:00',
+            title: 'Thuê xe',
+            location: 'Đà Nẵng',
+            type: 'transport',
+            details: '',
+            status: 'Đã xác nhận',
+            cost: 2_600_000, // 87% hạn mức transport (3M) -> Sắp chạm mức
+          },
+        ],
+      },
+    ],
+    invoices: [
+      {
+        id: 'inv-hotel-1',
+        title: 'Khách sạn 3 đêm',
+        category: 'hotel',
+        amount: 5_500_000, // Vượt hotel (3M) + đẩy tổng lên 10.6M > 10M
+        date: '2026-10-12',
+      },
+    ],
+    alerts: [],
+  };
+
+  const metrics = computeBudgetMetrics(trip);
+  assert.equal(metrics.spentBudget, 10_600_000);
+  assert.equal(metrics.isOverTotalBudget, true);
+  assert.equal(metrics.overBudgetAmount, 600_000);
+  assert.equal(metrics.rawPercentUsed, 106);
+
+  const mealCat = metrics.categories.find((c) => c.id === 'meal');
+  assert.equal(mealCat?.level, 'over');
+  assert.equal(mealCat?.overAmount, 500_000);
+  assert.equal(mealCat?.status, 'Vượt hạn mức');
+
+  const transportCat = metrics.categories.find((c) => c.id === 'transport');
+  assert.equal(transportCat?.level, 'near');
+  assert.equal(transportCat?.status, 'Sắp chạm mức');
+
+  const alerts = detectScheduleAndWeatherAlerts(trip);
+  const totalOverAlert = alerts.find((a) => a.id === 'alert-budget-total-over-trip-budget-test');
+  const mealOverAlert = alerts.find((a) => a.id === 'alert-budget-cat-over-trip-budget-test-meal');
+  const transportNearAlert = alerts.find((a) => a.id === 'alert-budget-cat-near-trip-budget-test-transport');
+
+  assert.ok(totalOverAlert, 'Should generate total budget overrun alert');
+  assert.equal(totalOverAlert?.category, 'budget');
+  assert.equal(totalOverAlert?.severity, 'error');
+  assert.ok(mealOverAlert, 'Should generate meal category overrun alert');
+  assert.ok(transportNearAlert, 'Should generate transport near-limit warning');
+  assert.equal(transportNearAlert?.severity, 'warning');
+
+  // Khi tăng tổng ngân sách lên đủ lớn, cảnh báo vượt tổng cũ phải tự động được dọn sạch
+  const raisedBudgetTrip = { ...trip, budgetTotal: 20_000_000, alerts };
+  const synced = syncBudgetAlertsIntoTrip(raisedBudgetTrip);
+  assert.equal(
+    synced.trip.alerts.some((a) => a.id === 'alert-budget-total-over-trip-budget-test'),
+    false,
+    'Resolved total budget overrun alert should be cleared automatically',
+  );
+});
+
+test('sanitizeTripForGuest strips internal budget alerts while keeping weather and schedule alerts', async () => {
+  const { sanitizeTripForGuest } = await import('../src/utils/tripJoinHelpers');
+  const trip: TripData = {
+    ...initialTripData,
+    joinCode: 'ABC123',
+    alerts: [
+      {
+        id: 'alert-budget-total-over-1',
+        title: 'Vượt tổng ngân sách +500.000 ₫',
+        timeAgo: '105%',
+        description: 'Nội bộ',
+        severity: 'error',
+        category: 'budget',
+      },
+      {
+        id: 'alert-weather-1',
+        title: 'Dự báo mưa dông',
+        timeAgo: 'Vừa cập nhật',
+        description: 'Mang áo mưa',
+        severity: 'warning',
+        category: 'weather',
+      },
+    ],
+  };
+
+  const guestTrip = sanitizeTripForGuest(trip);
+  assert.equal(guestTrip.alerts.length, 1);
+  assert.equal(guestTrip.alerts[0].id, 'alert-weather-1');
+});
+

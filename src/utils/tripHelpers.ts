@@ -1,5 +1,6 @@
 import { normalizeTripData } from '../data/normalizeTripData';
 import type { Activity, TripData, Waypoint } from '../types/travel';
+import { computeBudgetMetrics } from './budgetAlerts';
 
 /**
  * Nhân bản một chuyến đi hiện có thành chuyến đi mới (tour mẫu mới).
@@ -142,6 +143,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   meal: 'Ẩm thực & Nhà hàng',
   sightseeing: 'Vé tham quan & Trải nghiệm',
   contingency: 'Dự phòng & Khác',
+  checkin: 'Check-in / Lưu trú',
+  briefing: 'Điều hành / Tập trung',
 };
 
 function escapeCsvCell(value: unknown): string {
@@ -153,6 +156,9 @@ function escapeCsvCell(value: unknown): string {
  * Xuất báo cáo chi tiêu chuyến đi dạng CSV (UTF-8 BOM tương thích Excel).
  */
 export function buildExpenseReportCsv(trip: TripData): string {
+  const metrics = computeBudgetMetrics(trip);
+  const activityTitleById = new Map(metrics.allActivities.map((a) => [a.id, a.title]));
+
   const header = [
     'Loại mục',
     'Ngày / Tour',
@@ -167,7 +173,12 @@ export function buildExpenseReportCsv(trip: TripData): string {
 
   const rows: string[][] = [header];
 
-  for (const inv of trip.invoices || []) {
+  for (const inv of metrics.invoicesList) {
+    const linkedTitle = inv.linkedActivityId ? activityTitleById.get(inv.linkedActivityId) : undefined;
+    const noteParts = [
+      linkedTitle ? `Đối trừ hoạt động: ${linkedTitle}` : '',
+      inv.note || '',
+    ].filter(Boolean);
     rows.push([
       'Hóa đơn thực tế',
       inv.dayIndex ? `Ngày ${inv.dayIndex} (${inv.date || ''})` : inv.date || '',
@@ -177,30 +188,48 @@ export function buildExpenseReportCsv(trip: TripData): string {
       inv.invoiceNumber || '',
       String(inv.amount || 0),
       inv.receiptImage || inv.receiptId ? 'Có ảnh đính kèm' : 'Không',
-      inv.note || '',
+      noteParts.join(' • '),
     ]);
   }
 
   for (const day of trip.days || []) {
     for (const act of day.activities || []) {
       if (!act.cost || act.cost <= 0) continue;
+      const isLinked = metrics.linkedActivityIds.has(act.id);
+      const isPendingApproval = act.status === 'Chờ duyệt';
+      const isBriefing = act.type === 'briefing';
+      const rowType = isLinked
+        ? 'Dự kiến lịch trình (Đã có hóa đơn)'
+        : isPendingApproval
+          ? 'Dự kiến (Chờ duyệt)'
+          : isBriefing
+            ? 'Điều hành nội bộ (Không tính vào 5 hạng mục)'
+            : 'Dự kiến lịch trình';
       rows.push([
-        'Chi phí lịch trình',
+        rowType,
         `Ngày ${day.dayIndex}`,
-        act.type,
+        CATEGORY_LABELS[act.type] || act.type,
         act.title,
         act.location || '',
         '',
-        String(act.cost),
+        String(isLinked || isPendingApproval || isBriefing ? 0 : act.cost),
         'Không',
-        `${act.timeStart}-${act.timeEnd}`,
+        `${act.timeStart}-${act.timeEnd}${isLinked ? ` (Dự toán gốc ${act.cost.toLocaleString('vi-VN')} ₫ đã thay bằng hóa đơn)` : ''}`,
       ]);
     }
   }
 
-  const totalInvoices = (trip.invoices || []).reduce((s, i) => s + (i.amount || 0), 0);
-  const totalActivities = (trip.days || []).flatMap((d) => d.activities || []).reduce((s, a) => s + (a.cost || 0), 0);
-  rows.push(['TỔNG CỘNG', trip.code, '', trip.title, '', '', String(totalInvoices + totalActivities), '', `Ngân sách: ${trip.budgetTotal}`]);
+  rows.push([
+    'TỔNG CỘNG',
+    trip.code,
+    '',
+    trip.title,
+    '',
+    '',
+    String(metrics.spentBudget),
+    '',
+    `Ngân sách: ${metrics.totalBudget} | Thực chi: ${metrics.actualSpentBudget} | Dự kiến: ${metrics.plannedCommittedBudget}`,
+  ]);
 
   return '\uFEFF' + rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n');
 }

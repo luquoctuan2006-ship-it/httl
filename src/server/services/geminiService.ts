@@ -278,7 +278,7 @@ export function createGeminiService({
     if (operation === 'generate-itinerary') {
       const raw = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
       const destination = typeof raw.destination === 'string' ? raw.destination.trim().slice(0, 100) : 'Đà Nẵng - Huế - Hội An';
-      const normalizedDays = Math.min(Math.max(Number.parseInt(String(raw.days), 10) || 3, 3), 7);
+      const normalizedDays = Math.min(Math.max(Number.parseInt(String(raw.days), 10) || 3, 2), 7);
       const budget = typeof raw.budget === 'string' ? raw.budget.trim().slice(0, 50) : 'Tiêu chuẩn';
       const travelStyle = typeof raw.travelStyle === 'string' ? raw.travelStyle.trim().slice(0, 50) : 'Khám phá văn hóa & ẩm thực';
       const groupType = typeof raw.groupType === 'string' ? raw.groupType.trim().slice(0, 50) : 'Nhóm du khách';

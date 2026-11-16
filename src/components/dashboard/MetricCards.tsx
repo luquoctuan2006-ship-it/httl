@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Wallet, CheckCircle2, Bus } from 'lucide-react';
+import { Calendar, Wallet, Users, MapPin } from 'lucide-react';
 import { TripData } from '../../types/travel';
 
 interface MetricCardsProps {
@@ -7,6 +7,7 @@ interface MetricCardsProps {
   onOpenMembers: () => void;
   onOpenBudget: () => void;
   onOpenSchedule: () => void;
+  onOpenMap?: () => void;
   hideBudgetCard?: boolean;
 }
 
@@ -15,6 +16,7 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
   onOpenMembers,
   onOpenBudget,
   onOpenSchedule,
+  onOpenMap,
   hideBudgetCard = false,
 }) => {
   const formatMillions = (amount: number) => {
@@ -35,177 +37,170 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
     return `${amount.toLocaleString('vi-VN')}đ`;
   };
 
+  const allActs = (trip.days || []).flatMap((d) => d.activities || []);
+  const hasActivitiesArray = allActs.length > 0;
+  const totalCount = hasActivitiesArray ? allActs.length : trip.totalActivities;
+  const confirmedCount = hasActivitiesArray
+    ? allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length
+    : trip.confirmedActivities;
+  const pendingCount = hasActivitiesArray
+    ? allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra' || a.status === 'Chờ duyệt').length
+    : trip.pendingActivities;
+  const completedCount = hasActivitiesArray
+    ? allActs.filter((a) => a.status === 'Hoàn tất').length
+    : 0;
+  const completedPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const hasBudget = trip.budgetTotal > 0;
+  const rawBudgetPercent = hasBudget ? Math.round((trip.budgetUsed / trip.budgetTotal) * 100) : trip.budgetUsedPercent;
+  const isOver = hasBudget && trip.budgetUsed > trip.budgetTotal;
+  const isNear = hasBudget && !isOver && trip.budgetUsed >= trip.budgetTotal * 0.85;
+  const overAmount = Math.max(0, trip.budgetUsed - trip.budgetTotal);
+
   return (
     <div className={`grid grid-cols-1 sm:grid-cols-2 ${hideBudgetCard ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
-      {/* Card 1: Tuyến đang điều phối */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+      {/* Card 1: Tuyến hành trình */}
+      <button
+        type="button"
+        onClick={onOpenMap}
+        disabled={!onOpenMap}
+        className={`text-left bg-white rounded-xl p-4 sm:p-5 border border-slate-200 transition flex flex-col justify-between ${
+          onOpenMap ? 'hover:border-teal-300 cursor-pointer' : ''
+        }`}
+      >
         <div>
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-3">
-            <div className="flex items-center gap-1.5 text-teal-700 font-bold">
-              <svg className="w-4 h-4 text-teal-600 fill-none stroke-[2] stroke-current" viewBox="0 0 24 24">
-                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                <line x1="4" y1="22" x2="4" y2="15" />
-              </svg>
-              <span>Tuyến đang điều phối</span>
-            </div>
-            <span className="text-slate-400 font-medium text-[11px]">{trip.dates}</span>
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+            <span className="font-medium inline-flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-teal-600" />
+              Tuyến hành trình
+            </span>
+            <span className="tabular-nums text-[11px]">{trip.totalKm} km</span>
           </div>
-
-          {/* Route Graphics */}
-          <div className="flex items-center justify-between my-2">
-            <div>
-              <div className="text-2xl font-black text-slate-900 tracking-tight">{trip.origin}</div>
-              <div className="text-xs text-slate-400 font-medium">{trip.originFull}</div>
-            </div>
-
-            {/* Connecting Bus Badge */}
-            <div className="flex-1 px-4 flex items-center">
-              <div className="w-full border-t-2 border-dashed border-slate-300 relative flex items-center justify-center">
-                <div className="absolute w-7 h-7 rounded-full bg-teal-50 border border-teal-300 text-teal-700 flex items-center justify-center shadow-xs">
-                  <Bus className="w-3.5 h-3.5" />
-                </div>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-2xl font-black text-slate-900 tracking-tight">{trip.destination}</div>
-              <div className="text-xs text-slate-400 font-medium">{trip.destinationFull}</div>
-            </div>
+          <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight truncate">
+            {trip.origin || trip.originFull} → {trip.destination || trip.destinationFull}
+          </div>
+          <div className="text-xs text-slate-500 mt-1 truncate">
+            {trip.originFull} đến {trip.destinationFull}
           </div>
         </div>
-
-        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-          <span className="truncate">
-            {trip.destinationsCount} điểm đến • {trip.totalKm} km • {trip.vehicle}
-          </span>
-          <span className="font-bold text-slate-800 ml-2 shrink-0">
-            Ngày {trip.currentDay} / {trip.totalDays}
+        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 tabular-nums">
+          <span className="truncate">{trip.destinationsCount} điểm dừng · {trip.vehicle}</span>
+          <span className="font-semibold text-slate-800 shrink-0 ml-2">
+            Ngày {trip.currentDay}/{trip.totalDays}
           </span>
         </div>
-      </div>
+      </button>
 
       {/* Card 2: Lịch trình */}
-      {(() => {
-        const allActs = (trip.days || []).flatMap((d) => d.activities || []);
-        const hasActivitiesArray = allActs.length > 0;
-        const totalCount = hasActivitiesArray ? allActs.length : trip.totalActivities;
-        const confirmedCount = hasActivitiesArray
-          ? allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length
-          : trip.confirmedActivities;
-        const pendingCount = hasActivitiesArray
-          ? allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra' || a.status === 'Chờ duyệt').length
-          : trip.pendingActivities;
-        const completedCount = hasActivitiesArray
-          ? allActs.filter((a) => a.status === 'Hoàn tất').length
-          : 0;
-        const readyPercent = totalCount > 0 ? Math.round((confirmedCount / totalCount) * 100) : 0;
-        const completedPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-
-        return (
-          <div
-            onClick={onOpenSchedule}
-            className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
-          >
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Calendar className="w-4 h-4" />
-                </div>
-                <span className="text-xs font-semibold text-slate-500">Lịch trình</span>
-              </div>
-
-              <div className="mt-2">
-                <div className="text-2xl font-black text-slate-900 tracking-tight">
-                  {totalCount} hoạt động
-                </div>
-                <div className="text-xs text-slate-500 mt-1 font-medium">
-                  <span className="text-blue-600 font-semibold">{readyPercent}% sẵn sàng</span> ({confirmedCount} đã xác nhận) • {pendingCount} chờ
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-              <span>Tiến độ thực hiện</span>
-              <span className="font-semibold text-emerald-600">
-                {completedCount}/{totalCount} hoàn tất ({completedPercent}%)
-              </span>
-            </div>
+      <button
+        type="button"
+        onClick={onOpenSchedule}
+        className="text-left bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-teal-300 transition flex flex-col justify-between cursor-pointer"
+      >
+        <div>
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+            <span className="font-medium inline-flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-teal-600" />
+              Lịch trình
+            </span>
+            <span className="tabular-nums text-[11px] font-medium text-emerald-700">
+              {completedPercent}% hoàn tất
+            </span>
           </div>
-        );
-      })()}
-
-      {/* Card 3: Ngân sách */}
-      {!hideBudgetCard && (
-        <div
-          onClick={onOpenBudget}
-          className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
-        >
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Wallet className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-semibold text-slate-500">Ngân sách</span>
-            </div>
-
-            <div className="mt-2">
-              <div className="text-2xl font-black text-slate-900 tracking-tight">
-                {formatMillions(trip.budgetTotal)}
-              </div>
-              <div className="text-xs text-slate-500 mt-1 font-medium">
-                Đã dùng <span className="font-semibold text-slate-700">{trip.budgetUsedPercent}%</span> • còn {formatShortMillions(trip.budgetRemaining)}
-              </div>
-            </div>
+          <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+            {totalCount} hoạt động
           </div>
-
-          <div className="mt-3 pt-3 border-t border-slate-100">
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${trip.budgetUsedPercent}%` }}
-              ></div>
-            </div>
+          <div className="text-xs text-slate-500 mt-1 tabular-nums">
+            {confirmedCount} đã xác nhận · {pendingCount} chờ xử lý
           </div>
         </div>
+        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 tabular-nums">
+          <span>Đã hoàn thành</span>
+          <span className="font-semibold text-slate-800">
+            {completedCount}/{totalCount} mục
+          </span>
+        </div>
+      </button>
+
+      {/* Card 3: Ngân sách (chỉ hiển thị cho chủ chuyến) */}
+      {!hideBudgetCard && (
+        <button
+          type="button"
+          onClick={onOpenBudget}
+          className={`text-left rounded-xl p-4 sm:p-5 border transition flex flex-col justify-between cursor-pointer ${
+            isOver
+              ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300'
+              : isNear
+                ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300'
+                : 'bg-white border-slate-200 hover:border-teal-300'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+              <span className="font-medium inline-flex items-center gap-1.5">
+                <Wallet className={`w-3.5 h-3.5 ${isOver ? 'text-rose-600' : isNear ? 'text-amber-600' : 'text-teal-600'}`} />
+                Ngân sách
+              </span>
+              <span
+                className={`text-[11px] font-semibold tabular-nums ${
+                  isOver ? 'text-rose-700' : isNear ? 'text-amber-700' : 'text-slate-500'
+                }`}
+              >
+                {isOver ? 'Vượt mức' : isNear ? 'Gần chạm mức (≥85%)' : `${rawBudgetPercent}% đã dùng`}
+              </span>
+            </div>
+            <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+              {formatMillions(trip.budgetTotal)}
+            </div>
+            <div className="text-xs text-slate-500 mt-1 tabular-nums">
+              {isOver ? (
+                <span className="font-semibold text-rose-700">Vượt {formatShortMillions(overAmount)}</span>
+              ) : (
+                <span>Còn lại {formatShortMillions(trip.budgetRemaining)}</span>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100">
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  isOver ? 'bg-rose-500' : isNear ? 'bg-amber-500' : 'bg-teal-600'
+                }`}
+                style={{ width: `${Math.min(rawBudgetPercent, 100)}%` }}
+              />
+            </div>
+          </div>
+        </button>
       )}
 
       {/* Card 4: Thành viên */}
-      <div
+      <button
+        type="button"
         onClick={onOpenMembers}
-        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
+        className="text-left bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-teal-300 transition flex flex-col justify-between cursor-pointer"
       >
         <div>
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2">
-            <span>THÀNH VIÊN</span>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              {trip.membersOnline}/{trip.membersTotal} online
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+            <span className="font-medium inline-flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-teal-600" />
+              Đoàn &amp; Thành viên
+            </span>
+            <span className="tabular-nums text-[11px]">
+              {trip.membersOnline}/{trip.membersTotal} trực tuyến
             </span>
           </div>
-
-          {/* Member Avatars */}
-          <div className="flex items-center -space-x-2 my-2 py-1">
-            {trip.members.slice(0, 5).map((member) => (
-              <div
-                key={member.id}
-                title={`${member.name} (${member.role})`}
-                className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white text-slate-700 font-bold text-xs flex items-center justify-center shadow-xs hover:translate-y-[-2px] transition-transform"
-              >
-                {member.avatar}
-              </div>
-            ))}
-            {trip.members.length > 5 && (
-              <div className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white text-slate-600 font-bold text-xs flex items-center justify-center shadow-xs">
-                +{trip.members.length - 5}
-              </div>
-            )}
+          <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+            {trip.membersTotal} thành viên
+          </div>
+          <div className="text-xs text-slate-500 mt-1 tabular-nums truncate">
+            {trip.membersStatus}
           </div>
         </div>
-
-        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>{trip.membersStatus}</span>
+        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <span>Chi tiết điểm danh</span>
+          <span className="font-semibold text-teal-700">Mở danh sách →</span>
         </div>
-      </div>
+      </button>
     </div>
   );
 };

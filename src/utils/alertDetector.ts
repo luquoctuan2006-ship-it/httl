@@ -4,6 +4,7 @@
  */
 
 import { OperationalAlert, TripData } from '../types/travel';
+import { detectBudgetAlerts, isBudgetAlert } from './budgetAlerts';
 
 function parseClock(timeStr: string): number | null {
   if (!timeStr || typeof timeStr !== 'string') return null;
@@ -33,20 +34,22 @@ export function createAiRiskAlerts(tripId: string, value: unknown): OperationalA
           : 'warning';
     const details = `${title} ${typeof risk.advice === 'string' ? risk.advice : ''}`.toLowerCase();
     const category: OperationalAlert['category'] =
-      /mưa|dông|bão|nắng|thời tiết|weather|storm/.test(details)
-        ? 'weather'
-        : /khách sạn|nhận phòng|check.?in|hotel/.test(details)
-          ? 'hotel'
-          : /giao thông|kẹt xe|ùn tắc|di chuyển|đường|traffic/.test(details)
-            ? 'traffic'
-            : 'schedule';
+      /ngân sách|chi phí|vượt mức|hóa đơn|budget/.test(details)
+        ? 'budget'
+        : /mưa|dông|bão|nắng|thời tiết|weather|storm/.test(details)
+          ? 'weather'
+          : /khách sạn|nhận phòng|check.?in|hotel/.test(details)
+            ? 'hotel'
+            : /giao thông|kẹt xe|ùn tắc|di chuyển|đường|traffic/.test(details)
+              ? 'traffic'
+              : 'schedule';
     const advice = typeof risk.advice === 'string' ? risk.advice.trim().slice(0, 500) : '';
 
     return [{
       id: `alert-ai-risk-${tripId}-${index + 1}`,
       title,
       timeAgo: 'Phân tích AI',
-      description: advice || 'Gemini nhận diện rủi ro tiềm ẩn cần được điều phối viên kiểm tra.',
+      description: advice || 'Gemini nhận diện rủi ro tiềm ẩn cần được kiểm tra lại.',
       severity,
       category,
     }];
@@ -54,14 +57,16 @@ export function createAiRiskAlerts(tripId: string, value: unknown): OperationalA
 }
 
 /**
- * Tự động phân tích lịch trình và dữ liệu khí tượng thời gian thực
- * để phát hiện các xung đột, rủi ro thời tiết, giao thông và đệm thời gian.
+ * Tự động phân tích lịch trình, ngân sách và dữ liệu khí tượng thời gian thực
+ * để phát hiện các xung đột, rủi ro thời tiết, vượt hạn mức chi tiêu, giao thông và đệm thời gian.
  */
 export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert[] {
   const alerts: OperationalAlert[] = [];
+  const budgetAlerts = detectBudgetAlerts(trip);
 
   if (!trip.days || !Array.isArray(trip.days)) {
-    return alerts;
+    const existingNonBudget = (trip.alerts || []).filter((a) => !isBudgetAlert(a));
+    return [...budgetAlerts, ...existingNonBudget].slice(0, 50);
   }
 
   // 1. Quét rủi ro thời tiết từ thông tin khí tượng dọc tuyến của chuyến đi
@@ -156,7 +161,7 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
               id: `alert-overlap-${day.dayIndex}-${act.id}-${nextAct.id}`,
               title: `Xung đột chồng chéo giờ: ${act.title} & ${nextAct.title}`,
               timeAgo: `Ngày ${day.dayIndex}`,
-              description: `'${act.title}' kết thúc lúc ${act.timeEnd} nhưng '${nextAct.title}' bắt đầu lúc ${nextAct.timeStart} (chồng lấn ${Math.abs(bufferMinutes)} phút). Cần điều phối lại giờ bắt đầu.`,
+              description: `'${act.title}' kết thúc lúc ${act.timeEnd} nhưng '${nextAct.title}' bắt đầu lúc ${nextAct.timeStart} (chồng lấn ${Math.abs(bufferMinutes)} phút). Cần sắp xếp lại giờ bắt đầu.`,
               severity: 'error',
               category: 'schedule',
             });
@@ -180,7 +185,7 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
             id: `alert-checkin-early-${day.dayIndex}-${act.id}`,
             title: `Lưu ý giờ nhận phòng: ${act.title}`,
             timeAgo: `Ngày ${day.dayIndex}`,
-            description: `Khách sạn thường chỉ cho nhận phòng từ 14:00. Lịch nhận phòng lúc ${act.timeStart} cần được điều phối viên liên hệ xác nhận phòng trống trước với lễ tân.`,
+            description: `Khách sạn thường chỉ cho nhận phòng từ 14:00. Lịch nhận phòng lúc ${act.timeStart} nên liên hệ xác nhận phòng trống trước với lễ tân.`,
             severity: 'info',
             category: 'hotel',
           });
@@ -189,16 +194,19 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
     }
   }
 
-  // Kết hợp cảnh báo mới phát hiện nhưng không lặp trùng lặp
-  const mergedAlerts: OperationalAlert[] = [...trip.alerts];
+  // Kết hợp cảnh báo mới phát hiện (thay thế nhóm cảnh báo ngân sách bằng trạng thái mới nhất để tự dọn cảnh báo cũ khi đã sửa hạn mức)
+  const mergedAlerts: OperationalAlert[] = [
+    ...budgetAlerts,
+    ...trip.alerts.filter((a) => !isBudgetAlert(a)),
+  ];
   for (const newAlert of alerts) {
     const isDuplicate = mergedAlerts.some(
-      (a) => a.title.toLowerCase() === newAlert.title.toLowerCase() || a.id === newAlert.id
+      (a) => a.title.toLowerCase() === newAlert.title.toLowerCase() || a.id === newAlert.id,
     );
     if (!isDuplicate) {
       mergedAlerts.push(newAlert);
     }
   }
 
-  return mergedAlerts;
+  return mergedAlerts.slice(0, 50);
 }

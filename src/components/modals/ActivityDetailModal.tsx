@@ -2,6 +2,16 @@ import React, { useState } from 'react';
 import { X, Clock, MapPin, Tag, Edit3, Trash2, DollarSign, FileText } from 'lucide-react';
 import { Activity } from '../../types/travel';
 import { validateActivityTimeRange } from '../../utils/tripSyncHelpers';
+import { lookupCoordinates } from '../../utils/vietnamGeo';
+
+const ACTIVITY_TYPE_LABELS: Record<string, string> = {
+  sightseeing: 'Tham quan',
+  meal: 'Ăn uống',
+  transport: 'Di chuyển xe',
+  hotel: 'Khách sạn / Lưu trú',
+  checkin: 'Check-in / Lưu trú',
+  briefing: 'Điều hành / Tập trung',
+};
 
 interface ActivityDetailModalProps {
   activity: Activity | null;
@@ -57,15 +67,22 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
       return;
     }
     setTimeError(null);
+    const cleanLocation = location.trim();
+    const locationChanged = cleanLocation.toLowerCase() !== (activity.location || '').trim().toLowerCase();
+    const resolvedCoords = lookupCoordinates(cleanLocation) || lookupCoordinates(title.trim());
+    const nextCoords = resolvedCoords || (locationChanged ? undefined : activity.coordinates);
+    const { coordinates: _oldCoords, ...baseActivity } = activity;
+
     const updated: Activity = {
-      ...activity,
+      ...baseActivity,
       title: title.trim(),
       timeStart,
       timeEnd,
-      location: location.trim(),
+      location: cleanLocation,
       cost: Number(cost) || 0,
       type,
       details: details.trim(),
+      ...(nextCoords ? { coordinates: nextCoords } : {}),
     };
     onEditActivity(updated);
     setIsEditing(false);
@@ -177,9 +194,9 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                 <input
                   type="number"
                   min={0}
-                  step={50000}
+                  step={1}
                   value={cost}
-                  onChange={(e) => setCost(Number(e.target.value))}
+                  onChange={(e) => setCost(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono font-bold outline-none"
                 />
               </div>
@@ -194,6 +211,8 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   <option value="meal">Ăn uống</option>
                   <option value="transport">Di chuyển xe</option>
                   <option value="hotel">Khách sạn / Nghỉ ngơi</option>
+                  <option value="checkin">Check-in / Nhận phòng</option>
+                  <option value="briefing">Điều hành / Tập trung</option>
                 </select>
               </div>
             </div>
@@ -250,8 +269,8 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 font-medium">Phân loại:</span>
-                <span className="font-semibold text-slate-700 uppercase text-[10px]">
-                  {activity.type}
+                <span className="font-semibold text-slate-700 text-xs">
+                  {ACTIVITY_TYPE_LABELS[activity.type] || activity.type}
                 </span>
               </div>
               {canEdit && activity.cost !== undefined && activity.cost > 0 && (

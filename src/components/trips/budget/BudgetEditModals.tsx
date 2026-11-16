@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sliders } from 'lucide-react';
 import type { Activity } from '../../../types/travel';
 import { Modal, ModalFooter } from '../../common/Modal';
 import { Field, TextInput } from '../../common/Field';
 
 interface BudgetEditModalsProps {
+  totalBudget: number;
+  hasCustomAllocations?: boolean;
   isEditBudgetOpen: boolean;
   setIsEditBudgetOpen: React.Dispatch<React.SetStateAction<boolean>>;
   newTotalBudget: number;
@@ -22,7 +24,9 @@ interface BudgetEditModalsProps {
   setAllocSightseeing: React.Dispatch<React.SetStateAction<number>>;
   allocContingency: number;
   setAllocContingency: React.Dispatch<React.SetStateAction<number>>;
+  allocValidationError?: string | null;
   onSaveAllocations: (event: React.FormEvent) => void;
+  onResetAllocationsToDefault: () => void;
   editingActivity: Activity | null;
   setEditingActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
   editedCost: number;
@@ -32,6 +36,8 @@ interface BudgetEditModalsProps {
 
 export function BudgetEditModals(props: BudgetEditModalsProps) {
   const {
+    totalBudget,
+    hasCustomAllocations = false,
     isEditBudgetOpen,
     setIsEditBudgetOpen,
     newTotalBudget,
@@ -49,7 +55,9 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
     setAllocSightseeing,
     allocContingency,
     setAllocContingency,
+    allocValidationError,
     onSaveAllocations,
+    onResetAllocationsToDefault,
     editingActivity,
     setEditingActivity,
     editedCost,
@@ -57,13 +65,66 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
     onSaveActivityCost,
   } = props;
 
-  const allocationFields = [
-    { label: '1. Vận chuyển & Xe di chuyển', value: allocTransport, setter: setAllocTransport },
-    { label: '2. Khách sạn & Lưu trú', value: allocHotel, setter: setAllocHotel },
-    { label: '3. Ẩm thực & Nhà hàng', value: allocMeal, setter: setAllocMeal },
-    { label: '4. Vé tham quan & Trải nghiệm', value: allocSightseeing, setter: setAllocSightseeing },
-    { label: '5. Dự phòng rủi ro & Bảo hiểm', value: allocContingency, setter: setAllocContingency },
+  // Giữ chuỗi nhập tạm để xóa trắng số dễ dàng, không bị tự điền số 0 kẹt phía trước
+  const [allocDrafts, setAllocDrafts] = useState<[string, string, string, string, string]>(() => [
+    String(allocTransport),
+    String(allocHotel),
+    String(allocMeal),
+    String(allocSightseeing),
+    String(allocContingency),
+  ]);
+  const [editedCostDraft, setEditedCostDraft] = useState<string>(() => String(editedCost));
+
+  useEffect(() => {
+    if (isEditAllocationsOpen) {
+      setAllocDrafts([
+        String(allocTransport),
+        String(allocHotel),
+        String(allocMeal),
+        String(allocSightseeing),
+        String(allocContingency),
+      ]);
+    }
+  }, [isEditAllocationsOpen]);
+
+  useEffect(() => {
+    if (editingActivity) {
+      setEditedCostDraft(String(editedCost));
+    }
+  }, [editingActivity]);
+
+  const handleResetWithSync = () => {
+    onResetAllocationsToDefault();
+    const base = totalBudget || 0;
+    setAllocDrafts([
+      String(Math.round(base * 0.28)),
+      String(Math.round(base * 0.35)),
+      String(Math.round(base * 0.22)),
+      String(Math.round(base * 0.10)),
+      String(Math.round(base * 0.05)),
+    ]);
+  };
+
+  const allocationFields: Array<{
+    idx: 0 | 1 | 2 | 3 | 4;
+    label: string;
+    setter: React.Dispatch<React.SetStateAction<number>>;
+  }> = [
+    { idx: 0, label: '1. Vận chuyển & Xe di chuyển (mặc định 28%)', setter: setAllocTransport },
+    { idx: 1, label: '2. Khách sạn & Lưu trú (mặc định 35%)', setter: setAllocHotel },
+    { idx: 2, label: '3. Ẩm thực & Nhà hàng (mặc định 22%)', setter: setAllocMeal },
+    { idx: 3, label: '4. Vé tham quan & Trải nghiệm (mặc định 10%)', setter: setAllocSightseeing },
+    { idx: 4, label: '5. Dự phòng rủi ro & Bảo hiểm (mặc định 5%)', setter: setAllocContingency },
   ];
+
+  const allocationsSum =
+    (Number.isFinite(allocTransport) ? allocTransport : 0) +
+    (Number.isFinite(allocHotel) ? allocHotel : 0) +
+    (Number.isFinite(allocMeal) ? allocMeal : 0) +
+    (Number.isFinite(allocSightseeing) ? allocSightseeing : 0) +
+    (Number.isFinite(allocContingency) ? allocContingency : 0);
+  const allocationDelta = allocationsSum - totalBudget;
+  const isAllocOverTotal = totalBudget > 0 && allocationDelta > 0;
 
   return (
     <>
@@ -78,16 +139,18 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
           <Field label="Tổng hạn mức mới (VNĐ)">
             <TextInput
               type="number"
-              min={1000000}
-              step={1000000}
+              min={1}
+              step={1}
               required
-              value={newTotalBudget}
-              onChange={(e) => setNewTotalBudget(Number(e.target.value))}
+              value={newTotalBudget > 0 ? newTotalBudget : ''}
+              onChange={(e) => setNewTotalBudget(e.target.value === '' ? 0 : Number(e.target.value))}
+              placeholder="VD: 48600000"
               className="font-mono font-bold text-base"
             />
           </Field>
-          <p className="text-[11px] text-slate-400">
-            Sau khi cập nhật, số dư còn lại và tỷ lệ phần trăm sẽ tự động tính toán lại và lưu vào Firestore.
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Nhập số tiền tùy ý bằng VNĐ. Sau khi cập nhật, số dư còn lại, tỷ lệ phần trăm và cảnh báo vượt mức sẽ tự động tính lại.
+            {hasCustomAllocations && ' Các hạn mức 5 hạng mục tùy chỉnh sẽ tự động co giãn tương ứng theo tổng mới.'}
           </p>
 
           <ModalFooter
@@ -106,29 +169,75 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
         icon={<Sliders className="w-4 h-4" />}
       >
         <form onSubmit={onSaveAllocations} className="p-6 space-y-3.5 text-xs">
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>Đặt hạn mức riêng cho từng hạng mục (tổng ≤ tổng ngân sách tour):</span>
+            <button
+              type="button"
+              onClick={handleResetWithSync}
+              className="font-bold text-teal-700 hover:underline shrink-0 ml-2"
+            >
+              Chia lại theo % chuẩn
+            </button>
+          </div>
+
           {allocationFields.map((item) => (
             <Field key={item.label} label={item.label}>
               <TextInput
                 type="number"
                 min={0}
-                step={500000}
-                value={item.value}
-                onChange={(e) => item.setter(Number(e.target.value))}
+                step={1}
+                placeholder="0"
+                value={allocDrafts[item.idx]}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setAllocDrafts((prev) => {
+                    const next = [...prev] as [string, string, string, string, string];
+                    next[item.idx] = raw;
+                    return next;
+                  });
+                  item.setter(raw === '' ? 0 : Math.max(0, Number(raw) || 0));
+                }}
                 className="font-mono font-bold"
               />
             </Field>
           ))}
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
-            <span>Tổng phân bổ:</span>
-            <span className="font-mono text-slate-900">
-              {(allocTransport + allocHotel + allocMeal + allocSightseeing + allocContingency).toLocaleString('vi-VN')} ₫
-            </span>
+          <div className="pt-2 border-t border-slate-100 space-y-1 text-[11px]">
+            <div className="flex items-center justify-between font-bold text-slate-500">
+              <span>Tổng phân bổ 5 hạng mục:</span>
+              <span className={`font-mono ${isAllocOverTotal ? 'text-rose-600' : 'text-slate-900'}`}>
+                {allocationsSum.toLocaleString('vi-VN')} ₫
+              </span>
+            </div>
+            {totalBudget > 0 && (
+              <div className="flex items-center justify-between font-medium text-slate-500">
+                <span>Tổng ngân sách tour hiện tại:</span>
+                <span className="font-mono text-slate-700">{totalBudget.toLocaleString('vi-VN')} ₫</span>
+              </div>
+            )}
+            {totalBudget > 0 && allocationDelta !== 0 && (
+              <p
+                role={isAllocOverTotal ? 'alert' : undefined}
+                className={`font-semibold pt-1 ${
+                  isAllocOverTotal ? 'text-rose-600' : 'text-slate-500'
+                }`}
+              >
+                {isAllocOverTotal
+                  ? `Không thể lưu: Tổng phân bổ vượt tổng ngân sách tour +${allocationDelta.toLocaleString('vi-VN')} ₫. Hãy giảm bớt hạn mức các hạng mục hoặc nâng tổng ngân sách trước.`
+                  : `Còn ${Math.abs(allocationDelta).toLocaleString('vi-VN')} ₫ chưa phân bổ vào 5 hạng mục.`}
+              </p>
+            )}
+            {allocValidationError && !isAllocOverTotal && (
+              <p role="alert" className="font-semibold pt-1 text-rose-600">
+                {allocValidationError}
+              </p>
+            )}
           </div>
 
           <ModalFooter
             onCancel={() => setIsEditAllocationsOpen(false)}
-            submitLabel="Lưu phân bổ & Lưu Firestore"
+            disabled={isAllocOverTotal}
+            submitLabel="Lưu phân bổ hạn mức"
             bordered={false}
           />
         </form>
@@ -152,17 +261,22 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
             <TextInput
               type="number"
               min={0}
-              step={50000}
+              step={1}
               required
-              value={editedCost}
-              onChange={(e) => setEditedCost(Number(e.target.value))}
+              placeholder="0"
+              value={editedCostDraft}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setEditedCostDraft(raw);
+                setEditedCost(raw === '' ? 0 : Math.max(0, Number(raw) || 0));
+              }}
               className="font-mono font-bold text-sm"
             />
           </Field>
 
           <ModalFooter
             onCancel={() => setEditingActivity(null)}
-            submitLabel="Lưu & Cập nhật Firestore"
+            submitLabel="Lưu chi phí hoạt động"
             bordered={false}
           />
         </form>

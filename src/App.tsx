@@ -418,7 +418,7 @@ export default function App() {
 
   return (
     <>
-      <Suspense fallback={<FullPageLoadingFallback message="Đang tải bảng điều phối..." />}>
+      <Suspense fallback={<FullPageLoadingFallback message="Đang tải tổng quan chuyến đi..." />}>
         {authUser.role === 'admin' ? (
           <AdminDashboard
             {...sharedDashboardProps}
@@ -449,6 +449,7 @@ export default function App() {
             onClose={() => setIsAIPlannerOpen(false)}
             onApplyPlan={actions.handleApplyGeneratedTrip}
             initialTab={plannerInitialTab}
+            owner={{ uid: authUser.id, name: authUser.name }}
           />
         </Suspense>
       )}

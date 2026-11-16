@@ -171,7 +171,7 @@ export function ManualTripBasics(props: ManualTripBasicsProps) {
                     <input
                       type="number"
                       min={0}
-                      step={500000}
+                      step={1}
                       value={budgetEstimated}
                       onChange={(e) =>
                         setBudgetEstimated(e.target.value === '' ? '' : Number(e.target.value))

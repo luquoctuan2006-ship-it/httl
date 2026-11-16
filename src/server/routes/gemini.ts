@@ -42,10 +42,10 @@ export function registerGeminiRoutes(app: Express, dependencies: GeminiRouteDepe
   
     const { destination, days, budget, travelStyle, groupType, preferences, startLocation } = req.body;
     const normalizedDays = Number.parseInt(days, 10);
-    if (!Number.isInteger(normalizedDays) || normalizedDays < 3 || normalizedDays > 7) {
+    if (!Number.isInteger(normalizedDays) || normalizedDays < 2 || normalizedDays > 7) {
       return res.status(400).json({
         success: false,
-        error: 'Số ngày phải nằm trong khoảng 3–7 ngày.',
+        error: 'Số ngày phải nằm trong khoảng 2–7 ngày.',
       });
     }
   

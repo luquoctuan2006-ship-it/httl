@@ -201,7 +201,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
         body: JSON.stringify({
           currentTrip: compactTrip,
           alertDetails: trip.alerts,
-          userGoal: 'Ưu tiên an toàn, đúng lịch trình, tránh mưa đèo dốc và giảm chi phí phát sinh.',
+          userGoal: 'Ưu tiên an toàn, đúng lịch trình, tránh thời tiết xấu và giảm chi phí phát sinh.',
         }),
       });
       if (pollRunIdRef.current !== runId) return;
@@ -288,20 +288,20 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-extrabold text-white">
-                  {isFallback ? 'Điều phối theo quy tắc vận hành' : 'Phương án tối ưu chuyến đi'}
+                  {isFallback ? 'Tối ưu theo quy tắc lịch trình' : 'Phương án tối ưu chuyến đi'}
                 </h3>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                   isFallback
                     ? 'bg-amber-950/70 text-amber-300 border-amber-700/60'
                     : 'bg-teal-900/60 text-teal-300 border-teal-700/60'
                 }`}>
-                  {isFallback ? 'Dự phòng quy tắc' : trip.aiConfidence ? `${trip.aiConfidence} Tin cậy` : 'Tự động'}
+                  {isFallback ? 'Dự phòng quy tắc' : 'Đề xuất AI'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
                 {isFallback
-                  ? 'Tối ưu tự động theo dữ liệu chuyến đi thực tế & quy tắc Admin đã kiểm định'
-                  : 'Tự động tái lập trình tuyến đường khi phát hiện rủi ro thời tiết & ùn tắc'}
+                  ? 'Tối ưu tự động theo dữ liệu chuyến đi thực tế & quy tắc đã kiểm định'
+                  : 'Tự động rà soát và sắp xếp lại lịch trình khi phát hiện xung đột hoặc thời tiết xấu'}
               </p>
             </div>
           </div>
@@ -536,7 +536,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                 <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                   <div className="bg-slate-100/80 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
                     <span>So sánh lịch trình hoạt động</span>
-                    <span>Trước ➔ Sau điều phối</span>
+                    <span>Trước ➔ Sau tối ưu</span>
                   </div>
 
                   <div className="divide-y divide-slate-100 bg-white">
@@ -633,7 +633,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                             </span>
                           </div>
                           <p className="text-[11px] opacity-80 mt-0.5">
-                            {ad.isResolved ? ad.resolveReason || 'Được giải quyết bởi phương án điều phối này.' : ad.alert.description}
+                            {ad.isResolved ? ad.resolveReason || 'Được giải quyết bởi phương án tối ưu này.' : ad.alert.description}
                           </p>
                         </div>
                       </div>
@@ -686,7 +686,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
                 className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 transition flex items-center gap-1.5 cursor-pointer border border-amber-300"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Hoàn tác điều phối</span>
+                <span>Hoàn tác thay đổi lịch</span>
               </button>
             )}
           </div>
@@ -699,7 +699,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
             {isSimulating ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Đang đồng bộ lệnh điều phối...</span>
+                <span>Đang áp dụng thay đổi lịch...</span>
               </>
             ) : isApplied ? (
               <>

@@ -241,7 +241,7 @@ export function ManualPlannerTab(props: ManualPlannerTabProps) {
                   <Check className="w-4 h-4" />
                   <span>
                     {isSaving
-                      ? 'Đang lưu vào Bảng điều phối...'
+                      ? 'Đang lưu chuyến đi...'
                       : `Hoàn tất & Khởi tạo Tour (${totalDays} ngày)`}
                   </span>
                 </button>

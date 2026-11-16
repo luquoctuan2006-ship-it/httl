@@ -1,7 +1,7 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { normalizeTripData } from '../../data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../../data/normalizeTripData';
 import type { TripData } from '../../types/travel';
 import { upsertTripForUser } from '../../utils/tripRepository';
 
@@ -25,6 +25,13 @@ export function createTripSyncRouter({
   const saveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
     if (req.body && typeof req.body === 'object' && (req.body as { isSummary?: unknown }).isSummary === true) {
       return res.status(400).json({ success: false, error: 'Không thể ghi đè chuyến đi bằng dữ liệu tóm tắt' });
+    }
+    const rawInvoices = (req.body as { invoices?: unknown } | undefined)?.invoices;
+    if (Array.isArray(rawInvoices) && rawInvoices.length > MAX_INVOICES_PER_TRIP) {
+      return res.status(400).json({
+        success: false,
+        error: `Mỗi chuyến đi chỉ hỗ trợ tối đa ${MAX_INVOICES_PER_TRIP} hóa đơn (hiện gửi ${rawInvoices.length}). Vui lòng gộp hoặc xóa bớt hóa đơn cũ.`,
+      });
     }
     const trip = normalizeTripData(req.body);
     const routeId = req.params.tripId;

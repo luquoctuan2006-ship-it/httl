@@ -52,7 +52,7 @@ export interface OperationalAlert {
   timeAgo: string;
   description: string;
   severity: 'warning' | 'error' | 'info';
-  category: 'weather' | 'schedule' | 'traffic' | 'hotel';
+  category: 'weather' | 'schedule' | 'traffic' | 'hotel' | 'budget';
 }
 
 export interface AISuggestion {
@@ -73,6 +73,7 @@ export interface ExpenseInvoice {
   category: 'transport' | 'hotel' | 'meal' | 'sightseeing' | 'contingency';
   amount: number;
   date: string;
+  linkedActivityId?: string;
   vendor?: string;
   invoiceNumber?: string;
   dayIndex?: number;

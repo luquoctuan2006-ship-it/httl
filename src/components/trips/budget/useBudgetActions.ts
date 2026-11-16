@@ -1,33 +1,47 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { MAX_INVOICES_PER_TRIP } from '../../../data/normalizeTripData';
 import type { ExpenseInvoice, TripData } from '../../../types/travel';
+import {
+  computeTripBudgetSummaryFields,
+  getIsoDateForTripDay,
+  getTripDayIndexForIsoDate,
+} from '../../../utils/budgetAlerts';
 import { buildExpenseReportCsv } from '../../../utils/tripHelpers';
 import { authenticatedFetch, safeJsonResponse } from '../../../api';
 import { receiptImageCache } from './ReceiptImage';
 
 interface UseBudgetActionsOptions {
   trip: TripData;
-  onUpdateTripBudget?: (updatedTrip: TripData) => void;
-  totalActivityCosts: number;
+  onUpdateTripBudget?: (updatedTrip: TripData) => void | Promise<void>;
   invoicesList: ExpenseInvoice[];
-  totalBudget: number;
-  spentBudget: number;
 }
 
+const ACTIVITY_TYPE_TO_INVOICE_CATEGORY: Record<string, ExpenseInvoice['category']> = {
+  transport: 'transport',
+  hotel: 'hotel',
+  checkin: 'hotel',
+  meal: 'meal',
+  sightseeing: 'sightseeing',
+};
+
 export function useBudgetActions(options: UseBudgetActionsOptions) {
-  const { trip, onUpdateTripBudget, totalActivityCosts, invoicesList, totalBudget, spentBudget } = options;
+  const { trip, onUpdateTripBudget, invoicesList } = options;
   // Modal states
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'invoices' | 'activities'>('invoices');
+
+  const defaultDayIndex = trip.currentDay || 1;
 
   // New / Edit Invoice form state
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invTitle, setInvTitle] = useState('');
   const [invAmount, setInvAmount] = useState<number>(500000);
-  const [invCategory, setInvCategory] = useState<'transport' | 'hotel' | 'meal' | 'sightseeing' | 'contingency'>('meal');
+  const [invCategory, setInvCategory] = useState<ExpenseInvoice['category']>('meal');
   const [invVendor, setInvVendor] = useState('');
   const [invNumber, setInvNumber] = useState('');
-  const [invDate, setInvDate] = useState('2026-10-14');
-  const [invDayIndex, setInvDayIndex] = useState<number>(trip.currentDay || 1);
+  const [invDate, setInvDate] = useState(() => getIsoDateForTripDay(trip, defaultDayIndex));
+  const [invDayIndex, setInvDayIndex] = useState<number>(defaultDayIndex);
+  const [invLinkedActivityId, setInvLinkedActivityId] = useState<string | undefined>(undefined);
   const [invNote, setInvNote] = useState('');
   const [invReceiptImage, setInvReceiptImage] = useState<string | undefined>(undefined);
   const [invReceiptId, setInvReceiptId] = useState<string | undefined>(undefined);
@@ -35,18 +49,23 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
   const [previewReceiptInvoice, setPreviewReceiptInvoice] = useState<ExpenseInvoice | null>(null);
   const [isReportPreviewOpen, setIsReportPreviewOpen] = useState(false);
 
+  const invoiceLimitReached = invoicesList.length >= MAX_INVOICES_PER_TRIP;
+
   const resetInvoiceForm = () => {
+    const startDay = trip.currentDay || 1;
     setEditingInvoiceId(null);
     setInvTitle('');
     setInvAmount(500000);
     setInvCategory('meal');
     setInvVendor('');
     setInvNumber('');
-    setInvDate(new Date().toISOString().slice(0, 10));
-    setInvDayIndex(trip.currentDay || 1);
+    setInvDate(getIsoDateForTripDay(trip, startDay));
+    setInvDayIndex(startDay);
+    setInvLinkedActivityId(undefined);
     setInvNote('');
     setInvReceiptImage(undefined);
     setInvReceiptId(undefined);
@@ -54,22 +73,78 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     setIsUploadingReceipt(false);
     setIsSavingInvoice(false);
     setReceiptUploadError(null);
+    setInvoiceError(null);
+  };
+
+  useEffect(() => {
+    setIsInvoiceModalOpen(false);
+    setPreviewReceiptInvoice(null);
+    setIsReportPreviewOpen(false);
+    resetInvoiceForm();
+  }, [trip.id]);
+
+  const handleDayIndexChange = (nextDay: number) => {
+    const clampedDay = Math.max(1, Math.min(nextDay || 1, trip.days.length || 1));
+    setInvDayIndex(clampedDay);
+    setInvDate(getIsoDateForTripDay(trip, clampedDay));
+  };
+
+  const handleDateChange = (nextDate: string) => {
+    setInvDate(nextDate);
+    const matchedDay = getTripDayIndexForIsoDate(trip, nextDate);
+    if (matchedDay !== null) {
+      setInvDayIndex(matchedDay);
+    }
+  };
+
+  const handleLinkedActivityChange = (nextActivityId: string) => {
+    const cleanId = nextActivityId.trim() || undefined;
+    setInvLinkedActivityId(cleanId);
+    if (!cleanId) return;
+
+    for (const day of trip.days || []) {
+      const found = (day.activities || []).find((a) => a.id === cleanId);
+      if (found) {
+        setInvDayIndex(day.dayIndex);
+        setInvDate(getIsoDateForTripDay(trip, day.dayIndex));
+        const mappedCat = ACTIVITY_TYPE_TO_INVOICE_CATEGORY[found.type];
+        if (mappedCat) {
+          setInvCategory(mappedCat);
+        }
+        if (!editingInvoiceId) {
+          if (!invTitle.trim()) {
+            setInvTitle(found.title);
+          }
+          if ((invAmount <= 0 || invAmount === 500000) && (found.cost || 0) > 0) {
+            setInvAmount(Math.round(found.cost || 0));
+          }
+        }
+        break;
+      }
+    }
   };
 
   const openCreateInvoiceModal = () => {
     resetInvoiceForm();
+    if (invoiceLimitReached) {
+      setInvoiceError(
+        `Chuyến đi đã đạt tối đa ${MAX_INVOICES_PER_TRIP} hóa đơn. Hãy chỉnh sửa hoặc xóa bớt hóa đơn cũ trước khi thêm mới.`,
+      );
+    }
     setIsInvoiceModalOpen(true);
   };
 
   const openEditInvoiceModal = (inv: ExpenseInvoice) => {
+    const resolvedDay = inv.dayIndex || trip.currentDay || 1;
     setEditingInvoiceId(inv.id);
     setInvTitle(inv.title);
     setInvAmount(inv.amount);
     setInvCategory(inv.category);
     setInvVendor(inv.vendor || '');
     setInvNumber(inv.invoiceNumber || '');
-    setInvDate(inv.date || new Date().toISOString().slice(0, 10));
-    setInvDayIndex(inv.dayIndex || trip.currentDay || 1);
+    setInvDate(inv.date || getIsoDateForTripDay(trip, resolvedDay));
+    setInvDayIndex(resolvedDay);
+    setInvLinkedActivityId(inv.linkedActivityId || undefined);
     setInvNote(inv.note || '');
     setInvReceiptImage(inv.receiptImage);
     setInvReceiptId(inv.receiptId);
@@ -77,6 +152,7 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     setIsUploadingReceipt(false);
     setIsSavingInvoice(false);
     setReceiptUploadError(null);
+    setInvoiceError(null);
     setIsInvoiceModalOpen(true);
   };
 
@@ -98,7 +174,6 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
         reader.readAsDataURL(file);
       });
 
-      // Nén ảnh tối đa 800px và nhắm mục tiêu <= 95KB để tải nhanh và không làm phình tài liệu chuyến đi
       const compressed = await new Promise<string>((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -140,7 +215,6 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
         return;
       }
 
-      // Chỉ nén và giữ tạm trong form; chỉ tải lên kho chứng từ khi người dùng nhấn Lưu để không tạo bản ghi mồ côi nếu hủy hoặc chọn lại ảnh.
       setInvReceiptId(undefined);
       setInvReceiptImage(compressed);
     } catch {
@@ -155,13 +229,20 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     e.preventDefault();
     if (!invTitle.trim() || invAmount <= 0 || isUploadingReceipt || isSavingInvoice) return;
 
+    if (!editingInvoiceId && invoicesList.length >= MAX_INVOICES_PER_TRIP) {
+      setInvoiceError(
+        `Đã đạt giới hạn tối đa ${MAX_INVOICES_PER_TRIP} hóa đơn cho mỗi chuyến đi. Vui lòng xóa bớt hóa đơn cũ trước khi thêm mới.`,
+      );
+      return;
+    }
+
     setIsSavingInvoice(true);
     setReceiptUploadError(null);
+    setInvoiceError(null);
     let finalReceiptId = invReceiptId || undefined;
     let finalReceiptImage = finalReceiptId ? undefined : invReceiptImage;
 
     try {
-      // Nếu có ảnh mới chọn (inline) và đang trực tuyến -> tải lên kho chứng từ riêng ngay trước khi lưu hóa đơn
       if (finalReceiptImage && (typeof navigator === 'undefined' || navigator.onLine)) {
         try {
           const res = await authenticatedFetch(`/api/trips/${encodeURIComponent(trip.id)}/receipts`, {
@@ -180,15 +261,17 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
         }
       }
 
+      const cleanAmount = Math.round(invAmount);
       const invoiceRecord: ExpenseInvoice = {
         id: editingInvoiceId || `inv-${Date.now()}`,
         title: invTitle.trim(),
         category: invCategory,
-        amount: invAmount,
+        amount: cleanAmount,
         date: invDate,
         vendor: invVendor.trim() || undefined,
         invoiceNumber: invNumber.trim() || undefined,
         dayIndex: invDayIndex,
+        linkedActivityId: invLinkedActivityId || undefined,
         note: invNote.trim() || undefined,
         receiptId: finalReceiptId,
         receiptImage: finalReceiptId ? undefined : finalReceiptImage,
@@ -199,20 +282,15 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
         ? invoicesList.map((item) => (item.id === editingInvoiceId ? invoiceRecord : item))
         : [invoiceRecord, ...invoicesList];
 
-      const updatedInvoicesTotal = updatedInvoices.reduce((sum, item) => sum + (item.amount || 0), 0);
-      const newSpent = totalActivityCosts + updatedInvoicesTotal;
-      const newRemaining = Math.max(0, totalBudget - newSpent);
-      const newPercent = totalBudget > 0 ? Math.min(100, Math.round((newSpent / totalBudget) * 100)) : 0;
-
-      const updatedTrip: TripData = {
+      const draftTrip: TripData = {
         ...trip,
         invoices: updatedInvoices,
-        budgetUsed: newSpent,
-        budgetRemaining: newRemaining,
-        budgetUsedPercent: newPercent,
+      };
+      const updatedTrip: TripData = {
+        ...draftTrip,
+        ...computeTripBudgetSummaryFields(draftTrip),
       };
 
-      // Nếu đang sửa hóa đơn mà ảnh chứng từ cũ đã bị gỡ hoặc thay bằng receiptId khác -> xóa bản ghi chứng từ cũ trên máy chủ
       if (
         editingInvoiceId &&
         originalReceiptId &&
@@ -227,11 +305,13 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
       }
 
       if (onUpdateTripBudget) {
-        onUpdateTripBudget(updatedTrip);
+        await onUpdateTripBudget(updatedTrip);
       }
 
       resetInvoiceForm();
       setIsInvoiceModalOpen(false);
+    } catch (err) {
+      setInvoiceError(err instanceof Error ? err.message : 'Không thể lưu hóa đơn. Vui lòng thử lại.');
     } finally {
       setIsSavingInvoice(false);
     }
@@ -254,17 +334,14 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
   const handleDeleteInvoice = (id: string) => {
     const updatedInvoices = invoicesList.filter((i) => i.id !== id);
     const deletedInv = invoicesList.find((i) => i.id === id);
-    const deletedAmount = deletedInv?.amount || 0;
-    const newSpent = Math.max(0, spentBudget - deletedAmount);
-    const newRemaining = Math.max(0, totalBudget - newSpent);
-    const newPercent = Math.round((newSpent / totalBudget) * 100);
 
-    const updatedTrip: TripData = {
+    const draftTrip: TripData = {
       ...trip,
       invoices: updatedInvoices,
-      budgetUsed: newSpent,
-      budgetRemaining: newRemaining,
-      budgetUsedPercent: newPercent,
+    };
+    const updatedTrip: TripData = {
+      ...draftTrip,
+      ...computeTripBudgetSummaryFields(draftTrip),
     };
 
     if (deletedInv?.receiptId && (typeof navigator === 'undefined' || navigator.onLine)) {
@@ -297,9 +374,11 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     invNumber,
     setInvNumber,
     invDate,
-    setInvDate,
+    handleDateChange,
     invDayIndex,
-    setInvDayIndex,
+    handleDayIndexChange,
+    invLinkedActivityId,
+    handleLinkedActivityChange,
     invNote,
     setInvNote,
     invReceiptImage,
@@ -309,6 +388,8 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     isUploadingReceipt,
     isSavingInvoice,
     receiptUploadError,
+    invoiceError,
+    invoiceLimitReached,
     previewReceiptInvoice,
     setPreviewReceiptInvoice,
     isReportPreviewOpen,

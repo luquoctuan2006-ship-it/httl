@@ -279,7 +279,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
               <input
                 type="number"
                 min={0}
-                step={100000}
+                step={1}
                 required
                 value={budgetTotalInput}
                 onChange={(e) => {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Clock, MapPin, Tag, FileText, Plus, DollarSign } from 'lucide-react';
 import { Activity } from '../../types/travel';
 import { validateActivityTimeRange } from '../../utils/tripSyncHelpers';
+import { lookupCoordinates } from '../../utils/vietnamGeo';
 
 interface AddActivityModalProps {
   isOpen: boolean;
@@ -32,15 +33,19 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [timeError, setTimeError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    setSelectedDay(dayIndex);
-    setTimeError(null);
-  }, [dayIndex, isOpen]);
-
-  React.useEffect(() => {
-    if (defaultLocation && !location) {
+    if (isOpen) {
+      setSelectedDay(dayIndex);
+      setTitle('');
+      setTimeStart('09:00');
+      setTimeEnd('11:00');
       setLocation(defaultLocation);
+      setType('sightseeing');
+      setStatus('Đã xác nhận');
+      setDetails('');
+      setCost(0);
+      setTimeError(null);
     }
-  }, [defaultLocation, isOpen]);
+  }, [dayIndex, defaultLocation, isOpen]);
 
   if (!isOpen) return null;
 
@@ -55,16 +60,20 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     }
     setTimeError(null);
 
+    const resolvedLocation = location.trim() || defaultLocation || 'Điểm tham quan';
+    const coords = lookupCoordinates(resolvedLocation) || lookupCoordinates(title.trim());
+
     const newActivity: Activity = {
       id: `act-custom-${Date.now()}`,
       title: title.trim(),
       timeStart,
       timeEnd,
-      location: location.trim() || defaultLocation || 'Điểm tham quan',
+      location: resolvedLocation,
       type,
       status,
       details: details.trim() || 'Hoạt động được lập theo lịch trình',
       cost: Number(cost) || 0,
+      ...(coords ? { coordinates: coords } : {}),
     };
 
     onAdd(newActivity, selectedDay);
@@ -187,7 +196,9 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <option value="sightseeing">Tham quan</option>
                 <option value="meal">Ăn uống</option>
                 <option value="transport">Di chuyển xe</option>
-                <option value="hotel">Khách sạn / Check-in</option>
+                <option value="hotel">Khách sạn / Lưu trú</option>
+                <option value="checkin">Check-in / Nhận phòng</option>
+                <option value="briefing">Điều hành / Tập trung</option>
               </select>
             </div>
 
@@ -214,9 +225,9 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
             <input
               type="number"
               min={0}
-              step={50000}
+              step={1}
               value={cost}
-              onChange={(e) => setCost(Number(e.target.value))}
+              onChange={(e) => setCost(e.target.value === '' ? 0 : Number(e.target.value))}
               placeholder="500000"
               className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none"
             />

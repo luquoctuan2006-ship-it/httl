@@ -1,45 +1,88 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Activity, TripData } from '../../../types/travel';
+import {
+  computeTripBudgetSummaryFields,
+  resolveScaledAllocationsForBudget,
+} from '../../../utils/budgetAlerts';
 
 interface UseBudgetSettingsOptions {
   trip: TripData;
   onUpdateTripBudget?: (updatedTrip: TripData) => void;
   currentAllocations: NonNullable<TripData['customCategoryAllocations']>;
-  totalInvoicesCosts: number;
   totalBudget: number;
-  spentBudget: number;
 }
 
 export function useBudgetSettings({
   trip,
   onUpdateTripBudget,
   currentAllocations,
-  totalInvoicesCosts,
   totalBudget,
-  spentBudget,
 }: UseBudgetSettingsOptions) {
   const [isEditBudgetOpen, setIsEditBudgetOpen] = useState(false);
   const [isEditAllocationsOpen, setIsEditAllocationsOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [editedCost, setEditedCost] = useState<number>(0);
-  const [newTotalBudget, setNewTotalBudget] = useState<number>(trip.budgetTotal || 48600000);
-  const [allocTransport, setAllocTransport] = useState<number>(currentAllocations.transport || 13600000);
-  const [allocHotel, setAllocHotel] = useState<number>(currentAllocations.hotel || 17000000);
-  const [allocMeal, setAllocMeal] = useState<number>(currentAllocations.meal || 10700000);
-  const [allocSightseeing, setAllocSightseeing] = useState<number>(currentAllocations.sightseeing || 4900000);
-  const [allocContingency, setAllocContingency] = useState<number>(currentAllocations.contingency || 2400000);
+  const [newTotalBudget, setNewTotalBudget] = useState<number>(trip.budgetTotal || 0);
+  const [allocTransport, setAllocTransport] = useState<number>(currentAllocations.transport ?? 0);
+  const [allocHotel, setAllocHotel] = useState<number>(currentAllocations.hotel ?? 0);
+  const [allocMeal, setAllocMeal] = useState<number>(currentAllocations.meal ?? 0);
+  const [allocSightseeing, setAllocSightseeing] = useState<number>(currentAllocations.sightseeing ?? 0);
+  const [allocContingency, setAllocContingency] = useState<number>(currentAllocations.contingency ?? 0);
+  const [allocValidationError, setAllocValidationError] = useState<string | null>(null);
+
+  // Đồng bộ form settings khi người dùng chuyển sang chuyến đi khác
+  useEffect(() => {
+    setNewTotalBudget(trip.budgetTotal || 0);
+    setAllocTransport(currentAllocations.transport ?? 0);
+    setAllocHotel(currentAllocations.hotel ?? 0);
+    setAllocMeal(currentAllocations.meal ?? 0);
+    setAllocSightseeing(currentAllocations.sightseeing ?? 0);
+    setAllocContingency(currentAllocations.contingency ?? 0);
+    setAllocValidationError(null);
+    setIsEditBudgetOpen(false);
+    setIsEditAllocationsOpen(false);
+    setEditingActivity(null);
+  }, [trip.id]);
+
+  const openEditBudgetModal = () => {
+    setNewTotalBudget(trip.budgetTotal || 0);
+    setIsEditBudgetOpen(true);
+  };
+
+  const openEditAllocationsModal = () => {
+    setAllocTransport(currentAllocations.transport ?? 0);
+    setAllocHotel(currentAllocations.hotel ?? 0);
+    setAllocMeal(currentAllocations.meal ?? 0);
+    setAllocSightseeing(currentAllocations.sightseeing ?? 0);
+    setAllocContingency(currentAllocations.contingency ?? 0);
+    setAllocValidationError(null);
+    setIsEditAllocationsOpen(true);
+  };
+
+  const handleResetAllocationsToDefault = () => {
+    const base = trip.budgetTotal || 0;
+    setAllocTransport(Math.round(base * 0.28));
+    setAllocHotel(Math.round(base * 0.35));
+    setAllocMeal(Math.round(base * 0.22));
+    setAllocSightseeing(Math.round(base * 0.10));
+    setAllocContingency(Math.round(base * 0.05));
+    setAllocValidationError(null);
+  };
 
   const handleEditTotalBudget = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newTotalBudget <= 0) return;
+    if (!Number.isFinite(newTotalBudget) || newTotalBudget <= 0) return;
 
-    const newRemaining = Math.max(0, newTotalBudget - spentBudget);
-    const newPercent = Math.round((spentBudget / newTotalBudget) * 100);
-    const updatedTrip: TripData = {
+    const cleanBudget = Math.round(newTotalBudget);
+    const scaledCustomAllocations = resolveScaledAllocationsForBudget(trip, cleanBudget);
+    const draftTrip: TripData = {
       ...trip,
-      budgetTotal: newTotalBudget,
-      budgetRemaining: newRemaining,
-      budgetUsedPercent: newPercent,
+      budgetTotal: cleanBudget,
+      ...(scaledCustomAllocations ? { customCategoryAllocations: scaledCustomAllocations } : {}),
+    };
+    const updatedTrip: TripData = {
+      ...draftTrip,
+      ...computeTripBudgetSummaryFields(draftTrip),
     };
 
     if (onUpdateTripBudget) {
@@ -51,15 +94,32 @@ export function useBudgetSettings({
 
   const handleSaveCategoryAllocations = (e: React.FormEvent) => {
     e.preventDefault();
+    const safeVal = (v: number) => (Number.isFinite(v) && v >= 0 ? Math.round(v) : 0);
+    const nextAllocations = {
+      transport: safeVal(allocTransport),
+      hotel: safeVal(allocHotel),
+      meal: safeVal(allocMeal),
+      sightseeing: safeVal(allocSightseeing),
+      contingency: safeVal(allocContingency),
+    };
+    const sum =
+      nextAllocations.transport +
+      nextAllocations.hotel +
+      nextAllocations.meal +
+      nextAllocations.sightseeing +
+      nextAllocations.contingency;
+
+    if (totalBudget > 0 && sum > totalBudget) {
+      setAllocValidationError(
+        `Tổng phân bổ 5 hạng mục (${sum.toLocaleString('vi-VN')} ₫) không được vượt quá tổng ngân sách tour (${totalBudget.toLocaleString('vi-VN')} ₫).`,
+      );
+      return;
+    }
+
+    setAllocValidationError(null);
     const updatedTrip: TripData = {
       ...trip,
-      customCategoryAllocations: {
-        transport: allocTransport,
-        hotel: allocHotel,
-        meal: allocMeal,
-        sightseeing: allocSightseeing,
-        contingency: allocContingency,
-      },
+      customCategoryAllocations: nextAllocations,
     };
 
     if (onUpdateTripBudget) {
@@ -73,24 +133,21 @@ export function useBudgetSettings({
     e.preventDefault();
     if (!editingActivity) return;
 
+    const cleanCost = Number.isFinite(editedCost) && editedCost >= 0 ? Math.round(editedCost) : 0;
     const updatedDays = trip.days.map((day) => ({
       ...day,
       activities: day.activities.map((act) =>
-        act.id === editingActivity.id ? { ...act, cost: Math.max(0, editedCost) } : act
+        act.id === editingActivity.id ? { ...act, cost: cleanCost } : act,
       ),
     }));
 
-    const recalculatedActs = updatedDays.flatMap((day) => day.activities);
-    const newActTotal = recalculatedActs.reduce((sum, activity) => sum + (activity.cost || 0), 0);
-    const newSpent = newActTotal + totalInvoicesCosts;
-    const newRemaining = Math.max(0, totalBudget - newSpent);
-    const newPercent = Math.round((newSpent / totalBudget) * 100);
-    const updatedTrip: TripData = {
+    const draftTrip: TripData = {
       ...trip,
       days: updatedDays,
-      budgetUsed: newSpent,
-      budgetRemaining: newRemaining,
-      budgetUsedPercent: newPercent,
+    };
+    const updatedTrip: TripData = {
+      ...draftTrip,
+      ...computeTripBudgetSummaryFields(draftTrip),
     };
 
     if (onUpdateTripBudget) {
@@ -103,8 +160,11 @@ export function useBudgetSettings({
   return {
     isEditBudgetOpen,
     setIsEditBudgetOpen,
+    openEditBudgetModal,
     isEditAllocationsOpen,
     setIsEditAllocationsOpen,
+    openEditAllocationsModal,
+    handleResetAllocationsToDefault,
     editingActivity,
     setEditingActivity,
     editedCost,
@@ -121,6 +181,7 @@ export function useBudgetSettings({
     setAllocSightseeing,
     allocContingency,
     setAllocContingency,
+    allocValidationError,
     handleEditTotalBudget,
     handleSaveCategoryAllocations,
     handleSaveActivityCost,

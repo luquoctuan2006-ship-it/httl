@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import type { GuestTripData } from '../../types/travel';
 import { buildRouteProgress, formatTravelDuration } from '../../utils/routeProgress';
-import { buildGuestInviteUrl, guestTripToReadOnlyTripData } from '../../utils/tripJoinHelpers';
+import { buildGuestInviteUrl, guestTripToReadOnlyTripData, isStaffRole } from '../../utils/tripJoinHelpers';
 
 const LiveRouteMap = lazy(() =>
   import('../dashboard/LiveRouteMap').then((m) => ({ default: m.LiveRouteMap })),
@@ -36,8 +36,6 @@ interface GuestTripViewProps {
 }
 
 type GuestTab = 'schedule' | 'map' | 'group';
-
-const STAFF_ROLES = new Set(['Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế']);
 
 export const GuestTripView: React.FC<GuestTripViewProps> = ({
   guestTrip,
@@ -63,11 +61,11 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
     null;
 
   const staffMembers = useMemo(
-    () => guestTrip.members.filter((m) => STAFF_ROLES.has(m.role)),
+    () => guestTrip.members.filter((m) => isStaffRole(m.role)),
     [guestTrip.members],
   );
   const passengerMembers = useMemo(
-    () => guestTrip.members.filter((m) => !STAFF_ROLES.has(m.role)),
+    () => guestTrip.members.filter((m) => !isStaffRole(m.role)),
     [guestTrip.members],
   );
 

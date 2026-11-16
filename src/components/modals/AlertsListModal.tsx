@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CloudRain, Clock, Truck, CheckCircle, ShieldAlert, RefreshCw } from 'lucide-react';
+import { X, CloudRain, Clock, Truck, CheckCircle, ShieldAlert, RefreshCw, Wallet } from 'lucide-react';
 import { OperationalAlert } from '../../types/travel';
 
 interface AlertsListModalProps {
@@ -40,7 +40,7 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
           {alerts.length === 0 ? (
             <div className="text-center py-8 text-slate-500 text-xs">
               <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-              Tất cả các tuyến đường và lịch trình đang vận hành an toàn! Không có cảnh báo mới.
+              Tất cả các tuyến đường, lịch trình và ngân sách đang trong ngưỡng an toàn! Không có cảnh báo mới.
             </div>
           ) : (
             alerts.map((alert) => (
@@ -53,13 +53,19 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
                     className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                       alert.category === 'weather'
                         ? 'bg-amber-100 text-amber-700'
-                        : alert.category === 'schedule'
-                        ? 'bg-rose-100 text-rose-700'
-                        : 'bg-blue-100 text-blue-700'
+                        : alert.category === 'budget'
+                          ? alert.severity === 'error'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-amber-100 text-amber-700'
+                          : alert.category === 'schedule'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-blue-100 text-blue-700'
                     }`}
                   >
                     {alert.category === 'weather' ? (
                       <CloudRain className="w-4 h-4" />
+                    ) : alert.category === 'budget' ? (
+                      <Wallet className="w-4 h-4" />
                     ) : alert.category === 'schedule' ? (
                       <Clock className="w-4 h-4" />
                     ) : (
@@ -67,7 +73,7 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
                     )}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="text-xs font-bold text-slate-900">{alert.title}</h4>
                       <span className="text-[10px] text-slate-400 font-medium">{alert.timeAgo}</span>
                     </div>

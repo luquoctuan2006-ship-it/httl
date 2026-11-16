@@ -1,7 +1,18 @@
 import type { GuestTripData, TripData, TripMember } from '../types/travel';
 
 const JOIN_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const STAFF_ROLES = new Set(['Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế']);
+export const STAFF_ROLES: ReadonlySet<string> = new Set(['Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế']);
+export const MEMBER_ROLES = ['Khách du lịch', 'Khách VIP', 'Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế'] as const;
+export const MAX_GUEST_COMPANIONS_PER_PASSENGER = 10;
+
+export function isStaffRole(role: string | undefined | null): boolean {
+  return Boolean(role && STAFF_ROLES.has(role));
+}
+
+export function countPassengerMembers(members: readonly Pick<TripMember, 'role'>[] | undefined | null): number {
+  if (!Array.isArray(members)) return 0;
+  return members.filter((m) => !isStaffRole(m.role)).length;
+}
 
 export function normalizeJoinCode(raw: unknown): string {
   if (typeof raw !== 'string') return '';
@@ -78,7 +89,7 @@ export function buildGuestInviteUrl(joinCode: string, origin?: string): string {
  */
 export function sanitizeTripForGuest(trip: TripData): GuestTripData {
   const safeMembers: GuestTripData['members'] = (trip.members || []).map((m: TripMember) => {
-    const isStaff = STAFF_ROLES.has(m.role);
+    const isStaff = isStaffRole(m.role);
     return {
       id: m.id,
       name: m.name,
@@ -100,6 +111,11 @@ export function sanitizeTripForGuest(trip: TripData): GuestTripData {
       return restAct;
     }),
   }));
+
+  const computedPassengerCount =
+    Array.isArray(trip.members) && trip.members.length > 0
+      ? countPassengerMembers(trip.members)
+      : (trip.telematics?.passengerCount ?? 0);
 
   return {
     id: trip.id,
@@ -131,10 +147,10 @@ export function sanitizeTripForGuest(trip: TripData): GuestTripData {
       licensePlate: trip.telematics?.licensePlate,
       driver: trip.telematics?.driver || 'Chưa phân công',
       driverPhone: trip.telematics?.driverPhone || '',
-      passengerCount: trip.telematics?.passengerCount ?? safeMembers.length,
+      passengerCount: computedPassengerCount,
     },
     waypoints: (trip.waypoints || []).filter((wp) => !wp.isHidden),
-    alerts: trip.alerts || [],
+    alerts: (trip.alerts || []).filter((a) => a.category !== 'budget' && !a.id.startsWith('alert-budget-')),
     days: safeDays,
   };
 }

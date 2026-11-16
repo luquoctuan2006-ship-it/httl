@@ -1,14 +1,33 @@
 import React from 'react';
-import { ImagePlus, Receipt } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Link2, Receipt } from 'lucide-react';
 import type { ExpenseInvoice, TripData } from '../../../types/travel';
+import { BUDGET_NEAR_LIMIT_RATIO, getTripDayIndexForIsoDate } from '../../../utils/budgetAlerts';
 import { Modal, ModalFooter } from '../../common/Modal';
 import { Field, SelectInput, TextInput } from '../../common/Field';
 import { ReceiptImage } from './ReceiptImage';
+import type { BudgetCategory } from './types';
+
+const ACTIVITY_TYPE_TO_CAT: Record<string, ExpenseInvoice['category']> = {
+  transport: 'transport',
+  hotel: 'hotel',
+  checkin: 'hotel',
+  meal: 'meal',
+  sightseeing: 'sightseeing',
+};
 
 interface InvoiceEditorModalProps {
   trip: TripData;
   isOpen: boolean;
   editingInvoiceId: string | null;
+  totalBudget: number;
+  spentBudget: number;
+  categories: BudgetCategory[];
+  linkedActivityIds: Set<string>;
+  originalEditingInvoice?: {
+    category: ExpenseInvoice['category'];
+    amount: number;
+    linkedActivityId?: string;
+  } | null;
   onClose: () => void;
   onSubmit: (event: React.FormEvent) => void;
   title: string;
@@ -22,9 +41,11 @@ interface InvoiceEditorModalProps {
   invoiceNumber: string;
   setInvoiceNumber: React.Dispatch<React.SetStateAction<string>>;
   date: string;
-  setDate: React.Dispatch<React.SetStateAction<string>>;
+  onDateChange: (nextDate: string) => void;
   dayIndex: number;
-  setDayIndex: React.Dispatch<React.SetStateAction<number>>;
+  onDayIndexChange: (nextDay: number) => void;
+  linkedActivityId?: string;
+  onLinkedActivityChange: (activityId: string) => void;
   note: string;
   setNote: React.Dispatch<React.SetStateAction<string>>;
   receiptImage?: string;
@@ -34,6 +55,8 @@ interface InvoiceEditorModalProps {
   isUploadingReceipt: boolean;
   isSavingInvoice: boolean;
   receiptUploadError: string | null;
+  invoiceError: string | null;
+  invoiceLimitReached: boolean;
   onReceiptFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
@@ -42,6 +65,11 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
     trip,
     isOpen,
     editingInvoiceId,
+    totalBudget,
+    spentBudget,
+    categories,
+    linkedActivityIds,
+    originalEditingInvoice,
     onClose,
     onSubmit,
     title,
@@ -55,9 +83,11 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
     invoiceNumber,
     setInvoiceNumber,
     date,
-    setDate,
+    onDateChange,
     dayIndex,
-    setDayIndex,
+    onDayIndexChange,
+    linkedActivityId,
+    onLinkedActivityChange,
     note,
     setNote,
     receiptImage,
@@ -67,8 +97,59 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
     isUploadingReceipt,
     isSavingInvoice,
     receiptUploadError,
+    invoiceError,
+    invoiceLimitReached,
     onReceiptFileChange,
   } = props;
+
+  const allDaysActivities = (trip.days || []).flatMap((d) =>
+    (d.activities || []).map((act) => ({ dayIndex: d.dayIndex, activity: act })),
+  );
+  const selectedLinkedAct = linkedActivityId
+    ? allDaysActivities.find((x) => x.activity.id === linkedActivityId)?.activity || null
+    : null;
+  const origLinkedAct = originalEditingInvoice?.linkedActivityId
+    ? allDaysActivities.find((x) => x.activity.id === originalEditingInvoice.linkedActivityId)?.activity || null
+    : null;
+
+  const billableReplacedCost = (act: typeof selectedLinkedAct) =>
+    act && act.status !== 'Chờ duyệt' && ACTIVITY_TYPE_TO_CAT[act.type] ? act.cost || 0 : 0;
+
+  const origReplacedTotal = billableReplacedCost(origLinkedAct);
+  const alreadyLinkedByAnotherInvoice =
+    Boolean(selectedLinkedAct) &&
+    linkedActivityIds.has(selectedLinkedAct!.id) &&
+    selectedLinkedAct!.id !== originalEditingInvoice?.linkedActivityId;
+  const nextReplacedTotal = alreadyLinkedByAnotherInvoice ? 0 : billableReplacedCost(selectedLinkedAct);
+
+  // Dự báo trước tác động ròng (đã trừ dự toán hoạt động được liên kết để không tính trùng)
+  const safeAmount = Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0;
+  const previousAmount = originalEditingInvoice?.amount || 0;
+  const projectedTotalSpent = spentBudget - previousAmount + safeAmount + origReplacedTotal - nextReplacedTotal;
+  const targetCat = categories.find((c) => c.id === category);
+  const previousCatAmount =
+    originalEditingInvoice && originalEditingInvoice.category === category
+      ? originalEditingInvoice.amount
+      : 0;
+  const origCatReplaced =
+    origLinkedAct && ACTIVITY_TYPE_TO_CAT[origLinkedAct.type] === category
+      ? billableReplacedCost(origLinkedAct)
+      : 0;
+  const nextCatReplaced =
+    !alreadyLinkedByAnotherInvoice &&
+    selectedLinkedAct &&
+    ACTIVITY_TYPE_TO_CAT[selectedLinkedAct.type] === category
+      ? billableReplacedCost(selectedLinkedAct)
+      : 0;
+  const projectedCatSpent =
+    (targetCat?.spent || 0) - previousCatAmount + safeAmount + origCatReplaced - nextCatReplaced;
+  const catLimit = targetCat?.allocated || 0;
+  const isCatOver = catLimit > 0 && projectedCatSpent > catLimit;
+  const isCatNear = !isCatOver && catLimit > 0 && projectedCatSpent >= catLimit * BUDGET_NEAR_LIMIT_RATIO;
+  const isTotalOver = totalBudget > 0 && projectedTotalSpent > totalBudget;
+
+  const matchedDayForDate = getTripDayIndexForIsoDate(trip, date);
+  const isCreateBlockedByLimit = !editingInvoiceId && invoiceLimitReached;
 
   return (
     <Modal
@@ -79,6 +160,12 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
       scrollable
     >
       <form onSubmit={onSubmit} className="p-6 space-y-4 text-xs overflow-y-auto">
+        {invoiceError && (
+          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] font-semibold text-rose-800">
+            {invoiceError}
+          </div>
+        )}
+
         <Field label="Tên khoản chi / Nội dung hóa đơn *">
           <TextInput
             type="text"
@@ -93,11 +180,12 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
           <Field label="Số tiền (VNĐ) *">
             <TextInput
               type="number"
-              min={1000}
-              step={50000}
+              min={1}
+              step={1}
               required
-              value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              value={amount > 0 ? amount : ''}
+              onChange={(e) => setAmount(e.target.value === '' ? 0 : Number(e.target.value))}
+              placeholder="VD: 500000"
               className="font-mono font-bold"
             />
           </Field>
@@ -115,6 +203,86 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
             </SelectInput>
           </Field>
         </div>
+
+        {/* Liên kết hoạt động lịch trình để thay thế chi phí dự kiến, tránh tính trùng */}
+        {allDaysActivities.length > 0 && (
+          <Field
+            label="Liên kết hoạt động trong lịch trình (tránh tính trùng)"
+            hint="Nếu chọn hoạt động, số tiền hóa đơn thực tế này sẽ thay thế chi phí dự kiến của hoạt động đó"
+          >
+            <div className="relative">
+              <SelectInput
+                value={linkedActivityId || ''}
+                onChange={(e) => onLinkedActivityChange(e.target.value)}
+              >
+                <option value="">Không liên kết (khoản chi phát sinh mới)</option>
+                {allDaysActivities.map(({ dayIndex: dIdx, activity: act }) => {
+                  const isUsedElsewhere =
+                    linkedActivityIds.has(act.id) && act.id !== originalEditingInvoice?.linkedActivityId;
+                  return (
+                    <option key={act.id} value={act.id}>
+                      Ngày {dIdx} • {act.title} ({(act.cost || 0).toLocaleString('vi-VN')} ₫)
+                      {isUsedElsewhere ? ' [Đã có hóa đơn]' : ''}
+                    </option>
+                  );
+                })}
+              </SelectInput>
+            </div>
+            {selectedLinkedAct && (
+              <p className="text-[11px] text-teal-700 font-medium mt-1 flex items-center gap-1">
+                <Link2 className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  Thay thế dự toán <strong>{(selectedLinkedAct.cost || 0).toLocaleString('vi-VN')} ₫</strong> của hoạt động &quot;{selectedLinkedAct.title}&quot;.
+                </span>
+              </p>
+            )}
+          </Field>
+        )}
+
+        {(isCatOver || isCatNear || isTotalOver) && safeAmount > 0 && (
+          <div
+            className={`rounded-xl border px-3 py-2.5 flex items-start gap-2 text-[11px] font-semibold ${
+              isCatOver || isTotalOver
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              {isCatOver && targetCat && (
+                <div>
+                  Khoản chi này sẽ đẩy mục <strong>{targetCat.shortName}</strong> lên{' '}
+                  <span className="font-mono font-bold">
+                    {projectedCatSpent.toLocaleString('vi-VN')} ₫
+                  </span>{' '}
+                  (vượt hạn mức{' '}
+                  <span className="font-mono font-bold">
+                    +{(projectedCatSpent - catLimit).toLocaleString('vi-VN')} ₫
+                  </span>
+                  ).
+                </div>
+              )}
+              {isCatNear && targetCat && (
+                <div>
+                  Mục <strong>{targetCat.shortName}</strong> sẽ đạt{' '}
+                  <span className="font-mono font-bold">
+                    {Math.round((projectedCatSpent / catLimit) * 100)}%
+                  </span>{' '}
+                  hạn mức ({projectedCatSpent.toLocaleString('vi-VN')} / {catLimit.toLocaleString('vi-VN')} ₫).
+                </div>
+              )}
+              {isTotalOver && (
+                <div>
+                  Tổng chi toàn tour sẽ vượt tổng ngân sách{' '}
+                  <span className="font-mono font-bold">
+                    +{(projectedTotalSpent - totalBudget).toLocaleString('vi-VN')} ₫
+                  </span>
+                  .
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Đơn vị cung cấp / Nhà xe">
@@ -142,14 +310,14 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
             <TextInput
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => onDateChange(e.target.value)}
             />
           </Field>
 
           <Field label="Thuộc Ngày tour">
             <SelectInput
               value={dayIndex}
-              onChange={(e) => setDayIndex(Number(e.target.value))}
+              onChange={(e) => onDayIndexChange(Number(e.target.value))}
             >
               {trip.days.map((d) => (
                 <option key={d.dayIndex} value={d.dayIndex}>
@@ -159,6 +327,12 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
             </SelectInput>
           </Field>
         </div>
+
+        {matchedDayForDate === null && date && (
+          <p className="text-[11px] text-slate-500 -mt-2">
+            Ngày lập hóa đơn nằm ngoài khoảng ngày tour — hóa đơn vẫn được hạch toán vào <strong>Ngày {dayIndex}</strong>.
+          </p>
+        )}
 
         <Field label="Ghi chú thêm">
           <TextInput
@@ -227,7 +401,7 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
         <ModalFooter
           onCancel={onClose}
           cancelDisabled={isSavingInvoice}
-          disabled={isUploadingReceipt || isSavingInvoice}
+          disabled={isUploadingReceipt || isSavingInvoice || isCreateBlockedByLimit}
           submitLabel={
             isSavingInvoice
               ? 'Đang lưu...'

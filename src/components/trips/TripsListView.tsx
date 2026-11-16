@@ -98,9 +98,9 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900">Danh mục Chuyến đi Điều phối</h2>
+          <h2 className="text-xl font-black text-slate-900">Danh sách Chuyến đi</h2>
           <p className="text-xs text-slate-500 font-medium">
-            {trips.length} chuyến đi đang lưu trong hệ thống • Quản lý, lọc, nhân bản làm mẫu và điều phối lịch trình
+            {trips.length} chuyến đi đang lưu trong hệ thống • Quản lý, lọc, nhân bản làm mẫu và sắp xếp lịch trình
           </p>
         </div>
         {!readOnly && (
@@ -222,7 +222,7 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
                     </span>
                     {!isOwnerOrAdmin && (
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        Hành khách (HK)
+                        Hành khách
                       </span>
                     )}
                   </div>

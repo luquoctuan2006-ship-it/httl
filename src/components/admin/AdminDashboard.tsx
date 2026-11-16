@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { Sidebar } from "../dashboard/Sidebar";
 import { Header } from "../dashboard/Header";
 import { MetricCards } from "../dashboard/MetricCards";
@@ -7,6 +7,7 @@ import { TimelineSchedule } from "../dashboard/TimelineSchedule";
 import { OfflineIndicator } from "../dashboard/OfflineIndicator";
 import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
+import { countUnreadAlerts, getSeenAlertIds, markAlertsAsSeen } from "../../utils/seenAlerts";
 import { Compass } from "lucide-react";
 
 const LiveRouteMap = lazy(() =>
@@ -195,6 +196,25 @@ export function AdminDashboard({
   onOpenGuestModeWithCode?: (joinCode: string, guestName?: string) => Promise<void>;
 }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [seenAlertIds, setSeenAlertIds] = useState<Set<string>>(() => getSeenAlertIds(trip?.id));
+
+  useEffect(() => {
+    setSeenAlertIds(getSeenAlertIds(trip?.id));
+  }, [trip?.id]);
+
+  useEffect(() => {
+    if (!trip?.id || !isAlertsModalOpen || !trip.alerts?.length) return;
+    setSeenAlertIds(markAlertsAsSeen(trip.id, trip.alerts.map((a) => a.id)));
+  }, [trip?.id, isAlertsModalOpen, trip?.alerts]);
+
+  const unreadAlertCount = countUnreadAlerts(trip?.alerts || [], seenAlertIds);
+
+  const handleOpenAlertsModal = () => {
+    if (trip?.id && trip.alerts?.length) {
+      setSeenAlertIds(markAlertsAsSeen(trip.id, trip.alerts.map((a) => a.id)));
+    }
+    setIsAlertsModalOpen(true);
+  };
 
   const emptyTripNotice = (
     <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-10 text-center space-y-4">
@@ -203,7 +223,7 @@ export function AdminDashboard({
       </div>
       <h3 className="text-lg font-black text-white">Chưa có chuyến đi nào trong hệ thống</h3>
       <p className="text-xs text-slate-400 max-w-md mx-auto">
-        Tạo chuyến đi đầu tiên để điều phối lịch trình, giám sát cảnh báo hoặc phân tích dữ liệu hoạch định.
+        Tạo chuyến đi đầu tiên để sắp xếp lịch trình, theo dõi cảnh báo hoặc phân tích dữ liệu hoạch định.
       </p>
       <button
         type="button"
@@ -237,7 +257,7 @@ export function AdminDashboard({
         <Header
           trip={trip}
           role="admin"
-          onOpenCreateTripModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+          currentUserUid={authUser.id}
           onOpenEditTripModal={trip ? () => onOpenEditTripModal?.(trip) : undefined}
           onDeleteCurrentTrip={trip ? () => onDeleteTrip?.(trip.id) : undefined}
           searchQuery={searchQuery}
@@ -250,7 +270,6 @@ export function AdminDashboard({
           onSelectLocation={() => setCurrentTab('locations')}
           onSelectMember={() => setCurrentTab('members')}
           onToggleAttendance={handleToggleMemberAttendance}
-          firebaseStatus={firebaseStatus}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
         />
 
@@ -360,11 +379,10 @@ export function AdminDashboard({
                       <div className="lg:col-span-4">
                         <OperationsPanel
                           trip={trip}
-                          onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
+                          unreadAlertCount={unreadAlertCount}
+                          onOpenAlertsModal={handleOpenAlertsModal}
                           onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                           isAIApplied={isAIApplied}
-                          onUndo={onUndo}
-                          canUndo={canUndo}
                           onScanAlerts={onScanAlerts}
                           isScanningAlerts={isScanningAlerts}
                           notificationsEnabled={notificationsEnabled}
@@ -485,6 +503,7 @@ export function AdminDashboard({
                 trip ? (
                   <Suspense fallback={<AdminPanelFallback label="Đang tải danh sách thành viên..." />}>
                     <MembersView
+                      tripId={trip.id}
                       members={trip.members}
                       onToggleStatus={handleToggleMemberAttendance}
                       onUpdateMembers={handleUpdateMembers}

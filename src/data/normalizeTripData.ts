@@ -1,7 +1,9 @@
 import { initialTripData } from './mockData';
 import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice, RouteStopWeather } from '../types/travel';
 import { isLegacyHashedCoordinate } from '../utils/vietnamGeo';
-import { getMemberInitials, isValidJoinCodeFormat, normalizeJoinCode } from '../utils/tripJoinHelpers';
+import { countPassengerMembers, getMemberInitials, isValidJoinCodeFormat, normalizeJoinCode } from '../utils/tripJoinHelpers';
+
+export const MAX_INVOICES_PER_TRIP = 100;
 
 const VALID_STATUSES: Activity['status'][] = ['Hoàn tất', 'Đang diễn ra', 'Cần xử lý', 'Đã xác nhận', 'Chờ duyệt'];
 const VALID_TYPES: Activity['type'][] = ['transport', 'meal', 'sightseeing', 'hotel', 'checkin', 'briefing'];
@@ -12,14 +14,17 @@ function normalizeMember(raw: unknown, idx: number): TripMember {
   const avatar = typeof m.avatar === 'string' && m.avatar.trim() ? m.avatar.trim().slice(0, 8) : getMemberInitials(name);
   const role = typeof m.role === 'string' && m.role.trim() ? m.role.trim().slice(0, 60) : 'Khách du lịch';
   const phone = typeof m.phone === 'string' ? m.phone.trim().slice(0, 30) : '';
-  const status = m.status === 'busy' || m.status === 'offline' ? m.status : 'online';
+  const memberType = m.memberType === 'account' || m.memberType === 'guest' || m.memberType === 'manual'
+    ? m.memberType
+    : undefined;
+  const status =
+    m.status === 'online' || m.status === 'busy' || m.status === 'offline'
+      ? (memberType === 'guest' ? 'offline' : m.status)
+      : (memberType === 'guest' || memberType === 'manual' ? 'offline' : 'online');
   const attendanceStatus =
     m.attendanceStatus === 'Có mặt' || m.attendanceStatus === 'Vắng mặt' || m.attendanceStatus === 'Chưa điểm danh'
       ? m.attendanceStatus
       : undefined;
-  const memberType = m.memberType === 'account' || m.memberType === 'guest' || m.memberType === 'manual'
-    ? m.memberType
-    : undefined;
 
   const member: TripMember = {
     id: typeof m.id === 'string' && m.id.trim() ? m.id.trim().slice(0, 128) : `member-${idx + 1}`,
@@ -294,6 +299,8 @@ export function normalizeTripData(value: unknown): TripData {
     ? rawTelematics.gpsSource
     : undefined;
 
+  const defaultPassengerCount = countPassengerMembers(members);
+
   const telematics: TripData['telematics'] = rawTelematics
     ? {
         from: typeof rawTelematics.from === 'string' ? rawTelematics.from.slice(0, 150) : originFull,
@@ -301,7 +308,9 @@ export function normalizeTripData(value: unknown): TripData {
         vehicleType: typeof rawTelematics.vehicleType === 'string' ? rawTelematics.vehicleType.slice(0, 100) : vehicle,
         driver: typeof rawTelematics.driver === 'string' ? rawTelematics.driver.slice(0, 100) : 'Chưa phân công',
         driverPhone: typeof rawTelematics.driverPhone === 'string' ? rawTelematics.driverPhone.slice(0, 30) : '',
-        passengerCount: typeof rawTelematics.passengerCount === 'number' && Number.isFinite(rawTelematics.passengerCount) ? rawTelematics.passengerCount : membersTotal,
+        passengerCount: typeof rawTelematics.passengerCount === 'number' && Number.isFinite(rawTelematics.passengerCount)
+          ? rawTelematics.passengerCount
+          : defaultPassengerCount,
         ...(typeof rawTelematics.vehicleId === 'string' && rawTelematics.vehicleId.trim() ? { vehicleId: rawTelematics.vehicleId.trim().slice(0, 64) } : {}),
         ...(typeof rawTelematics.licensePlate === 'string' ? { licensePlate: rawTelematics.licensePlate.slice(0, 20) } : {}),
         ...(typeof rawTelematics.driverMemberId === 'string' ? { driverMemberId: rawTelematics.driverMemberId.slice(0, 128) } : {}),
@@ -323,7 +332,7 @@ export function normalizeTripData(value: unknown): TripData {
         vehicleType: vehicle,
         driver: 'Chưa phân công',
         driverPhone: '',
-        passengerCount: membersTotal,
+        passengerCount: defaultPassengerCount,
       };
 
   const waypoints: Waypoint[] = Array.isArray(candidate.waypoints)
@@ -405,7 +414,7 @@ export function normalizeTripData(value: unknown): TripData {
 
   if (Array.isArray(candidate.invoices)) {
     const validCategories = new Set(['transport', 'hotel', 'meal', 'sightseeing', 'contingency']);
-    normalized.invoices = candidate.invoices.slice(0, 100).map((rawInv, idx) => {
+    normalized.invoices = candidate.invoices.slice(0, MAX_INVOICES_PER_TRIP).map((rawInv, idx) => {
       const inv = (rawInv && typeof rawInv === 'object' ? rawInv : {}) as Record<string, unknown>;
       const cat = typeof inv.category === 'string' && validCategories.has(inv.category)
         ? (inv.category as ExpenseInvoice['category'])
@@ -417,6 +426,9 @@ export function normalizeTripData(value: unknown): TripData {
         amount: typeof inv.amount === 'number' && Number.isFinite(inv.amount) && inv.amount >= 0 ? inv.amount : 0,
         date: typeof inv.date === 'string' ? inv.date.slice(0, 40) : '',
       };
+      if (typeof inv.linkedActivityId === 'string' && inv.linkedActivityId.trim()) {
+        item.linkedActivityId = inv.linkedActivityId.trim().slice(0, 128);
+      }
       if (typeof inv.vendor === 'string' && inv.vendor.trim()) item.vendor = inv.vendor.trim().slice(0, 150);
       if (typeof inv.invoiceNumber === 'string' && inv.invoiceNumber.trim()) item.invoiceNumber = inv.invoiceNumber.trim().slice(0, 80);
       if (typeof inv.dayIndex === 'number' && Number.isFinite(inv.dayIndex) && inv.dayIndex > 0) item.dayIndex = inv.dayIndex;
@@ -433,7 +445,17 @@ export function normalizeTripData(value: unknown): TripData {
   }
 
   if (candidate.customCategoryAllocations && typeof candidate.customCategoryAllocations === 'object') {
-    normalized.customCategoryAllocations = candidate.customCategoryAllocations as TripData['customCategoryAllocations'];
+    const rawAlloc = candidate.customCategoryAllocations as Record<string, unknown>;
+    const cleanAlloc: NonNullable<TripData['customCategoryAllocations']> = {};
+    for (const key of ['transport', 'hotel', 'meal', 'sightseeing', 'contingency'] as const) {
+      const val = rawAlloc[key];
+      if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+        cleanAlloc[key] = Math.round(val);
+      }
+    }
+    if (Object.keys(cleanAlloc).length > 0) {
+      normalized.customCategoryAllocations = cleanAlloc;
+    }
   }
 
   return normalized;
@@ -580,7 +602,10 @@ export function normalizeTripSummary(value: unknown, fallbackId?: string): TripD
       vehicleType: typeof rawTelematics?.vehicleType === 'string' ? rawTelematics.vehicleType.slice(0, 100) : vehicle,
       driver: typeof rawTelematics?.driver === 'string' ? rawTelematics.driver.slice(0, 100) : 'Chưa phân công',
       driverPhone: '',
-      passengerCount: membersTotal,
+      passengerCount:
+        typeof rawTelematics?.passengerCount === 'number' && Number.isFinite(rawTelematics.passengerCount)
+          ? rawTelematics.passengerCount
+          : membersTotal,
     },
     waypoints: [],
     alerts: [],

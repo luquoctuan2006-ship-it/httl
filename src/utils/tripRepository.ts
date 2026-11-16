@@ -1,5 +1,7 @@
 import { normalizeTripData } from '../data/normalizeTripData';
 import type { TripData } from '../types/travel';
+import { computeTripBudgetSummaryFields } from './budgetAlerts';
+import { countPassengerMembers } from './tripJoinHelpers';
 
 export const MAX_TRIP_DOC_BYTES = 900 * 1024; // 900 KiB — an toàn dưới giới hạn 1 MiB của Firestore
 
@@ -41,7 +43,7 @@ export function isTripOwnerOrAdmin(
   return isAdminUser(user) || (!!trip.ownerId && trip.ownerId === user.uid);
 }
 
-// Chủ chuyến, admin hoặc hành khách (HK) đã tham gia bằng mã mới được xem chuyến đi.
+// Chủ chuyến, admin hoặc hành khách đã tham gia bằng mã mới được xem chuyến đi.
 // Chuyến cũ chưa có ownerId chỉ admin thấy (xem scripts/assign-trip-owner.ts để gán chủ).
 export function canAccessTrip(
   trip: Partial<TripData> | null | undefined,
@@ -78,13 +80,9 @@ export function computeAuthoritativeTripDerivedFields(trip: TripData): TripData 
   const membersOnline = members.filter((m) => m.status === 'online').length;
   const presentCount = members.filter((m) => m.attendanceStatus === 'Có mặt').length;
   const membersStatus = membersTotal > 0 ? `${presentCount}/${membersTotal} đã điểm danh` : 'Chưa có thành viên';
+  const passengerCount = countPassengerMembers(members);
 
-  const activityCosts = allActivities.reduce((sum, a) => sum + (a.cost || 0), 0);
-  const invoiceCosts = (trip.invoices || []).reduce((sum, inv) => sum + (inv.amount || 0), 0);
-  const budgetUsed = Math.max(0, Math.round(activityCosts + invoiceCosts));
-  const budgetTotal = Math.max(0, Math.round(trip.budgetTotal || 0));
-  const budgetRemaining = Math.max(0, budgetTotal - budgetUsed);
-  const budgetUsedPercent = budgetTotal > 0 ? Math.min(100, Math.round((budgetUsed / budgetTotal) * 100)) : 0;
+  const budgetFields = computeTripBudgetSummaryFields({ ...trip, days });
 
   return {
     ...trip,
@@ -96,10 +94,11 @@ export function computeAuthoritativeTripDerivedFields(trip: TripData): TripData 
     membersTotal,
     membersOnline,
     membersStatus,
-    budgetTotal,
-    budgetUsed,
-    budgetRemaining,
-    budgetUsedPercent,
+    telematics: {
+      ...trip.telematics,
+      passengerCount,
+    },
+    ...budgetFields,
   };
 }
 
@@ -123,7 +122,7 @@ export type UpsertTripResult =
 /**
  * Tạo mới hoặc cập nhật chuyến đi trong Firestore transaction.
  * - `ownerId` luôn do server quyết định, không tin dữ liệu client gửi.
- * - Mọi trường dẫn xuất (`budgetUsed`, `membersTotal`, ...) được server tự tính lại.
+ * - Mọi trường dẫn xuất (`budgetUsed`, `membersTotal`, `telematics.passengerCount`, ...) được server tự tính lại.
  * - Áp dụng optimistic concurrency control chặt chẽ:
  *   nếu document đã có `version`, client BẮT BUỘC phải gửi `version >= existing.version`.
  */
@@ -158,7 +157,8 @@ export async function upsertTripForUser(
     const ownerId = existing ? existing.ownerId : user.uid;
 
     // Giữ nguyên danh sách participantUids đã được xác thực ở server;
-    // nếu chủ chuyến xóa thành viên có gắn uid khỏi đoàn thì thu hồi quyền tham gia tương ứng.
+    // nếu chủ chuyến xóa thành viên có gắn uid khỏi đoàn thì thu hồi quyền tham gia
+    // và dọn sạch các người thân không tài khoản đi cùng thành viên đó để không tạo bản ghi mồ côi.
     const existingParticipantUids = existing?.participantUids || [];
     const remainingAccountUids = new Set(
       authoritativeInput.members
@@ -174,8 +174,24 @@ export async function upsertTripForUser(
           : existingParticipantUids)
       : [];
 
+    const activeInviterUids = new Set<string>([
+      ...(ownerId ? [ownerId] : []),
+      ...participantUids,
+      ...Array.from(remainingAccountUids),
+    ]);
+    const cleanedMembers = authoritativeInput.members.filter(
+      (m) => !(m.memberType === 'guest' && m.invitedByUid && !activeInviterUids.has(m.invitedByUid)),
+    );
+    const finalAuthoritative =
+      cleanedMembers.length !== authoritativeInput.members.length
+        ? computeAuthoritativeTripDerivedFields({
+            ...authoritativeInput,
+            members: cleanedMembers,
+          })
+        : authoritativeInput;
+
     const savedTrip: TripData = {
-      ...authoritativeInput,
+      ...finalAuthoritative,
       ownerId,
       ...(participantUids.length > 0 ? { participantUids } : {}),
       version: nextVersion,

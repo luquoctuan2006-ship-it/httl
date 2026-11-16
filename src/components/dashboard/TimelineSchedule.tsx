@@ -9,12 +9,19 @@ import {
   Bus,
   UtensilsCrossed,
   MapPin,
-  CheckCircle2,
-  AlertCircle,
   Pin,
   Sparkles,
 } from 'lucide-react';
 import { DaySchedule, Activity } from '../../types/travel';
+
+const ACTIVITY_TYPE_LABELS: Record<string, string> = {
+  sightseeing: 'Tham quan',
+  meal: 'Ăn uống',
+  transport: 'Di chuyển',
+  hotel: 'Lưu trú',
+  checkin: 'Check-in',
+  briefing: 'Điều hành',
+};
 
 interface TimelineScheduleProps {
   days: DaySchedule[];
@@ -34,6 +41,7 @@ interface TimelineScheduleProps {
   onDeleteDay?: (dayIndex: number) => void;
   onUpdateDayNote?: (dayIndex: number, note: string) => void;
   onOpenAutoArrange?: () => void;
+  onOpenAIOptimize?: () => void;
 }
 
 export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
@@ -54,6 +62,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   onDeleteDay,
   onUpdateDayNote,
   onOpenAutoArrange,
+  onOpenAIOptimize,
 }) => {
   const currentDay = days.find((d) => d.dayIndex === currentDayIndex) || days[0] || {
     dayIndex: 1,
@@ -65,24 +74,6 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   };
   const normalizedQuery = (searchQuery || '').trim().toLowerCase();
 
-  const [currentTimeStr, setCurrentTimeStr] = React.useState(() => {
-    const d = new Date();
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  });
-
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      const d = new Date();
-      setCurrentTimeStr(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const [hours, mins] = currentTimeStr.split(':').map(Number);
-  const totalMins = (hours || 0) * 60 + (mins || 0);
-  const timelinePercent = Math.max(8, Math.min(92, ((totalMins - 360) / (1320 - 360)) * 100));
-
-  // Current day activities matching search
   const filteredActivities = (currentDay.activities || []).filter((activity) => {
     if (!normalizedQuery) return true;
     return (
@@ -95,20 +86,16 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   });
 
   const confirmedCount = (currentDay.activities || []).filter(
-    (a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất'
+    (a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất',
   ).length;
   const pendingCount = (currentDay.activities || []).filter(
-    (a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra'
+    (a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra' || a.status === 'Chờ duyệt',
   ).length;
 
   const totalTripActivities = days.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
   const totalTripCompleted = days.reduce(
     (sum, d) => sum + (d.activities?.filter((a) => a.status === 'Hoàn tất').length || 0),
-    0
-  );
-  const totalTripConfirmed = days.reduce(
-    (sum, d) => sum + (d.activities?.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length || 0),
-    0
+    0,
   );
 
   const otherDaysWithMatches = normalizedQuery
@@ -119,8 +106,8 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             (a) =>
               a.title.toLowerCase().includes(normalizedQuery) ||
               a.location.toLowerCase().includes(normalizedQuery) ||
-              (a.details && a.details.toLowerCase().includes(normalizedQuery))
-          )
+              (a.details && a.details.toLowerCase().includes(normalizedQuery)),
+          ),
       )
     : [];
 
@@ -140,202 +127,252 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
     }
   };
 
-  const getStatusBadge = (status: Activity['status']) => {
+  const getStatusClass = (status: Activity['status']) => {
     switch (status) {
       case 'Hoàn tất':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Hoàn tất
-          </span>
-        );
+        return 'text-emerald-700 bg-emerald-50 border-emerald-200';
       case 'Đang diễn ra':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse"></span>
-            Đang diễn ra
-          </span>
-        );
+        return 'text-teal-700 bg-teal-50 border-teal-200';
       case 'Cần xử lý':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-            Cần xử lý
-          </span>
-        );
+      case 'Chờ duyệt':
+        return 'text-amber-800 bg-amber-50 border-amber-200';
       case 'Đã xác nhận':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-            Đã xác nhận
-          </span>
-        );
+        return 'text-indigo-700 bg-indigo-50 border-indigo-200';
       default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
-            {status}
-          </span>
-        );
+        return 'text-slate-700 bg-slate-100 border-slate-200';
     }
   };
 
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col w-full max-w-full min-w-0">
-      {/* Top Header of Detail Schedule */}
-      <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        {/* Title */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-            <Calendar className="w-5 h-5" />
+  const renderActivityRow = (activity: Activity) => {
+    const isOngoing = activity.status === 'Đang diễn ra';
+    return (
+      <div
+        key={activity.id}
+        onClick={() => onSelectActivity(activity)}
+        className={`p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition ${
+          isOngoing ? 'bg-teal-50/40 hover:bg-teal-50/70' : 'hover:bg-slate-50'
+        }`}
+      >
+        <div className="flex items-start gap-3.5 min-w-0 flex-1">
+          <div className="font-mono text-xs font-semibold text-slate-700 tabular-nums shrink-0 pt-0.5 w-24">
+            {activity.timeStart}–{activity.timeEnd}
           </div>
-          <div>
-            <h2 className="text-base font-extrabold text-slate-900 leading-tight">
-              Lịch trình chi tiết
+
+          <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+            {getActivityIcon(activity.type)}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <h4 className="text-sm font-semibold text-slate-900 leading-snug">
+                {activity.title}
+              </h4>
+              <span className="text-[11px] text-slate-400">
+                {ACTIVITY_TYPE_LABELS[activity.type] || activity.type}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500 mt-0.5">
+              {activity.location && (
+                <span className="inline-flex items-center gap-1 truncate max-w-xs">
+                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="truncate">{activity.location}</span>
+                </span>
+              )}
+              {activity.details && (
+                <span className="text-slate-400 truncate max-w-md">{activity.details}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pl-0 sm:pl-3"
+          onClick={(e) => (onUpdateStatus ? e.stopPropagation() : undefined)}
+        >
+          {canAddActivity && activity.cost !== undefined && activity.cost > 0 && (
+            <span className="font-mono text-xs font-semibold text-slate-700 tabular-nums">
+              {activity.cost.toLocaleString('vi-VN')} ₫
+            </span>
+          )}
+
+          {onUpdateStatus ? (
+            <select
+              aria-label={`Trạng thái hoạt động ${activity.title}`}
+              value={activity.status}
+              onChange={(e) => onUpdateStatus(activity.id, e.target.value as Activity['status'])}
+              className={`border rounded-lg px-2.5 py-1 font-semibold outline-none cursor-pointer transition text-xs ${getStatusClass(activity.status)}`}
+            >
+              <option value="Đã xác nhận">Đã xác nhận</option>
+              <option value="Đang diễn ra">Đang diễn ra</option>
+              <option value="Cần xử lý">Cần xử lý</option>
+              <option value="Hoàn tất">Hoàn tất</option>
+              <option value="Chờ duyệt">Chờ duyệt</option>
+            </select>
+          ) : (
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${getStatusClass(activity.status)}`}>
+              {activity.status}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col w-full max-w-full min-w-0">
+      {/* Unified Header Toolbar */}
+      <div className="p-4 sm:px-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Calendar className="w-5 h-5 text-teal-600 shrink-0" />
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-slate-900 leading-tight truncate">
+              Lịch trình chuyến đi
             </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              {currentDay.fullDate} • Ngày {currentDay.dayIndex} trên hành trình
+            <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+              {filterMode === 'all'
+                ? `${days.length} ngày · ${totalTripCompleted}/${totalTripActivities} hoàn tất`
+                : `Ngày ${currentDay.dayIndex} (${currentDay.fullDate}) · ${confirmedCount}/${(currentDay.activities || []).length} đã xác nhận`}
             </p>
           </div>
         </div>
 
-        {/* Day Selector Tabs & Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Day Tabs */}
-          <div className="flex items-center bg-slate-100/90 p-1 rounded-xl gap-1 overflow-x-auto max-w-full">
-            {days.map((day) => {
-              const isActive = day.dayIndex === currentDayIndex;
-              const label = day.dayName ? `${day.dayName} ${day.dateNum ?? ''}`.trim() : (day.dateLabel || `Ngày ${day.dayIndex}`);
-              return (
-                <button
-                  key={day.dayIndex}
-                  onClick={() => onSelectDay(day.dayIndex)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
-                    isActive
-                      ? 'bg-teal-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
-                >
-                  <span>{label}</span>
-                  {day.hasWarning && (
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isActive ? 'bg-amber-300' : 'bg-amber-500'
-                      }`}
-                    ></span>
-                  )}
-                </button>
-              );
-            })}
-
-            {onAddDay && (
-              <button
-                type="button"
-                onClick={onAddDay}
-                title="Thêm ngày mới vào lịch trình"
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-teal-700 hover:bg-teal-100/80 hover:text-teal-900 transition shrink-0 flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Thêm ngày</span>
-              </button>
-            )}
-          </div>
-
-          {/* Action Buttons: Traditional and Automatic Scheduling */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* 1. Tự động xếp lịch (Auto-Arrange) */}
-            {onOpenAutoArrange && (
-              <button
-                type="button"
-                onClick={onOpenAutoArrange}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-xs transition cursor-pointer"
-                title="Tự động xếp lịch: loại bỏ trùng giờ và chèn khoảng đệm di chuyển an toàn"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Tự động xếp lịch</span>
-              </button>
-            )}
-
+        {/* Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs">
             <button
-              onClick={onToggleFilterMode}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs transition"
+              type="button"
+              onClick={() => filterMode !== 'timeline' && onToggleFilterMode()}
+              className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                filterMode === 'timeline' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span>{filterMode === 'timeline' ? 'Theo thời gian' : 'Tất cả'}</span>
+              Theo ngày
             </button>
-
-            {canAddActivity && (
-              <button
-                onClick={onAddActivity}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Thêm hoạt động</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => filterMode !== 'all' && onToggleFilterMode()}
+              className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                filterMode === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tất cả ngày
+            </button>
           </div>
+
+          {onOpenAutoArrange && (
+            <button
+              type="button"
+              onClick={onOpenAutoArrange}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              title="Loại bỏ chồng chéo giờ và cân bằng thời gian di chuyển"
+            >
+              <Clock className="w-3.5 h-3.5 text-teal-600" />
+              <span>Xếp lịch</span>
+            </button>
+          )}
+
+          {onOpenAIOptimize && (
+            <button
+              type="button"
+              onClick={onOpenAIOptimize}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+              <span>Tối ưu</span>
+            </button>
+          )}
+
+          {canAddActivity && (
+            <button
+              type="button"
+              onClick={onAddActivity}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm hoạt động</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Search Filter Banner */}
-      {normalizedQuery && (
-        <div className="px-5 py-2.5 bg-amber-50/90 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 text-amber-900">
-            <span className="font-bold">Lọc theo: &quot;{searchQuery}&quot;</span>
-            <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold text-[11px]">
-              {filteredActivities.length} kết quả
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {otherDaysWithMatches.length > 0 && (
-              <span className="text-amber-800 text-[11px]">
-                Có kết quả ở ngày khác: {otherDaysWithMatches.map((d) => (
-                  <button
-                    key={d.dayIndex}
-                    type="button"
-                    onClick={() => onSelectDay(d.dayIndex)}
-                    className="ml-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 font-bold text-amber-900 hover:bg-amber-100"
-                  >
-                    {d.dayName}
-                  </button>
-                ))}
-              </span>
-            )}
-            {onClearSearch && (
+      {/* Day Switcher Strip (in single-day mode) */}
+      {filterMode === 'timeline' && (
+        <div className="px-4 sm:px-5 py-2.5 bg-slate-50/80 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto">
+          {days.map((day) => {
+            const isActive = day.dayIndex === currentDayIndex;
+            const label = `Ngày ${day.dayIndex}${day.dayName ? ` (${day.dayName})` : ''}`;
+            return (
               <button
+                key={day.dayIndex}
                 type="button"
-                onClick={onClearSearch}
-                className="text-amber-900 hover:underline font-bold text-[11px]"
+                onClick={() => onSelectDay(day.dayIndex)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 cursor-pointer ${
+                  isActive
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                }`}
               >
-                Xóa bộ lọc
+                <span>{label}</span>
+                {day.hasWarning && !isActive && (
+                  <span className="ml-1.5 text-amber-600" title="Có cảnh báo">•</span>
+                )}
               </button>
-            )}
-          </div>
+            );
+          })}
+
+          {onAddDay && (
+            <button
+              type="button"
+              onClick={onAddDay}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 hover:bg-teal-50 transition shrink-0 inline-flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm ngày</span>
+            </button>
+          )}
         </div>
       )}
 
-      {/* Timeline Current Indicator Bar */}
-      <div className="px-5 py-3 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-4 text-xs font-semibold text-slate-400">
-        <span className="font-mono text-slate-500 font-bold shrink-0">06:00</span>
-        
-        <div className="flex-1 relative flex items-center">
-          <div className="w-full h-0.5 bg-slate-200 rounded-full"></div>
-          {/* Current time marker badge */}
-          <div
-            className="absolute px-3 py-1 bg-[#0F766E] text-white rounded-full text-[11px] font-black tracking-wide shadow-md flex items-center gap-1.5 transition-all"
-            style={{ left: `${timelinePercent}%`, transform: 'translateX(-50%)' }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-ping"></span>
-            <span>{currentTimeStr} HIỆN TẠI</span>
+      {/* Search Filter Notice */}
+      {normalizedQuery && (
+        <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <span>Đang lọc theo <strong>&quot;{searchQuery}&quot;</strong> · {filteredActivities.length} kết quả</span>
+            {otherDaysWithMatches.length > 0 && (
+              <span className="text-amber-800">
+                (Ngày khác:{' '}
+                {otherDaysWithMatches.map((d, i) => (
+                  <React.Fragment key={d.dayIndex}>
+                    {i > 0 ? ', ' : ''}
+                    <button
+                      type="button"
+                      onClick={() => onSelectDay(d.dayIndex)}
+                      className="font-semibold underline hover:text-amber-950"
+                    >
+                      Ngày {d.dayIndex}
+                    </button>
+                  </React.Fragment>
+                ))}
+                )
+              </span>
+            )}
           </div>
+          {onClearSearch && (
+            <button
+              type="button"
+              onClick={onClearSearch}
+              className="font-semibold text-amber-900 hover:underline cursor-pointer"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
         </div>
+      )}
 
-        <span className="font-mono text-slate-500 font-bold shrink-0">22:00</span>
-      </div>
-
-      {/* Activity Content: 'all' mode vs 'timeline' mode */}
+      {/* Content */}
       {filterMode === 'all' ? (
-        <div className="p-4 sm:p-5 space-y-5 max-h-[650px] overflow-y-auto">
+        <div className="divide-y divide-slate-200 max-h-[720px] overflow-y-auto">
           {days.map((day) => {
             const dayActs = (day.activities || []).filter((activity) => {
               if (!normalizedQuery) return true;
@@ -350,229 +387,97 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             const isSelectedDay = day.dayIndex === currentDayIndex;
 
             return (
-              <div
-                key={day.dayIndex}
-                className={`rounded-2xl border p-4 transition ${
-                  isSelectedDay
-                    ? 'border-teal-400 bg-teal-50/30 ring-2 ring-teal-500/10'
-                    : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-slate-200/80">
+              <div key={day.dayIndex}>
+                <div className="px-4 sm:px-5 py-3 bg-slate-50 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-lg bg-teal-600 text-white text-xs font-black">
-                      Ngày {day.dayIndex} ({day.dayName} {day.dateNum})
-                    </span>
-                    <h3 className="text-xs font-extrabold text-slate-900">{day.fullDate}</h3>
+                    <span className="text-xs font-bold text-teal-700">Ngày {day.dayIndex}</span>
+                    <span className="text-xs font-semibold text-slate-900">{day.fullDate}</span>
                     {day.dispatcherNote && (
-                      <span className="text-[11px] text-slate-500 hidden md:inline truncate max-w-md">
-                        • {day.dispatcherNote}
+                      <span className="text-xs text-slate-500 hidden md:inline truncate max-w-md">
+                        · {day.dispatcherNote}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-500">
-                      {dayActs.length} hoạt động
-                    </span>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-slate-500 tabular-nums">{dayActs.length} hoạt động</span>
                     <button
                       type="button"
-                      onClick={() => onSelectDay(day.dayIndex)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                        isSelectedDay
-                          ? 'bg-teal-700 text-white'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                      onClick={() => {
+                        onSelectDay(day.dayIndex);
+                        onToggleFilterMode();
+                      }}
+                      className={`font-semibold cursor-pointer ${
+                        isSelectedDay ? 'text-teal-700' : 'text-slate-600 hover:text-teal-700'
                       }`}
                     >
-                      {isSelectedDay ? 'Đang chọn' : 'Xem chặng này'}
+                      Mở chi tiết ngày →
                     </button>
                   </div>
                 </div>
 
                 {dayActs.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-2">Chưa có hoạt động nào trong ngày này.</p>
+                  <p className="px-5 py-4 text-xs text-slate-400">Chưa có hoạt động nào trong ngày này.</p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {dayActs.map((activity) => (
-                      <div
-                        key={activity.id}
-                        onClick={() => onSelectActivity(activity)}
-                        className="bg-white rounded-xl p-3 border border-slate-200 shadow-2xs hover:shadow-md transition cursor-pointer flex flex-col justify-between"
-                      >
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-mono font-extrabold text-slate-800">
-                              {activity.timeStart} — {activity.timeEnd}
-                            </span>
-                            {getStatusBadge(activity.status)}
-                          </div>
-                          <div className="flex items-start gap-2 mb-1.5">
-                            <div className="w-6 h-6 rounded bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 mt-0.5">
-                              {getActivityIcon(activity.type)}
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{activity.title}</h4>
-                              <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span className="truncate">{activity.location}</span>
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                          <span className="text-slate-400 truncate max-w-[120px]">{activity.details || activity.type}</span>
-                          {activity.cost !== undefined && activity.cost > 0 && (
-                            <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">
-                              {activity.cost.toLocaleString('vi-VN')} ₫
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                  <div className="divide-y divide-slate-100">
+                    {dayActs.map(renderActivityRow)}
                   </div>
                 )}
               </div>
             );
           })}
         </div>
-      ) : (
-        /* Timeline horizontal cards row */
-        <div className="p-4 sm:p-5 overflow-x-auto scrollbar-thin max-w-full min-w-0">
-          {filteredActivities.length === 0 ? (
-            <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-xs text-slate-500">
-              {normalizedQuery ? (
-                <>
-                  <p>Không tìm thấy hoạt động nào phù hợp với từ khóa &quot;{searchQuery}&quot; trong ngày này.</p>
-                  {onClearSearch && (
-                    <button
-                      type="button"
-                      onClick={onClearSearch}
-                      className="inline-block mt-2 text-teal-600 font-bold hover:underline"
-                    >
-                      Xem tất cả hoạt động
-                    </button>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-slate-500 font-medium">Chưa có hoạt động nào được tạo trong Ngày {currentDay.dayIndex}.</p>
-                  <div className="flex items-center justify-center gap-2">
-                    {canAddActivity && (
-                      <button
-                        type="button"
-                        onClick={onAddActivity}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition shadow-xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Thêm hoạt động đầu tiên</span>
-                      </button>
-                    )}
-                    {onDeleteDay && days.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteDay(currentDay.dayIndex)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition"
-                      >
-                        <span>Xóa ngày trống này</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+      ) : filteredActivities.length === 0 ? (
+        <div className="p-8 text-center text-xs text-slate-500 space-y-3">
+          {normalizedQuery ? (
+            <>
+              <p>Không tìm thấy hoạt động nào khớp với &quot;{searchQuery}&quot; trong Ngày {currentDay.dayIndex}.</p>
+              {onClearSearch && (
+                <button
+                  type="button"
+                  onClick={onClearSearch}
+                  className="text-teal-700 font-semibold hover:underline"
+                >
+                  Xem tất cả hoạt động
+                </button>
               )}
-            </div>
+            </>
           ) : (
-            <div className="flex gap-4 min-w-[720px] lg:min-w-[860px] pb-2">
-              {filteredActivities.map((activity) => {
-                const isOngoing = activity.status === 'Đang diễn ra';
-                return (
-                  <div
-                    key={activity.id}
-                    onClick={() => onSelectActivity(activity)}
-                    className={`flex-1 min-w-[210px] rounded-2xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                      isOngoing
-                        ? 'bg-white border-2 border-teal-500 shadow-md ring-4 ring-teal-500/10'
-                        : 'bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-slate-300'
-                    }`}
+            <>
+              <p>Chưa có hoạt động nào trong Ngày {currentDay.dayIndex}.</p>
+              <div className="flex items-center justify-center gap-2">
+                {canAddActivity && (
+                  <button
+                    type="button"
+                    onClick={onAddActivity}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer"
                   >
-                  <div>
-                    {/* Time & Status Badge */}
-                    <div className="flex items-center justify-between gap-1 mb-3">
-                      <span className="text-xs font-mono font-extrabold text-slate-900 tracking-tight">
-                        {activity.timeStart} — {activity.timeEnd}
-                      </span>
-                      {getStatusBadge(activity.status)}
-                    </div>
-
-                    {/* Icon & Title */}
-                    <div className="flex items-start gap-2.5 mb-2">
-                      <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 mt-0.5">
-                        {getActivityIcon(activity.type)}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug">
-                          {activity.title}
-                        </h4>
-                        <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium mt-1">
-                          <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span className="truncate">{activity.location}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Sub details footer */}
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 font-medium flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5 truncate">
-                      {activity.status === 'Hoàn tất' && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      )}
-                      {activity.status === 'Cần xử lý' && (
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      )}
-                      {activity.status === 'Đang diễn ra' && (
-                        <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0 animate-ping"></span>
-                      )}
-                      <span className="truncate">{activity.details}</span>
-                    </div>
-
-                    {activity.cost !== undefined && activity.cost > 0 && (
-                      <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
-                        {(activity.cost).toLocaleString('vi-VN')} ₫
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Quick Status Action Bar */}
-                  {onUpdateStatus && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-2.5 pt-2 border-t border-dashed border-slate-100 flex items-center justify-between gap-1 text-[10px]"
-                    >
-                      <span className="text-slate-400 font-semibold">Đổi trạng thái:</span>
-                      <select
-                        value={activity.status}
-                        onChange={(e) => onUpdateStatus(activity.id, e.target.value as Activity['status'])}
-                        className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 font-bold text-slate-700 outline-none cursor-pointer transition text-[10px]"
-                      >
-                        <option value="Đã xác nhận">Đã xác nhận</option>
-                        <option value="Đang diễn ra">Đang diễn ra</option>
-                        <option value="Cần xử lý">Cần xử lý</option>
-                        <option value="Hoàn tất">Hoàn tất</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm hoạt động đầu tiên</span>
+                  </button>
+                )}
+                {onDeleteDay && days.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteDay(currentDay.dayIndex)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <span>Xóa ngày trống</span>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {filteredActivities.map(renderActivityRow)}
         </div>
       )}
 
-      {/* Footer Notes Bar */}
-      <div className="px-5 py-3 bg-slate-50/90 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 text-slate-700 max-w-full sm:max-w-xl">
-          <Pin className="w-3.5 h-3.5 text-amber-500 rotate-45 shrink-0" />
+      {/* Footer Note */}
+      <div className="px-4 sm:px-5 py-3 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 text-slate-700 flex-1 min-w-0">
+          <Pin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
           <span className="font-semibold text-slate-800 shrink-0">
             Ghi chú Ngày {currentDay.dayIndex}:
           </span>
@@ -591,30 +496,19 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                   e.currentTarget.blur();
                 }
               }}
-              placeholder="Nhấp để nhập ghi chú cho chặng này..."
-              className="text-slate-700 bg-transparent hover:bg-white focus:bg-white px-2 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-teal-500 outline-none w-full truncate transition text-xs"
+              placeholder="Nhấp để nhập ghi chú cho ngày này..."
+              className="text-slate-700 bg-transparent hover:bg-white focus:bg-white px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-teal-600 outline-none w-full truncate transition text-xs"
             />
           ) : (
             <span className="text-slate-600 truncate">
-              {currentDay.dispatcherNote || 'Theo dõi tình hình thời tiết và liên lạc với tài xế theo lịch trình.'}
+              {currentDay.dispatcherNote || 'Theo dõi lịch trình và giữ liên lạc với trưởng đoàn.'}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-slate-500 font-semibold shrink-0">
-          <span className="inline-flex items-center gap-1 text-emerald-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            {confirmedCount}/{(currentDay.activities || []).length} hoạt động đã xác nhận
-          </span>
-          <span className="text-slate-300">•</span>
-          <span className="inline-flex items-center gap-1 text-amber-700">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-            {pendingCount} việc cần theo dõi
-          </span>
-          <span className="text-slate-300">•</span>
-          <span className="text-slate-600 font-bold">
-            Toàn tour: {totalTripCompleted}/{totalTripActivities} hoàn tất ({totalTripConfirmed} đã xác nhận)
-          </span>
+        <div className="text-slate-500 shrink-0 tabular-nums">
+          {pendingCount > 0 ? `${pendingCount} mục cần theo dõi · ` : ''}
+          Toàn chuyến: {totalTripCompleted}/{totalTripActivities} hoàn tất
         </div>
       </div>
     </div>

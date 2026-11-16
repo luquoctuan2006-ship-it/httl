@@ -21,19 +21,26 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   trip,
   onUpdateTripBudget,
   searchQuery = '',
-  onClearSearch: _onClearSearch,
+  onClearSearch,
 }) => {
   const budgetData = useBudgetCalculations(trip, searchQuery);
   const {
     currentAllocations,
+    totalAllocatedSum,
     allActivities,
-    totalActivityCosts,
+    linkedActivityIds,
+    actualSpentBudget,
+    plannedCommittedBudget,
+    pendingApprovalBudget,
+    pendingApprovalCount,
     invoicesList,
-    totalInvoicesCosts,
     totalBudget,
     spentBudget,
     remainingBudget,
-    percentUsed,
+    overBudgetAmount,
+    rawPercentUsed,
+    isOverTotalBudget,
+    isNearTotalBudget,
     categories,
     expenseActivities,
     filteredInvoices,
@@ -42,18 +49,13 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   const budgetActions = useBudgetActions({
     trip,
     onUpdateTripBudget,
-    totalActivityCosts,
     invoicesList,
-    totalBudget,
-    spentBudget,
   });
   const budgetSettings = useBudgetSettings({
     trip,
     onUpdateTripBudget,
     currentAllocations,
-    totalInvoicesCosts,
     totalBudget,
-    spentBudget,
   });
   const {
     isInvoiceModalOpen,
@@ -72,9 +74,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     invNumber,
     setInvNumber,
     invDate,
-    setInvDate,
+    handleDateChange,
     invDayIndex,
-    setInvDayIndex,
+    handleDayIndexChange,
+    invLinkedActivityId,
+    handleLinkedActivityChange,
     invNote,
     setInvNote,
     invReceiptImage,
@@ -84,6 +88,8 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     isUploadingReceipt,
     isSavingInvoice,
     receiptUploadError,
+    invoiceError,
+    invoiceLimitReached,
     previewReceiptInvoice,
     setPreviewReceiptInvoice,
     isReportPreviewOpen,
@@ -99,8 +105,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   const {
     isEditBudgetOpen,
     setIsEditBudgetOpen,
+    openEditBudgetModal,
     isEditAllocationsOpen,
     setIsEditAllocationsOpen,
+    openEditAllocationsModal,
+    handleResetAllocationsToDefault,
     editingActivity,
     setEditingActivity,
     editedCost,
@@ -117,26 +126,40 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     setAllocSightseeing,
     allocContingency,
     setAllocContingency,
+    allocValidationError,
     handleEditTotalBudget,
     handleSaveCategoryAllocations,
     handleSaveActivityCost,
   } = budgetSettings;
+
+  const originalEditingInvoice = editingInvoiceId
+    ? invoicesList.find((i) => i.id === editingInvoiceId) || null
+    : null;
 
   return (
     <div className="space-y-6">
       <BudgetSummary
         trip={trip}
         totalBudget={totalBudget}
+        totalAllocatedSum={totalAllocatedSum}
         spentBudget={spentBudget}
+        actualSpentBudget={actualSpentBudget}
+        plannedCommittedBudget={plannedCommittedBudget}
+        pendingApprovalBudget={pendingApprovalBudget}
+        pendingApprovalCount={pendingApprovalCount}
         remainingBudget={remainingBudget}
-        percentUsed={percentUsed}
+        overBudgetAmount={overBudgetAmount}
+        rawPercentUsed={rawPercentUsed}
+        isOverTotalBudget={isOverTotalBudget}
+        isNearTotalBudget={isNearTotalBudget}
         activityCount={allActivities.length}
         invoiceCount={invoicesList.length}
+        invoiceLimitReached={invoiceLimitReached}
         categories={categories}
         handleExportCsv={handleExportCsv}
         setIsReportPreviewOpen={setIsReportPreviewOpen}
-        setIsEditAllocationsOpen={setIsEditAllocationsOpen}
-        setIsEditBudgetOpen={setIsEditBudgetOpen}
+        onOpenEditAllocations={openEditAllocationsModal}
+        onOpenEditBudget={openEditBudgetModal}
         openCreateInvoiceModal={openCreateInvoiceModal}
       />
 
@@ -146,8 +169,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         setActiveTab={setActiveTab}
         invoices={invoicesList}
         expenseActivities={expenseActivities}
+        linkedActivityIds={linkedActivityIds}
         filteredInvoices={filteredInvoices}
         filteredActivities={filteredActivities}
+        searchQuery={searchQuery}
+        onClearSearch={onClearSearch}
         onCreateInvoice={openCreateInvoiceModal}
         onPreviewReceipt={setPreviewReceiptInvoice}
         onEditInvoice={openEditInvoiceModal}
@@ -162,6 +188,19 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         trip={trip}
         isOpen={isInvoiceModalOpen}
         editingInvoiceId={editingInvoiceId}
+        totalBudget={totalBudget}
+        spentBudget={spentBudget}
+        categories={categories}
+        linkedActivityIds={linkedActivityIds}
+        originalEditingInvoice={
+          originalEditingInvoice
+            ? {
+                category: originalEditingInvoice.category,
+                amount: originalEditingInvoice.amount,
+                linkedActivityId: originalEditingInvoice.linkedActivityId,
+              }
+            : null
+        }
         onClose={() => { setIsInvoiceModalOpen(false); resetInvoiceForm(); }}
         onSubmit={handleSaveInvoice}
         title={invTitle} setTitle={setInvTitle}
@@ -169,14 +208,17 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         category={invCategory} setCategory={setInvCategory}
         vendor={invVendor} setVendor={setInvVendor}
         invoiceNumber={invNumber} setInvoiceNumber={setInvNumber}
-        date={invDate} setDate={setInvDate}
-        dayIndex={invDayIndex} setDayIndex={setInvDayIndex}
+        date={invDate} onDateChange={handleDateChange}
+        dayIndex={invDayIndex} onDayIndexChange={handleDayIndexChange}
+        linkedActivityId={invLinkedActivityId} onLinkedActivityChange={handleLinkedActivityChange}
         note={invNote} setNote={setInvNote}
         receiptImage={invReceiptImage} setReceiptImage={setInvReceiptImage}
         receiptId={invReceiptId} setReceiptId={setInvReceiptId}
         isUploadingReceipt={isUploadingReceipt}
         isSavingInvoice={isSavingInvoice}
         receiptUploadError={receiptUploadError}
+        invoiceError={invoiceError}
+        invoiceLimitReached={invoiceLimitReached}
         onReceiptFileChange={handleReceiptFileChange}
       />
 
@@ -191,15 +233,20 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         trip={trip}
         totalBudget={totalBudget}
         spentBudget={spentBudget}
+        actualSpentBudget={actualSpentBudget}
+        plannedCommittedBudget={plannedCommittedBudget}
         remainingBudget={remainingBudget}
         invoices={invoicesList}
         expenseActivities={expenseActivities}
+        linkedActivityIds={linkedActivityIds}
         onExportCsv={handleExportCsv}
         onPrint={() => window.print()}
         onClose={() => setIsReportPreviewOpen(false)}
       />
 
       <BudgetEditModals
+        totalBudget={totalBudget}
+        hasCustomAllocations={Boolean(trip.customCategoryAllocations)}
         isEditBudgetOpen={isEditBudgetOpen} setIsEditBudgetOpen={setIsEditBudgetOpen}
         newTotalBudget={newTotalBudget} setNewTotalBudget={setNewTotalBudget}
         onSaveTotalBudget={handleEditTotalBudget}
@@ -209,7 +256,9 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         allocMeal={allocMeal} setAllocMeal={setAllocMeal}
         allocSightseeing={allocSightseeing} setAllocSightseeing={setAllocSightseeing}
         allocContingency={allocContingency} setAllocContingency={setAllocContingency}
+        allocValidationError={allocValidationError}
         onSaveAllocations={handleSaveCategoryAllocations}
+        onResetAllocationsToDefault={handleResetAllocationsToDefault}
         editingActivity={editingActivity} setEditingActivity={setEditingActivity}
         editedCost={editedCost} setEditedCost={setEditedCost}
         onSaveActivityCost={handleSaveActivityCost}

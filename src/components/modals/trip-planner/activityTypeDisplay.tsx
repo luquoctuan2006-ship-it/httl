@@ -1,6 +1,8 @@
 import {
   Bus,
   Building2,
+  ClipboardCheck,
+  KeyRound,
   Landmark,
   Mountain,
   UtensilsCrossed,
@@ -12,6 +14,10 @@ export function getActivityTypeIcon(type: string) {
       return <UtensilsCrossed className="w-3.5 h-3.5 text-amber-600" />;
     case 'hotel':
       return <Building2 className="w-3.5 h-3.5 text-purple-600" />;
+    case 'checkin':
+      return <KeyRound className="w-3.5 h-3.5 text-indigo-600" />;
+    case 'briefing':
+      return <ClipboardCheck className="w-3.5 h-3.5 text-emerald-600" />;
     case 'transport':
       return <Bus className="w-3.5 h-3.5 text-blue-600" />;
     case 'sightseeing':
@@ -27,11 +33,15 @@ export function getActivityTypeLabel(type: string) {
       return 'Ăn uống';
     case 'hotel':
       return 'Khách sạn / Lưu trú';
+    case 'checkin':
+      return 'Check-in / Nhận phòng';
+    case 'briefing':
+      return 'Điều hành / Tập trung';
     case 'transport':
       return 'Di chuyển';
     case 'sightseeing':
       return 'Tham quan';
     default:
-      return 'Tự do / Khác';
+      return 'Khác';
   }
 }
