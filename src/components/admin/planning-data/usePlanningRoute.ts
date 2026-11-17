@@ -49,7 +49,7 @@ export function usePlanningRoute(locations: Waypoint[], tripTotalKm?: number) {
           close,
           openHours: hours,
           duration,
-          note: waypoint.description || 'Lịch trình tham quan tiêu chuẩn Voyager',
+          note: waypoint.description || 'Chưa có mô tả chi tiết',
           ticketPrice: waypoint.ticketPrice || 'Miễn phí',
           rawWaypoint: waypoint,
         };
@@ -95,7 +95,7 @@ export function usePlanningRoute(locations: Waypoint[], tripTotalKm?: number) {
     () =>
       dynamicDistanceMatrix.length > 0
         ? Math.round(dynamicDistanceMatrix.reduce((total, leg) => total + leg.km, 0))
-        : tripTotalKm || 146,
+        : tripTotalKm || 0,
     [dynamicDistanceMatrix, tripTotalKm],
   );
 

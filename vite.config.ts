@@ -86,7 +86,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: process.env.NODE_ENV === 'production',
+          enabled: true,
           type: 'module',
         },
       }),

@@ -85,6 +85,13 @@ export function registerGeminiRoutes(app: Express, dependencies: GeminiRouteDepe
     try {
       payload = await buildOptimizePayload(req.body, req.authUser);
     } catch (error) {
+      const statusCode = (error as { statusCode?: number })?.statusCode;
+      if (statusCode === 403) {
+        return res.status(403).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Bạn không có quyền tối ưu chuyến đi này.',
+        });
+      }
       console.error('[Optimize] Lỗi khi chuẩn bị dữ liệu chuyến đi:', error);
       return res.status(500).json({ success: false, error: 'Không thể chuẩn bị dữ liệu chuyến đi để tối ưu.' });
     }

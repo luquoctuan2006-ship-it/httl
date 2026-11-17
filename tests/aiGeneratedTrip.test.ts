@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAiRiskAlerts } from '../src/utils/alertDetector';
-import { buildAIPlanWaypoints, dedupeWaypointsForMap, lookupCoordinates } from '../src/utils/vietnamGeo';
+import { buildAIPlanWaypoints, lookupCoordinates } from '../src/utils/vietnamGeo';
 
 test('AI waypoints use valid generated coordinates, skip unknown locations, and retain route endpoints', () => {
   assert.equal(lookupCoordinates('Điểm không có tọa độ'), null);
@@ -42,13 +42,3 @@ test('AI operational risks become visible categorized alerts', () => {
   assert.equal(alerts[1].category, 'traffic');
 });
 
-test('map markers deduplicate waypoints at the same displayed coordinate', () => {
-  const waypoints = buildAIPlanWaypoints('Đà Nẵng', 'Huế', [
-    { location: 'Điểm A', coordinates: { lat: 16.05441, lng: 108.20221 } },
-    { location: 'Điểm A khác tên', coordinates: { lat: 16.05442, lng: 108.20222 } },
-  ]);
-
-  const uniqueMarkers = dedupeWaypointsForMap(waypoints);
-  assert.equal(uniqueMarkers.length, 2);
-  assert.deepEqual(uniqueMarkers.map((point) => point.name), ['Đà Nẵng', 'Huế']);
-});

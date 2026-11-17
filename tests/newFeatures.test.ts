@@ -9,8 +9,8 @@ import {
 import {
   clearTripPendingOfflineSync,
   loadOfflineTripsCache,
-  markTripPendingOfflineSync,
-  saveOfflineTripsCache,
+  markTripPendingOfflineSyncDetailed,
+  saveOfflineTripsCacheDetailed,
   type StorageLike,
 } from '../src/utils/offlineStorage';
 import type { TripData } from '../src/types/travel';
@@ -235,13 +235,13 @@ test('offlineStorage caches trips per user and tracks pending sync IDs cleanly',
   const storage = createMemoryStorage();
   const trip = createSampleTrip();
 
-  const saved = saveOfflineTripsCache('user-123', [trip], trip.id, undefined, storage);
+  const saved = saveOfflineTripsCacheDetailed('user-123', [trip], trip.id, undefined, storage).cache;
   assert.ok(saved);
   assert.equal(saved.trips.length, 1);
   assert.equal(saved.pendingSyncIds.length, 0);
 
   const modifiedTrip = { ...trip, title: 'Đà Lạt 3N2Đ (Offline Edit)' };
-  const marked = markTripPendingOfflineSync('user-123', modifiedTrip, storage);
+  const marked = markTripPendingOfflineSyncDetailed('user-123', modifiedTrip, storage).cache;
   assert.ok(marked);
   assert.deepEqual(marked.pendingSyncIds, [trip.id]);
 

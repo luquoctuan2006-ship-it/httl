@@ -24,7 +24,13 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
   trip,
   isAIApplied = false,
 }) => {
-  const [modelChoice, setModelChoice] = useState('gemini-3.8-flash');
+  const [modelChoice, setModelChoice] = useState('gemini-3.5-flash');
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; label: string }>>([
+    { id: 'gemini-3.5-flash', label: 'gemini-3.5-flash (Khuyến nghị)' },
+    { id: 'gemini-3.1-flash-lite', label: 'gemini-3.1-flash-lite (Nhanh & kinh tế)' },
+    { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
+    { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
+  ]);
   const [temperature, setTemperature] = useState('0.55');
   const [maxTokens, setMaxTokens] = useState('4000');
   const [systemPrompt, setSystemPrompt] = useState(
@@ -37,15 +43,8 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Live Logs
-  const [aiRequests, setAiRequests] = useState<any[]>([
-    { id: 'req-101', time: '10:24 Hôm nay', user: 'Lữ Quốc Tuấn (Admin)', model: 'gemini-3.8-flash', prompt: 'Tối ưu lịch trình ngày 3 tránh mưa đèo Hải Vân', status: 'Hoàn thành', latency: '1.2s' },
-    { id: 'req-102', time: '09:15 Hôm nay', user: 'Minh Lê (Điều phối)', model: 'gemini-3.8-flash', prompt: 'Lập tour 7 ngày Đà Nẵng - Huế cho đoàn 18 khách', status: 'Hoàn thành', latency: '2.8s' },
-    { id: 'req-103', time: 'Hôm qua 16:40', user: 'Hệ thống Auto-Check', model: 'gemini-3.8-flash', prompt: 'Kiểm tra xung đột giờ mở cửa Bà Nà Hills', status: 'Hoàn thành', latency: '0.9s' },
-  ]);
-
-  const [aiErrors, setAiErrors] = useState<any[]>([
-    { id: 'err-2', time: '02/10 09:12', code: 'JSON_SYNTAX_FALLBACK', detail: 'Mô hình trả thiếu ngoặc nhọn, fallback parser đã tự sửa', resolved: true },
-  ]);
+  const [aiRequests, setAiRequests] = useState<any[]>([]);
+  const [aiErrors, setAiErrors] = useState<any[]>([]);
 
   // Dynamic metrics from real AI requests
   const totalRequests = aiRequests.length;
@@ -79,6 +78,9 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
       const res = await authenticatedFetch('/api/admin/config');
       if (res.ok) {
         const data = await res.json();
+        if (Array.isArray(data.availableModels) && data.availableModels.length > 0) {
+          setAvailableModels(data.availableModels);
+        }
         if (data.config) {
           if (data.config.aiModel) setModelChoice(data.config.aiModel);
           if (data.config.temperature !== undefined) setTemperature(String(data.config.temperature));
@@ -87,7 +89,7 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
         }
       }
     } catch {
-      // Dùng fallback
+      // Giữ nguyên cấu hình hiện tại nếu tạm mất kết nối
     }
 
     try {
@@ -122,13 +124,14 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
           systemPrompt,
         }),
       });
-      if (res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      if (res.ok && payload.success !== false) {
         showToast(`Đã lưu cấu hình AI! Server hiện sử dụng mô hình "${modelChoice}".`);
       } else {
-        showToast('Lỗi khi lưu cấu hình lên máy chủ!');
+        showToast(payload.error || 'Lỗi khi lưu cấu hình lên máy chủ!');
       }
     } catch {
-      showToast(`Đã lưu cấu hình AI (${modelChoice}) cục bộ`);
+      showToast('Không thể kết nối máy chủ để lưu cấu hình AI.');
     } finally {
       setIsSaving(false);
     }
@@ -271,29 +274,16 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
                 onChange={(e) => setModelChoice(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="gemini-3.5-flash">gemini-3.5-flash (Mô hình đang kết nối trong .env - Siêu tốc)</option>
-                <option value="gemini-3.8-flash">gemini-3.8-flash (Tốc độ cao & mới nhất - Khuyến nghị)</option>
-                <option value="gemini-3.7-flash">gemini-3.7-flash (Thế hệ Flash 3.7)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (Tư duy sâu - Lập luận đa bước)</option>
-                <option value="custom">Tùy chỉnh (Nhập mã mô hình khác)</option>
+                {availableModels.map((modelOpt) => (
+                  <option key={modelOpt.id} value={modelOpt.id}>
+                    {modelOpt.label}
+                  </option>
+                ))}
               </select>
               <p className="text-[11px] text-slate-400 mt-1">
                 Mô hình này sẽ được toàn bộ hệ thống (lập tour, tối ưu tuyến, tái lập khi mưa) gọi trực tiếp.
               </p>
             </div>
-
-            {/* Nếu chọn custom */}
-            {modelChoice === 'custom' && (
-              <div>
-                <label className="text-slate-300 font-bold block mb-1">Mã Model Tùy Chọn</label>
-                <input
-                  type="text"
-                  placeholder="ví dụ: gemini-2.0-flash"
-                  onChange={(e) => setModelChoice(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono"
-                />
-              </div>
-            )}
 
             {/* Slider Temperature & Max Tokens */}
             <div className="grid grid-cols-2 gap-3">
@@ -462,27 +452,31 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
             </button>
           </div>
           <div className="divide-y divide-slate-800/60 text-xs">
-            {aiRequests.map((req) => (
-              <div key={req.id} className="p-4 flex items-center justify-between hover:bg-slate-800/30">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-teal-400 font-bold">{req.id}</span>
-                    <strong className="text-white">{req.user}</strong>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-purple-300 border border-slate-700">
-                      {req.model || modelChoice}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">{req.time}</span>
+            {aiRequests.length === 0 ? (
+              <div className="p-6 text-center text-slate-400">Chưa có lịch sử gọi AI nào trên máy chủ.</div>
+            ) : (
+              aiRequests.map((req) => (
+                <div key={req.id} className="p-4 flex items-center justify-between hover:bg-slate-800/30">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-teal-400 font-bold">{req.id}</span>
+                      <strong className="text-white">{req.user}</strong>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-purple-300 border border-slate-700">
+                        {req.model || modelChoice}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">{req.time}</span>
+                    </div>
+                    <p className="text-slate-300 mt-1 line-clamp-1">{req.prompt}</p>
                   </div>
-                  <p className="text-slate-300 mt-1 line-clamp-1">{req.prompt}</p>
+                  <div className="text-right shrink-0">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300">
+                      {req.status}
+                    </span>
+                    <span className="block text-[10px] text-slate-400 font-mono mt-0.5">{req.latency}</span>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300">
-                    {req.status}
-                  </span>
-                  <span className="block text-[10px] text-slate-400 font-mono mt-0.5">{req.latency}</span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -495,18 +489,24 @@ export const AdminAIManagementView: React.FC<AdminAIManagementProps> = ({
           <p className="text-[11px] text-slate-400">Theo dõi các lỗi timeout hoặc phân tích JSON để khắc phục kịp thời.</p>
 
           <div className="space-y-2 text-xs">
-            {aiErrors.map((err) => (
-              <div key={err.id || err.code} className="p-3 rounded-xl bg-slate-800/60 border border-rose-900/40 text-slate-300 space-y-1">
-                <div className="flex justify-between items-center">
-                  <strong className="font-mono text-rose-400">{err.code}</strong>
-                  <span className="text-[10px] text-slate-500">{err.time}</span>
-                </div>
-                <p className="text-[11px] text-slate-400">{err.detail}</p>
-                <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-emerald-400">
-                  Đã tự động khắc phục
-                </span>
+            {aiErrors.length === 0 ? (
+              <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 text-slate-400 text-center">
+                Chưa ghi nhận lỗi AI nào.
               </div>
-            ))}
+            ) : (
+              aiErrors.map((err) => (
+                <div key={err.id || err.code} className="p-3 rounded-xl bg-slate-800/60 border border-rose-900/40 text-slate-300 space-y-1">
+                  <div className="flex justify-between items-center">
+                    <strong className="font-mono text-rose-400">{err.code}</strong>
+                    <span className="text-[10px] text-slate-500">{err.time}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">{err.detail}</p>
+                  <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-emerald-400">
+                    Đã tự động khắc phục
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -70,6 +70,7 @@ export const AdminTripsManagementView: React.FC<AdminTripsManagementProps> = (pr
           <AdminScheduleMonitoringView
             trip={props.trip}
             trips={props.trips}
+            onUpdateTrip={props.onUpdateTrip}
             onEnsureFullTrip={props.onEnsureFullTrip}
           />
         ) : (

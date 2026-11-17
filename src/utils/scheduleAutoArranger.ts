@@ -4,6 +4,10 @@
  */
 
 import { Activity, DaySchedule, TripData } from '../types/travel';
+import {
+  optimizeDayActivitiesByRoute,
+  optimizeTripByRouteTSP,
+} from './routeTspOptimizer';
 
 export interface ScheduleConflict {
   type: 'overlap' | 'zero_buffer' | 'inverted' | 'out_of_bounds';
@@ -22,12 +26,23 @@ export interface ActivityTimeAdjustment {
   reason: string;
 }
 
+export interface RouteOptimizationMetrics {
+  originalKm: number;
+  optimizedKm: number;
+  savedKm: number;
+  savedPercent: number;
+  changedOrder: boolean;
+  originalStopNames?: string[];
+  orderedStopNames?: string[];
+}
+
 export interface AutoArrangeResult {
   updatedDay: DaySchedule;
   conflictsFound: number;
   conflicts: ScheduleConflict[];
   adjustments: ActivityTimeAdjustment[];
   summaryMessage: string;
+  routeOptimization?: RouteOptimizationMetrics;
 }
 
 function parseMinutes(timeStr?: string): number {
@@ -220,7 +235,63 @@ export function autoArrangeDayActivities(
 /**
  * Tự động sắp xếp lại lịch trình cho một ngày cụ thể trong chuyến đi
  */
-export function autoArrangeDay(day: DaySchedule, defaultBuffer = 20): AutoArrangeResult {
+export function autoArrangeDay(
+  day: DaySchedule,
+  defaultBuffer = 20,
+  options: { optimizeRouteOrder?: boolean } = {},
+): AutoArrangeResult {
+  if (options.optimizeRouteOrder) {
+    const conflicts = detectDayScheduleConflicts(day.activities, defaultBuffer);
+    const tspRes = optimizeDayActivitiesByRoute(day, { defaultBufferMinutes: defaultBuffer });
+    const origById = new Map(day.activities.map((a) => [a.id, a]));
+    const adjustments: ActivityTimeAdjustment[] = [];
+
+    tspRes.updatedDay.activities.forEach((act, newIdx) => {
+      const orig = origById.get(act.id);
+      if (!orig) return;
+      const origIdx = day.activities.findIndex((a) => a.id === act.id);
+      if (
+        origIdx !== newIdx ||
+        orig.timeStart !== act.timeStart ||
+        orig.timeEnd !== act.timeEnd
+      ) {
+        adjustments.push({
+          activityId: act.id,
+          activityTitle: act.title,
+          originalTimeStart: orig.timeStart,
+          originalTimeEnd: orig.timeEnd,
+          newTimeStart: act.timeStart,
+          newTimeEnd: act.timeEnd,
+          reason:
+            tspRes.changedOrder && origIdx !== newIdx
+              ? `Sắp xếp thứ tự #${origIdx + 1} → #${newIdx + 1} theo lộ trình TSP ngắn nhất`
+              : `Điều chỉnh khung giờ đệm ${defaultBuffer} phút theo thứ tự tối ưu`,
+        });
+      }
+    });
+
+    const summaryMessage = tspRes.changedOrder
+      ? `Đã tối ưu lộ trình TSP (tiết kiệm ${tspRes.savedKm} km / ${tspRes.savedPercent}%) và cập nhật khung giờ ${adjustments.length} hoạt động.`
+      : 'Thứ tự điểm dừng đã ngắn nhất; các khung giờ đã được cân chỉnh liền mạch.';
+
+    return {
+      updatedDay: tspRes.updatedDay,
+      conflictsFound: conflicts.length,
+      conflicts,
+      adjustments,
+      summaryMessage,
+      routeOptimization: {
+        originalKm: tspRes.originalKm,
+        optimizedKm: tspRes.optimizedKm,
+        savedKm: tspRes.savedKm,
+        savedPercent: tspRes.savedPercent,
+        changedOrder: tspRes.changedOrder,
+        originalStopNames: tspRes.originalStopNames,
+        orderedStopNames: tspRes.orderedStopNames,
+      },
+    };
+  }
+
   const { reorderedActivities, adjustments, conflicts } = autoArrangeDayActivities(day.activities, {
     defaultBufferMinutes: defaultBuffer,
   });
@@ -250,16 +321,71 @@ export function autoArrangeDay(day: DaySchedule, defaultBuffer = 20): AutoArrang
 /**
  * Tự động sắp xếp lại lịch trình cho toàn bộ tất cả các ngày trong chuyến đi
  */
-export function autoArrangeEntireTrip(trip: TripData): {
+export function autoArrangeEntireTrip(
+  trip: TripData,
+  options: { defaultBuffer?: number; optimizeRouteOrder?: boolean } = {},
+): {
   updatedTrip: TripData;
   totalAdjustmentsCount: number;
   dayAdjustments: { dayIndex: number; adjustments: ActivityTimeAdjustment[] }[];
+  routeOptimization?: RouteOptimizationMetrics;
 } {
+  const { defaultBuffer = 20, optimizeRouteOrder = false } = options;
+
+  if (optimizeRouteOrder) {
+    const tspTripRes = optimizeTripByRouteTSP(trip, { defaultBufferMinutes: defaultBuffer });
+    let totalAdjustmentsCount = 0;
+    const dayAdjustments: { dayIndex: number; adjustments: ActivityTimeAdjustment[] }[] = [];
+
+    trip.days.forEach((origDay, dIdx) => {
+      const nextDay = tspTripRes.updatedTrip.days[dIdx];
+      if (!nextDay) return;
+      const origById = new Map(origDay.activities.map((a) => [a.id, a]));
+      const adjs: ActivityTimeAdjustment[] = [];
+      nextDay.activities.forEach((act, newIdx) => {
+        const orig = origById.get(act.id);
+        if (!orig) return;
+        const origIdx = origDay.activities.findIndex((a) => a.id === act.id);
+        if (origIdx !== newIdx || orig.timeStart !== act.timeStart || orig.timeEnd !== act.timeEnd) {
+          adjs.push({
+            activityId: act.id,
+            activityTitle: act.title,
+            originalTimeStart: orig.timeStart,
+            originalTimeEnd: orig.timeEnd,
+            newTimeStart: act.timeStart,
+            newTimeEnd: act.timeEnd,
+            reason:
+              origIdx !== newIdx
+                ? `Thứ tự TSP #${origIdx + 1} → #${newIdx + 1}`
+                : 'Cân chỉnh giờ di chuyển',
+          });
+        }
+      });
+      if (adjs.length > 0) {
+        totalAdjustmentsCount += adjs.length;
+        dayAdjustments.push({ dayIndex: origDay.dayIndex, adjustments: adjs });
+      }
+    });
+
+    return {
+      updatedTrip: tspTripRes.updatedTrip,
+      totalAdjustmentsCount,
+      dayAdjustments,
+      routeOptimization: {
+        originalKm: tspTripRes.originalKm,
+        optimizedKm: tspTripRes.optimizedKm,
+        savedKm: tspTripRes.savedKm,
+        savedPercent: tspTripRes.savedPercent,
+        changedOrder: tspTripRes.changedDaysCount > 0,
+      },
+    };
+  }
+
   let totalAdjustmentsCount = 0;
   const dayAdjustments: { dayIndex: number; adjustments: ActivityTimeAdjustment[] }[] = [];
 
   const updatedDays = trip.days.map((day) => {
-    const res = autoArrangeDay(day);
+    const res = autoArrangeDay(day, defaultBuffer);
     if (res.adjustments.length > 0) {
       totalAdjustmentsCount += res.adjustments.length;
       dayAdjustments.push({ dayIndex: day.dayIndex, adjustments: res.adjustments });

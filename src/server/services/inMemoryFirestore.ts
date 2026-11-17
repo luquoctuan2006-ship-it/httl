@@ -7,7 +7,7 @@ type StoredRecord = {
 
 type WhereFilter = {
   field: string;
-  op: '==' | '<' | '<=' | '>' | '>=';
+  op: '==' | '<' | '<=' | '>' | '>=' | 'array-contains';
   value: unknown;
 };
 
@@ -120,10 +120,28 @@ export function createInMemoryFirestore(): Firestore {
     }
     const nowMs = Date.now();
     const resolved = resolveFieldValues(data, nowMs);
-    const nextData =
-      options.merge || options.updateOnly
-        ? { ...(existing ? structuredCloneSafe(existing.data) : {}), ...resolved }
-        : resolved;
+    let nextData: Record<string, unknown>;
+    if (options.merge || options.updateOnly) {
+      nextData = existing ? structuredCloneSafe(existing.data) : {};
+      for (const [key, val] of Object.entries(resolved)) {
+        if (options.updateOnly && key.includes('.')) {
+          const segments = key.split('.');
+          let cursor: Record<string, unknown> = nextData;
+          for (let i = 0; i < segments.length - 1; i += 1) {
+            const seg = segments[i];
+            if (!cursor[seg] || typeof cursor[seg] !== 'object' || Array.isArray(cursor[seg])) {
+              cursor[seg] = {};
+            }
+            cursor = cursor[seg] as Record<string, unknown>;
+          }
+          cursor[segments[segments.length - 1]] = val;
+        } else {
+          nextData[key] = val;
+        }
+      }
+    } else {
+      nextData = resolved;
+    }
     col.set(docId, { data: nextData, updateTimeMs: nowMs });
   };
 
@@ -171,6 +189,11 @@ export function createInMemoryFirestore(): Firestore {
       const col = getColMap(colName);
       let entries = Array.from(col.entries()).filter(([, record]) => {
         for (const filter of filters) {
+          if (filter.op === 'array-contains') {
+            const arr = record.data[filter.field];
+            if (!Array.isArray(arr) || !arr.includes(filter.value)) return false;
+            continue;
+          }
           const actual = toComparableValue(record.data[filter.field]);
           const expected = toComparableValue(filter.value);
           if (actual === null || expected === null) {

@@ -123,16 +123,6 @@ export function saveOfflineTripsCacheDetailed(
   }
 }
 
-export function saveOfflineTripsCache(
-  uid: string,
-  trips: TripData[],
-  activeTripId: string | null,
-  pendingSyncIds?: string[],
-  customStorage?: StorageLike,
-): OfflineTripCache | null {
-  return saveOfflineTripsCacheDetailed(uid, trips, activeTripId, pendingSyncIds, customStorage).cache;
-}
-
 export function markTripPendingOfflineSyncDetailed(
   uid: string,
   trip: TripData,
@@ -153,14 +143,6 @@ export function markTripPendingOfflineSyncDetailed(
   return saveOfflineTripsCacheDetailed(uid, nextTrips, normalized.id, nextPending, storage);
 }
 
-export function markTripPendingOfflineSync(
-  uid: string,
-  trip: TripData,
-  customStorage?: StorageLike,
-): OfflineTripCache | null {
-  return markTripPendingOfflineSyncDetailed(uid, trip, customStorage).cache;
-}
-
 export function clearTripPendingOfflineSync(
   uid: string,
   tripId: string,
@@ -172,5 +154,6 @@ export function clearTripPendingOfflineSync(
   const current = loadOfflineTripsCache(uid, storage);
   if (!current) return null;
   const nextPending = current.pendingSyncIds.filter((id) => id !== tripId);
-  return saveOfflineTripsCache(uid, current.trips, current.activeTripId, nextPending, storage);
+  return saveOfflineTripsCacheDetailed(uid, current.trips, current.activeTripId, nextPending, storage).cache;
 }
+

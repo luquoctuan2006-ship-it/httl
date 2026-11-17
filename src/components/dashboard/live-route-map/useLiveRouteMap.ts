@@ -180,11 +180,7 @@ export function useLiveRouteMap({
     });
     mapInstanceRef.current = map;
     L.tileLayer(
-      `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${
-        import.meta.env.VITE_CARTO_API_KEY
-          ? `?key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY)}`
-          : ''
-      }`,
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
       {
         attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
         subdomains: 'abcd',

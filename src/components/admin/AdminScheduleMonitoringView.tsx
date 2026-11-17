@@ -17,7 +17,7 @@ interface AdminScheduleMonitoringProps {
 export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps> = ({
   trip,
   trips = [],
-  onUpdateTrip: _onUpdateTrip,
+  onUpdateTrip,
   onEnsureFullTrip,
 }) => {
   const [selectedTripDetails, setSelectedTripDetails] = useState<TripData | null>(null);
@@ -46,9 +46,15 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
   // Danh sách các chuyến đang hoạt động từ dữ liệu thật
   const activeTripsList = useMemo(() => {
     return combinedTrips.map((t) => {
-      const driver = t.telematics?.driver || t.members?.find((m) => m.role.toLowerCase().includes('tài xế'))?.name || 'Trần Bình';
-      const guide = t.members?.find((m) => m.role.toLowerCase().includes('hướng dẫn viên') || m.role.toLowerCase().includes('hdv'))?.name || 'Nguyễn Văn An';
-      
+      const driver =
+        t.telematics?.driver ||
+        t.members?.find((m) => m.role.toLowerCase().includes('tài xế'))?.name ||
+        'Chưa phân công';
+      const guide =
+        t.members?.find(
+          (m) => m.role.toLowerCase().includes('hướng dẫn viên') || m.role.toLowerCase().includes('hdv'),
+        )?.name || 'Chưa phân công';
+
       const allActs = t.days?.flatMap((d) => d.activities || []) || [];
       const startLoc = allActs[0]?.location || t.waypoints?.[0]?.name || t.originFull || 'Điểm khởi hành';
       const endLoc =
@@ -66,7 +72,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
         name: t.title || 'Tour du lịch',
         route,
         day: `Ngày ${t.currentDay || 1} / ${t.totalDays || t.days?.length || 1}`,
-        vehicle: t.vehicle || 'Xe 29 chỗ (43B-028.99)',
+        vehicle: t.vehicle || 'Chưa chọn phương tiện',
         driver,
         guide,
         status: t.status || 'Đang vận hành',
@@ -80,6 +86,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
   const scheduleIssues = useMemo(() => {
     const issues: Array<{
       id: string;
+      tripId: string;
       tripCode: string;
       type: string;
       severity: string;
@@ -95,6 +102,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
         t.alerts.forEach((alert) => {
           issues.push({
             id: `alert-${t.id}-${alert.id}`,
+            tripId: t.id,
             tripCode: code,
             type:
               alert.category === 'weather'
@@ -116,6 +124,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
         if (day.hasWarning && day.dispatcherNote) {
           issues.push({
             id: `warn-${t.id}-d${day.dayIndex}`,
+            tripId: t.id,
             tripCode: code,
             type: 'Điều chỉnh lịch trình',
             severity: 'Cảnh báo',
@@ -138,6 +147,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
               if (minutes2 < minutes1) {
                 issues.push({
                   id: `overlap-${t.id}-${act1.id}-${act2.id}`,
+                  tripId: t.id,
                   tripCode: code,
                   type: 'Xung đột thời gian',
                   severity: 'Lỗi lịch trình',
@@ -154,8 +164,30 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
     return issues;
   }, [combinedTrips]);
 
-  const handleFlagSchedule = (tripCode: string) => {
-    showToast(`Đã gửi thông báo cảnh báo lịch trình ${tripCode} đến Điều phối viên!`);
+  const handleFlagSchedule = async (targetTrip: TripData, tripCode: string) => {
+    if (!onUpdateTrip) {
+      showToast(`Đã ghi nhận đánh dấu kiểm tra lịch trình ${tripCode}.`);
+      return;
+    }
+    let resolvedTrip = targetTrip;
+    if (targetTrip.isSummary && onEnsureFullTrip) {
+      const hydrated = await onEnsureFullTrip(targetTrip.id);
+      if (hydrated) resolvedTrip = hydrated;
+    }
+    const flagAlert = {
+      id: `alert-admin-flag-${Date.now()}`,
+      title: `Quản trị viên yêu cầu rà soát lịch trình (${tripCode})`,
+      timeAgo: 'Vừa xong',
+      description: 'Quản trị hệ thống đã gắn cờ rà soát xung đột thời gian / điều phối trên chuyến đi này.',
+      severity: 'warning' as const,
+      category: 'schedule' as const,
+      recommendation: 'Kiểm tra lại khung giờ hoạt động hoặc dùng Tính năng Tự động xếp lịch.',
+    };
+    const nextAlerts = [flagAlert, ...(resolvedTrip.alerts || [])];
+    await onUpdateTrip(
+      { ...resolvedTrip, alerts: nextAlerts },
+      `Đã gắn cảnh báo rà soát vào chuyến đi ${tripCode}!`,
+    );
   };
 
   const handleOpenTripDetails = async (targetTrip: TripData) => {
@@ -248,8 +280,8 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
                   {loadingTripId === t.id ? 'Đang tải...' : 'Xem Lịch Trình'}
                 </button>
                 <button
-                  onClick={() => handleFlagSchedule(t.code)}
-                  title="Gửi cảnh báo"
+                  onClick={() => void handleFlagSchedule(t.fullTrip, t.code)}
+                  title="Gửi cảnh báo vào chuyến đi"
                   className="p-1.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 transition"
                 >
                   <Flag className="w-3.5 h-3.5" />
@@ -298,10 +330,15 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
                     {iss.status}
                   </span>
                   <button
-                    onClick={() => showToast(`Đã can thiệp điều phối lại cho mã tour ${iss.tripCode}!`)}
+                    onClick={() => {
+                      const matchedTrip = combinedTrips.find((t) => t.id === iss.tripId);
+                      if (matchedTrip) {
+                        void handleOpenTripDetails(matchedTrip);
+                      }
+                    }}
                     className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition"
                   >
-                    Hỗ Trợ Ngay
+                    Xem & Xử Lý
                   </button>
                 </div>
               </div>

@@ -9,7 +9,7 @@ import { TRIP_ID_PATTERN } from './tripStore';
 import type { OperationalAlert, TripData } from '../../types/travel';
 import { parseGeminiJson } from '../../utils/geminiJson';
 import { buildRuleBasedScheduleOptimization, pickTripForOptimization, runOptimization } from '../../utils/scheduleOptimizer';
-import { canAccessTrip } from '../../utils/tripRepository';
+import { isTripOwnerOrAdmin } from '../../utils/tripRepository';
 
 type GeminiCacheEntry = {
   expiresAt: number;
@@ -238,11 +238,19 @@ export function createGeminiService({
 
     let storedTrip: TripData | null = null;
     if (tripId && tripId !== 'active' && TRIP_ID_PATTERN.test(tripId)) {
+      let found: TripData | null = null;
       try {
-        const found = await getTripById(tripId);
-        if (found && canAccessTrip(found, user)) storedTrip = found;
+        found = await getTripById(tripId);
       } catch (error) {
         console.warn('[Optimize] Không đọc được chuyến đi từ server, dùng dữ liệu client:', error);
+      }
+      if (found) {
+        if (!isTripOwnerOrAdmin(found, user)) {
+          const err = new Error('Chỉ chủ chuyến đi mới có quyền tối ưu lịch trình chuyến đi này.');
+          (err as Error & { statusCode?: number }).statusCode = 403;
+          throw err;
+        }
+        storedTrip = found;
       }
     }
 

@@ -1,18 +1,11 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import type { ReferenceCostRecord, SystemConfig, VehicleRecord } from '../types/systemConfig';
+import type { ReferenceCostRecord, SystemConfig } from '../types/systemConfig';
 
 export const ALLOWED_AI_MODELS = [
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
-];
-
-const DEFAULT_VEHICLES: VehicleRecord[] = [
-  { id: 'veh-1', type: 'Xe du lịch 29 chỗ', speedAvg: '45 km/h', capacity: '28 khách', consumption: '16L / 100km', status: 'Sẵn sàng điều phối' },
-  { id: 'veh-2', type: 'Xe du lịch 16 chỗ (Transit)', speedAvg: '52 km/h', capacity: '15 khách', consumption: '11L / 100km', status: 'Sẵn sàng điều phối' },
-  { id: 'veh-3', type: 'Xe du lịch 45 chỗ (Universe)', speedAvg: '40 km/h', capacity: '44 khách', consumption: '24L / 100km', status: 'Sẵn sàng điều phối' },
-  { id: 'veh-4', type: 'Xe 7 chỗ cao cấp (Carnival)', speedAvg: '60 km/h', capacity: '6 khách', consumption: '9L / 100km', status: 'Bảo dưỡng định kỳ' },
 ];
 
 const DEFAULT_REFERENCE_COSTS: ReferenceCostRecord[] = [
@@ -31,7 +24,6 @@ export function createSystemConfigStore(
   getFirestoreOrNull: () => Firestore | null,
   requireFirestore: () => Firestore,
 ) {
-  let activeVehicles: VehicleRecord[] = [...DEFAULT_VEHICLES];
   let activeReferenceCosts: ReferenceCostRecord[] = [...DEFAULT_REFERENCE_COSTS];
   let dynamicGeminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash';
   let dynamicGeminiTemperature = 0.55;
@@ -70,7 +62,6 @@ export function createSystemConfigStore(
         elderlyPacing: false,
       },
     },
-    vehicles: activeVehicles,
     referenceCosts: activeReferenceCosts,
   };
 
@@ -126,12 +117,6 @@ export function createSystemConfigStore(
       }
       activeSystemConfig.rules = loadedRules;
     }
-    if (Array.isArray(data.vehicles)) {
-      activeVehicles = data.vehicles.filter((v: unknown) => {
-        const rec = v as Partial<VehicleRecord>;
-        return rec && typeof rec.id === 'string' && typeof rec.type === 'string';
-      }) as VehicleRecord[];
-    }
     if (Array.isArray(data.referenceCosts)) {
       activeReferenceCosts = data.referenceCosts.filter((c: unknown) => {
         const rec = c as Partial<ReferenceCostRecord>;
@@ -145,7 +130,6 @@ export function createSystemConfigStore(
       temperature: dynamicGeminiTemperature,
       maxTokens: dynamicGeminiMaxTokens,
       systemPrompt: dynamicGeminiSystemPrompt,
-      vehicles: activeVehicles,
       referenceCosts: activeReferenceCosts,
     };
   }
@@ -202,7 +186,6 @@ export function createSystemConfigStore(
     syncSystemConfigIfStale,
     saveSystemConfig,
     getSystemConfig: () => activeSystemConfig,
-    getVehicles: () => activeVehicles,
     getReferenceCosts: () => activeReferenceCosts,
     getConfigState: () => ({
       activeSystemConfig,
@@ -210,7 +193,6 @@ export function createSystemConfigStore(
       dynamicGeminiTemperature,
       dynamicGeminiMaxTokens,
       dynamicGeminiSystemPrompt,
-      activeVehicles,
       activeReferenceCosts,
     }),
     setConfigState: (config: SystemConfig) => {
@@ -218,13 +200,11 @@ export function createSystemConfigStore(
       dynamicGeminiTemperature = config.temperature;
       dynamicGeminiMaxTokens = config.maxTokens;
       dynamicGeminiSystemPrompt = config.systemPrompt;
-      activeVehicles = config.vehicles;
       activeReferenceCosts = config.referenceCosts;
       activeSystemConfig = config;
     },
     setFleetSystemConfig: (config: SystemConfig) => {
       activeSystemConfig = config;
-      activeVehicles = config.vehicles;
       activeReferenceCosts = config.referenceCosts;
     },
     getGeminiSettings: () => ({

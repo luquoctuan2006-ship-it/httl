@@ -19,10 +19,10 @@ import { createSystemConfigStore, ALLOWED_AI_MODELS } from './src/server/service
 import { createTripStore } from './src/server/services/tripStore';
 import { createGeminiService } from './src/server/services/geminiService';
 import { recordAuditLog as persistAuditLog } from './src/server/services/systemLogs';
-import type { ReferenceCostRecord, SystemConfig, VehicleRecord } from './src/server/types/systemConfig';
+import type { ReferenceCostRecord, SystemConfig } from './src/server/types/systemConfig';
 
 export { ALLOWED_AI_MODELS };
-export type { ReferenceCostRecord, SystemConfig, VehicleRecord };
+export type { ReferenceCostRecord, SystemConfig };
 
 dotenv.config();
 
@@ -82,6 +82,8 @@ app.use(
         frameAncestors: [
           "'self'",
           'https://*.google.com',
+          'https://*.googleusercontent.com',
+          'https://*.usercontent.goog',
           'https://*.run.app',
           ...(isProduction ? [] : ['http://localhost:*']),
         ],
@@ -142,6 +144,18 @@ const joinCodeRateLimiter = rateLimit({
   message: {
     success: false,
     error: 'Bạn đã thử quá nhiều mã chuyến đi trong thời gian ngắn. Vui lòng đợi ít phút rồi thử lại.',
+  },
+});
+
+const geocodeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => `uid:${(req as AuthenticatedRequest).authUser?.uid ?? 'anonymous'}`,
+  message: {
+    success: false,
+    error: 'Bạn tìm kiếm địa điểm quá nhanh. Vui lòng đợi vài giây rồi thử lại (tuân thủ giới hạn Nominatim).',
   },
 });
 
@@ -213,7 +227,6 @@ registerFleetRoutes(app, {
   requireAuth,
   requireAdmin,
   getSystemConfig: configStore.getSystemConfig,
-  getVehicles: configStore.getVehicles,
   getReferenceCosts: configStore.getReferenceCosts,
   setSystemConfig: configStore.setFleetSystemConfig,
   syncSystemConfigIfStale: () => configStore.syncSystemConfigIfStale(),
@@ -229,7 +242,7 @@ registerAdminUserRoutes(app, {
   recordAuditLog,
 });
 
-registerRoutingRoutes(app, { requireAuth });
+registerRoutingRoutes(app, { requireAuth, geocodeRateLimiter });
 
 registerGuestRoutes(app, {
   findTripByJoinCode: tripStore.findTripByJoinCode,

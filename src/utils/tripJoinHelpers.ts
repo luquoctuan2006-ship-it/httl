@@ -65,15 +65,6 @@ export function isUserTripOwnerOrAdmin(
   return Boolean(trip.ownerId && trip.ownerId === userId);
 }
 
-export function isUserTripParticipant(
-  trip: Partial<TripData> | null | undefined,
-  userId?: string | null,
-): boolean {
-  if (!trip || !userId) return false;
-  if (trip.ownerId === userId) return false;
-  return Array.isArray(trip.participantUids) && trip.participantUids.includes(userId);
-}
-
 export function buildGuestInviteUrl(joinCode: string, origin?: string): string {
   const cleanCode = normalizeJoinCode(joinCode);
   const baseOrigin =
@@ -192,5 +183,55 @@ export function guestTripToReadOnlyTripData(guestTrip: GuestTripData): TripData 
     aiSavingsEstimate: '0 ₫',
     aiConfidence: '',
     days: guestTrip.days,
+  };
+}
+
+/**
+ * Loại bỏ toàn bộ dữ liệu ngân sách, hóa đơn, chi phí hoạt động, cảnh báo ngân sách,
+ * gợi ý AI nội bộ, điểm ẩn và UID của thành viên khác trước khi trả về cho Hành khách (participant).
+ * Giữ lại `uid` của chính viewer và `invitedByUid` của người thân do viewer đăng ký để UI/điểm danh hoạt động đúng.
+ */
+export function sanitizeTripForParticipant(trip: TripData, viewerUid?: string): TripData {
+  const safeMembers: TripMember[] = (trip.members || []).map((m) => {
+    const isSelf = Boolean(viewerUid && m.uid === viewerUid);
+    const isInvitedByViewer = Boolean(viewerUid && m.invitedByUid === viewerUid);
+    const { uid: _uid, invitedByUid: _invitedByUid, ...restMember } = m;
+    return {
+      ...restMember,
+      ...(isSelf && m.uid ? { uid: m.uid } : {}),
+      ...(isInvitedByViewer && m.invitedByUid ? { invitedByUid: m.invitedByUid } : {}),
+    };
+  });
+
+  const safeDays = (trip.days || []).map((day) => ({
+    ...day,
+    activities: (day.activities || []).map((act) => {
+      const { cost: _cost, ...restAct } = act;
+      return restAct;
+    }),
+  }));
+
+  const {
+    invoices: _invoices,
+    customCategoryAllocations: _allocations,
+    participantUids: _participantUids,
+    ...restTrip
+  } = trip;
+
+  return {
+    ...restTrip,
+    budgetTotal: 0,
+    budgetUsed: 0,
+    budgetRemaining: 0,
+    budgetUsedPercent: 0,
+    members: safeMembers,
+    waypoints: (trip.waypoints || []).filter((wp) => !wp.isHidden),
+    alerts: (trip.alerts || []).filter(
+      (a) => a.category !== 'budget' && !a.id.startsWith('alert-budget-'),
+    ),
+    aiSuggestions: [],
+    aiSavingsEstimate: '',
+    aiConfidence: '',
+    days: safeDays,
   };
 }

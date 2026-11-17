@@ -7,12 +7,17 @@ import {
   type RouteStopItem,
   type RouteStopStatus,
 } from '../../utils/routeProgress';
+import {
+  optimizeDayActivitiesByRoute,
+  optimizeTripByRouteTSP,
+} from '../../utils/routeTspOptimizer';
+import { buildAIPlanWaypoints, isLegacyHashedCoordinate } from '../../utils/vietnamGeo';
 import { LiveMapHeader } from './live-route-map/LiveMapHeader';
 import { LiveMapCanvas } from './live-route-map/LiveMapCanvas';
 import { RouteStopsPanel } from './live-route-map/RouteStopsPanel';
 import { getStopKey, useLiveRouteMap } from './live-route-map/useLiveRouteMap';
 import { useLiveRouteControls } from './live-route-map/useLiveRouteControls';
-import { useRoadRouting } from './live-route-map/useRoadRouting';
+import { fetchRealOsrmRouteSummary, useRoadRouting } from './live-route-map/useRoadRouting';
 import { STATUS_LABEL } from './live-route-map/mapHelpers';
 
 interface LiveRouteMapProps {
@@ -35,6 +40,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
 }) => {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all');
   const [selectedStopKey, setSelectedStopKey] = useState<string | null>(null);
+  const [isApplyingTsp, setIsApplyingTsp] = useState(false);
 
   const baseProgress = useMemo(
     () => buildRouteProgress(trip, dayFilter),
@@ -47,6 +53,104 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
     () => buildRouteProgress(trip, dayFilter, roadLegsMap),
     [trip, dayFilter, roadLegsMap],
   );
+
+  const tspPreview = useMemo(() => {
+    if (readOnly || !onUpdateTrip || !trip.days?.length) return null;
+    if (typeof dayFilter === 'number') {
+      const targetDay = trip.days.find((d) => d.dayIndex === dayFilter);
+      if (!targetDay) return null;
+      const res = optimizeDayActivitiesByRoute(targetDay);
+      if (!res.changedOrder || res.savedKm < 0.5) return null;
+      return {
+        scope: 'day' as const,
+        dayIndex: dayFilter,
+        originalKm: res.originalKm,
+        optimizedKm: res.optimizedKm,
+        savedKm: res.savedKm,
+        savedPercent: res.savedPercent,
+        orderedStopNames: res.orderedStopNames,
+        dayResult: res,
+      };
+    }
+    const tripRes = optimizeTripByRouteTSP(trip);
+    if (tripRes.changedDaysCount === 0 || tripRes.savedKm < 0.5) return null;
+    return {
+      scope: 'trip' as const,
+      originalKm: tripRes.originalKm,
+      optimizedKm: tripRes.optimizedKm,
+      savedKm: tripRes.savedKm,
+      savedPercent: tripRes.savedPercent,
+      tripResult: tripRes,
+    };
+  }, [trip, dayFilter, readOnly, onUpdateTrip]);
+
+  const handleApplyTspRoute = useCallback(async () => {
+    if (!onUpdateTrip || !tspPreview || isApplyingTsp) return;
+    setIsApplyingTsp(true);
+    try {
+      let nextTrip: TripData;
+      if (tspPreview.scope === 'day') {
+        const updatedDays = trip.days.map((d) =>
+          d.dayIndex === tspPreview.dayIndex ? tspPreview.dayResult.updatedDay : d,
+        );
+        const allActs = updatedDays.flatMap((d) => d.activities || []);
+        const nextWaypoints = buildAIPlanWaypoints(
+          trip.originFull || trip.origin || 'Điểm khởi hành',
+          trip.destinationFull || trip.destination || 'Điểm đến',
+          allActs,
+        );
+        nextTrip = {
+          ...trip,
+          days: updatedDays,
+          ...(nextWaypoints.length >= 2
+            ? { waypoints: nextWaypoints, destinationsCount: nextWaypoints.length }
+            : {}),
+        };
+      } else {
+        nextTrip = tspPreview.tripResult.updatedTrip;
+      }
+
+      const locatedPoints = (nextTrip.waypoints || []).filter(
+        (wp) =>
+          (Math.abs(wp.lat) > 0.0001 || Math.abs(wp.lng) > 0.0001) &&
+          !isLegacyHashedCoordinate(wp.name || '', wp.lat, wp.lng),
+      );
+      const osrmSummary = await fetchRealOsrmRouteSummary(locatedPoints, guestJoinCode);
+      if (osrmSummary) {
+        nextTrip = { ...nextTrip, totalKm: osrmSummary.totalKm };
+      }
+
+      await Promise.resolve(
+        onUpdateTrip(
+          nextTrip,
+          `Đã tối ưu lộ trình TSP${tspPreview.scope === 'day' ? ` Ngày ${tspPreview.dayIndex}` : ''}: tiết kiệm ${tspPreview.savedKm} km (${tspPreview.savedPercent}%)!`,
+        ),
+      );
+    } finally {
+      setIsApplyingTsp(false);
+    }
+  }, [onUpdateTrip, tspPreview, isApplyingTsp, trip, guestJoinCode]);
+
+  const canSyncOsrmKm = Boolean(
+    !readOnly &&
+      onUpdateTrip &&
+      dayFilter === 'all' &&
+      progress.routingSource === 'osrm' &&
+      progress.totalRouteKm > 0 &&
+      Math.abs(Math.round(progress.totalRouteKm) - Math.round(trip.totalKm || 0)) >= 2,
+  );
+
+  const handleSyncOsrmKm = useCallback(() => {
+    if (!onUpdateTrip || !canSyncOsrmKm) return;
+    const roundedOsrmKm = Math.round(progress.totalRouteKm);
+    onUpdateTrip(
+      {
+        ...trip,
+        totalKm: roundedOsrmKm,
+      },
+      `Đã đồng bộ tổng quãng đường thực tế theo OSRM: ${roundedOsrmKm} km!`,
+    );
+  }, [onUpdateTrip, canSyncOsrmKm, progress.totalRouteKm, trip]);
 
   const handleSelectStopOnMap = useCallback((stop: RouteStopItem) => {
     setSelectedStopKey(getStopKey(stop));
@@ -142,7 +246,29 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         onFocusStop={handleFocusStop}
         onChangeStopStatus={!readOnly && onUpdateTrip ? handleChangeStopStatus : undefined}
         onOpenStopActivity={!readOnly && onSelectWaypoint ? handleOpenStopActivity : undefined}
+        tspPreview={
+          tspPreview
+            ? {
+                originalKm: tspPreview.originalKm,
+                optimizedKm: tspPreview.optimizedKm,
+                savedKm: tspPreview.savedKm,
+                savedPercent: tspPreview.savedPercent,
+                isApplying: isApplyingTsp,
+                onApply: handleApplyTspRoute,
+              }
+            : undefined
+        }
+        osrmSyncAction={
+          canSyncOsrmKm
+            ? {
+                osrmKm: Math.round(progress.totalRouteKm),
+                currentTripKm: Math.round(trip.totalKm || 0),
+                onSync: handleSyncOsrmKm,
+              }
+            : undefined
+        }
       />
     </div>
   );
 };
+

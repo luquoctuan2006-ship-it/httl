@@ -8,6 +8,8 @@ import {
   ExternalLink,
   MapPin,
   Navigation2,
+  Route,
+  Sparkles,
 } from 'lucide-react';
 import type { RouteStopWeather } from '../../../types/travel';
 import {
@@ -26,6 +28,19 @@ interface RouteStopsPanelProps {
   onFocusStop: (stop: RouteStopItem) => void;
   onChangeStopStatus?: (stop: RouteStopItem, nextStatus: RouteStopStatus) => void;
   onOpenStopActivity?: (stop: RouteStopItem) => void;
+  tspPreview?: {
+    originalKm: number;
+    optimizedKm: number;
+    savedKm: number;
+    savedPercent: number;
+    isApplying: boolean;
+    onApply: () => void;
+  };
+  osrmSyncAction?: {
+    osrmKm: number;
+    currentTripKm: number;
+    onSync: () => void;
+  };
 }
 
 const STATUS_BADGE: Record<RouteStopStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -53,6 +68,8 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
   onFocusStop,
   onChangeStopStatus,
   onOpenStopActivity,
+  tspPreview,
+  osrmSyncAction,
 }) => {
   const {
     stops,
@@ -103,6 +120,49 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
           </span>
         </div>
       </div>
+
+      {/* TSP Optimization & OSRM Distance Sync Banners */}
+      {tspPreview && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-emerald-950 min-w-0">
+            <Route className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Thuật toán <strong>TSP (Nearest Neighbor + 2-opt)</strong> tìm thấy lộ trình ngắn hơn:{' '}
+              <span className="line-through text-slate-500">{tspPreview.originalKm} km</span>{' '}
+              ➔ <strong className="text-emerald-700">{tspPreview.optimizedKm} km</strong>{' '}
+              <span className="font-extrabold text-emerald-700">
+                (tiết kiệm {tspPreview.savedKm} km · {tspPreview.savedPercent}%)
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={tspPreview.onApply}
+            disabled={tspPreview.isApplying}
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60 shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{tspPreview.isApplying ? 'Đang sắp xếp...' : 'Sắp xếp lộ trình ngắn nhất'}</span>
+          </button>
+        </div>
+      )}
+
+      {osrmSyncAction && (
+        <div className="rounded-xl border border-teal-200 bg-teal-50/70 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-teal-900">
+          <span>
+            Khoảng cách đường bộ thực tế từ <strong>OSRM</strong> là{' '}
+            <strong>{osrmSyncAction.osrmKm} km</strong> (thông số chuyến hiện lưu{' '}
+            {osrmSyncAction.currentTripKm} km).
+          </span>
+          <button
+            type="button"
+            onClick={osrmSyncAction.onSync}
+            className="px-2.5 py-1 rounded-lg bg-white hover:bg-teal-100 border border-teal-300 text-teal-800 font-bold transition cursor-pointer shrink-0"
+          >
+            Cập nhật {osrmSyncAction.osrmKm} km thực tế
+          </button>
+        </div>
+      )}
 
       {/* Ordered Stops List */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[300px] overflow-y-auto pr-1">

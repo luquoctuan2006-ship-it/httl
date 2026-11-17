@@ -3,6 +3,7 @@ import { X, Clock, MapPin, Tag, Edit3, Trash2, DollarSign, FileText } from 'luci
 import { Activity } from '../../types/travel';
 import { validateActivityTimeRange } from '../../utils/tripSyncHelpers';
 import { lookupCoordinates } from '../../utils/vietnamGeo';
+import { PlaceAutocompleteInput, type PlaceCoordinates } from '../common/PlaceAutocompleteInput';
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   sightseeing: 'Tham quan',
@@ -16,7 +17,7 @@ const ACTIVITY_TYPE_LABELS: Record<string, string> = {
 interface ActivityDetailModalProps {
   activity: Activity | null;
   onClose: () => void;
-  onUpdateStatus: (id: string, newStatus: Activity['status']) => void;
+  onUpdateStatus?: (id: string, newStatus: Activity['status']) => void;
   onEditActivity?: (updatedActivity: Activity) => void;
   onDeleteActivity?: (id: string) => void;
   canEdit?: boolean;
@@ -35,6 +36,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   const [timeStart, setTimeStart] = useState(activity?.timeStart || '08:00');
   const [timeEnd, setTimeEnd] = useState(activity?.timeEnd || '09:30');
   const [location, setLocation] = useState(activity?.location || '');
+  const [coordinates, setCoordinates] = useState<PlaceCoordinates | undefined>(activity?.coordinates);
   const [cost, setCost] = useState(activity?.cost || 0);
   const [type, setType] = useState<Activity['type']>(activity?.type || 'sightseeing');
   const [details, setDetails] = useState(activity?.details || '');
@@ -47,6 +49,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
       setTimeStart(activity.timeStart);
       setTimeEnd(activity.timeEnd);
       setLocation(activity.location);
+      setCoordinates(activity.coordinates);
       setCost(activity.cost || 0);
       setType(activity.type);
       setDetails(activity.details);
@@ -68,9 +71,8 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
     }
     setTimeError(null);
     const cleanLocation = location.trim();
-    const locationChanged = cleanLocation.toLowerCase() !== (activity.location || '').trim().toLowerCase();
-    const resolvedCoords = lookupCoordinates(cleanLocation) || lookupCoordinates(title.trim());
-    const nextCoords = resolvedCoords || (locationChanged ? undefined : activity.coordinates);
+    const resolvedCoords = coordinates || lookupCoordinates(cleanLocation) || lookupCoordinates(title.trim());
+    const nextCoords = resolvedCoords || undefined;
     const { coordinates: _oldCoords, ...baseActivity } = activity;
 
     const updated: Activity = {
@@ -178,11 +180,12 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-teal-600" /> Địa điểm
               </label>
-              <input
-                type="text"
+              <PlaceAutocompleteInput
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none"
+                onChangeText={setLocation}
+                coordinates={coordinates}
+                onChangeCoordinates={setCoordinates}
+                placeholder="Tìm địa điểm trên bản đồ hoặc nhập địa chỉ..."
               />
             </div>
 
@@ -254,9 +257,18 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
               <h4 className="text-base font-extrabold text-slate-900 leading-snug">
                 {activity.title}
               </h4>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mt-1">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 font-medium mt-1">
+                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span>{activity.location}</span>
+                {activity.coordinates ? (
+                  <span className="text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
+                    {activity.coordinates.lat.toFixed(4)}, {activity.coordinates.lng.toFixed(4)}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">
+                    Chưa có tọa độ
+                  </span>
+                )}
               </div>
             </div>
 
@@ -287,7 +299,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
               </div>
             </div>
 
-            {canEdit && (
+            {canEdit && onUpdateStatus && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Cập nhật nhanh tiến độ:

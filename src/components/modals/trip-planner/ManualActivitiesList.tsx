@@ -62,6 +62,15 @@ export function ManualActivitiesList({
                                 <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                                 <span className="truncate">{act.location}</span>
                               </span>
+                              {act.coordinates ? (
+                                <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded shrink-0">
+                                  {act.coordinates.lat.toFixed(3)}, {act.coordinates.lng.toFixed(3)}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded shrink-0">
+                                  Chưa có tọa độ
+                                </span>
+                              )}
                               {act.cost && act.cost > 0 ? (
                                 <span className="font-mono text-emerald-700 font-bold shrink-0">
                                   • {act.cost.toLocaleString('vi-VN')} ₫

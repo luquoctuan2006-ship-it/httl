@@ -15,11 +15,13 @@ interface LocationsTabProps {
   checkDataValidation: (waypoint: Waypoint) => string[];
   handleToggleHide: (id: string) => Promise<void>;
   setEditingWaypoint: React.Dispatch<React.SetStateAction<Waypoint | null>>;
+  confirmDeleteId: string | null;
+  setConfirmDeleteId: React.Dispatch<React.SetStateAction<string | null>>;
   handleDeleteLocation: (id: string, name: string) => Promise<void>;
 }
 
 export const LocationsTab: React.FC<LocationsTabProps> = (props) => {
-  const { activeSubTab, totalInvalidCount, filterInvalidOnly, setFilterInvalidOnly, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter, filteredLocations, checkDataValidation, handleToggleHide, setEditingWaypoint, handleDeleteLocation } = props;
+  const { activeSubTab, totalInvalidCount, filterInvalidOnly, setFilterInvalidOnly, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter, filteredLocations, checkDataValidation, handleToggleHide, setEditingWaypoint, confirmDeleteId, setConfirmDeleteId, handleDeleteLocation } = props;
   return (
     <>
       {activeSubTab === 'locations' && (
@@ -150,13 +152,30 @@ export const LocationsTab: React.FC<LocationsTabProps> = (props) => {
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => handleDeleteLocation(wp.id, wp.name)}
-                        title="Xóa địa điểm"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 border border-slate-700 transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {confirmDeleteId === wp.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => void handleDeleteLocation(wp.id, wp.name)}
+                            className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition"
+                          >
+                            Xóa
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-bold transition"
+                          >
+                            Hủy
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(wp.id)}
+                          title="Xóa địa điểm"
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 border border-slate-700 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

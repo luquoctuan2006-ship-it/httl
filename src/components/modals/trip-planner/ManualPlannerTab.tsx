@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Activity, DaySchedule } from '../../../types/travel';
+import type { PlaceCoordinates } from '../../common/PlaceAutocompleteInput';
 
 type StateSetter<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -22,8 +23,12 @@ export interface ManualPlannerTabProps {
   setTripCode: StateSetter<string>;
   origin: string;
   setOrigin: StateSetter<string>;
+  originCoordinates?: PlaceCoordinates;
+  setOriginCoordinates: StateSetter<PlaceCoordinates | undefined>;
   destination: string;
   setDestination: StateSetter<string>;
+  destinationCoordinates?: PlaceCoordinates;
+  setDestinationCoordinates: StateSetter<PlaceCoordinates | undefined>;
   startDate: string;
   setStartDate: StateSetter<string>;
   totalDays: number;
@@ -57,6 +62,8 @@ export interface ManualPlannerTabProps {
   setActTimeEnd: StateSetter<string>;
   actLocation: string;
   setActLocation: StateSetter<string>;
+  actCoordinates?: PlaceCoordinates;
+  setActCoordinates: StateSetter<PlaceCoordinates | undefined>;
   actCost: number | '';
   setActCost: StateSetter<number | ''>;
   actDetails: string;
@@ -146,7 +153,10 @@ export function ManualPlannerTab(props: ManualPlannerTabProps) {
                             : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
                         }`}
                       >
-                        <span>Ngày {day.dayIndex}</span>
+                        <span>
+                          Ngày {day.dayIndex}
+                          {day.dateLabel && day.dateLabel !== `Ngày ${day.dayIndex}` ? ` (${day.dateLabel})` : ''}
+                        </span>
                         <span
                           className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                             isSelected ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'

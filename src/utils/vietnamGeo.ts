@@ -12,6 +12,26 @@ export interface LocationGeo {
   region?: string;
 }
 
+export interface LocalPlaceSuggestion {
+  id: string;
+  name: string;
+  displayName: string;
+  lat: number;
+  lng: number;
+  source: 'local';
+}
+
+export function normalizeVietnameseText(input: string): string {
+  return String(input || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s.,/-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export const VIETNAM_LOCATIONS: Record<string, { lat: number; lng: number }> = {
   // Miền Bắc
   'hà nội': { lat: 21.0285, lng: 105.8542 },
@@ -124,6 +144,62 @@ export function lookupCoordinates(placeName: string): { lat: number; lng: number
   return null;
 }
 
+function formatPlaceDisplayName(key: string): string {
+  if (key === 'tp.hồ chí minh' || key === 'tp.hcm' || key === 'tp hcm' || key === 'hồ chí minh') {
+    return 'TP. Hồ Chí Minh';
+  }
+  return key
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+const CANONICAL_LOCAL_PLACES: LocalPlaceSuggestion[] = (() => {
+  const byCoords = new Map<string, { key: string; lat: number; lng: number; hasAccent: boolean }>();
+  for (const [key, coords] of Object.entries(VIETNAM_LOCATIONS)) {
+    const coordKey = `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}`;
+    const hasAccent = key !== normalizeVietnameseText(key);
+    const existing = byCoords.get(coordKey);
+    if (!existing || (!existing.hasAccent && hasAccent) || (existing.hasAccent === hasAccent && key.length > existing.key.length)) {
+      byCoords.set(coordKey, { key, lat: coords.lat, lng: coords.lng, hasAccent });
+    }
+  }
+  return Array.from(byCoords.entries()).map(([coordKey, item]) => {
+    const title = formatPlaceDisplayName(item.key);
+    return {
+      id: `local-${coordKey}`,
+      name: title,
+      displayName: `${title}, Việt Nam`,
+      lat: item.lat,
+      lng: item.lng,
+      source: 'local' as const,
+    };
+  });
+})();
+
+export function searchLocalPlaces(rawQuery: string, limit = 5): LocalPlaceSuggestion[] {
+  const cleanNormalized = normalizeVietnameseText(rawQuery);
+  if (cleanNormalized.length < 2) return [];
+
+  const scored: { item: LocalPlaceSuggestion; score: number }[] = [];
+  for (const place of CANONICAL_LOCAL_PLACES) {
+    const placeNorm = normalizeVietnameseText(place.name);
+    if (placeNorm === cleanNormalized) {
+      scored.push({ item: place, score: 100 });
+    } else if (placeNorm.startsWith(cleanNormalized)) {
+      scored.push({ item: place, score: 85 });
+    } else if (placeNorm.includes(cleanNormalized)) {
+      scored.push({ item: place, score: 70 });
+    } else if (cleanNormalized.includes(placeNorm) && placeNorm.length >= 4) {
+      scored.push({ item: place, score: 55 });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name, 'vi'));
+  return scored.slice(0, limit).map((entry) => entry.item);
+}
+
 /**
  * Tính lại tọa độ giả lập theo công thức hash cũ để nhận diện dữ liệu cũ bị băm ngẫu nhiên.
  */
@@ -156,28 +232,61 @@ export function isLegacyHashedCoordinate(placeName: string, lat: number, lng: nu
   return Math.abs(lat - hashed.lat) < 0.0005 && Math.abs(lng - hashed.lng) < 0.0005;
 }
 
+function isValidExplicitCoords(
+  placeName: string,
+  coords: unknown,
+): coords is { lat: number; lng: number } {
+  if (!coords || typeof coords !== 'object') return false;
+  const c = coords as { lat?: unknown; lng?: unknown };
+  const lat = Number(c.lat);
+  const lng = Number(c.lng);
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180 &&
+    (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001) &&
+    !isLegacyHashedCoordinate(placeName, lat, lng)
+  );
+}
+
+export interface EndpointCoordinates {
+  origin?: { lat: number; lng: number } | null;
+  destination?: { lat: number; lng: number } | null;
+}
+
 /**
  * Xây dựng danh sách Waypoints động cho chuyến đi từ điểm đi, điểm đến và các hoạt động có tọa độ xác thực
  */
 export function buildDynamicWaypoints(
   origin: string,
   destination: string,
-  activityLocations: string[] = []
+  activityLocations: readonly (string | { location: string; coordinates?: { lat: number; lng: number } })[] = [],
+  endpointCoords?: EndpointCoordinates,
 ): Waypoint[] {
   const pointsMap = new Map<string, { lat: number; lng: number }>();
 
-  // Thêm điểm xuất phát nếu xác định được tọa độ
+  // Thêm điểm xuất phát nếu xác định được tọa độ (ưu tiên tọa độ đã chọn từ autocomplete)
   const origName = origin.trim() || 'Điểm khởi hành';
-  const origCoords = lookupCoordinates(origName);
+  const origCoords = isValidExplicitCoords(origName, endpointCoords?.origin)
+    ? { lat: Number(endpointCoords!.origin!.lat), lng: Number(endpointCoords!.origin!.lng) }
+    : lookupCoordinates(origName);
   if (origCoords) {
     pointsMap.set(origName, origCoords);
   }
 
-  // Thêm các điểm hoạt động có tọa độ xác thực
-  for (const loc of activityLocations) {
-    const trimmed = loc.trim();
+  // Thêm các điểm hoạt động có tọa độ xác thực (ưu tiên tọa độ gắn từ bản đồ/geocoding)
+  for (const item of activityLocations) {
+    const rawLoc = typeof item === 'string' ? item : item?.location || '';
+    const trimmed = rawLoc.trim();
     if (trimmed && !pointsMap.has(trimmed)) {
-      const coords = lookupCoordinates(trimmed);
+      const explicit =
+        typeof item === 'object' && item !== null && isValidExplicitCoords(trimmed, item.coordinates)
+          ? { lat: Number(item.coordinates.lat), lng: Number(item.coordinates.lng) }
+          : null;
+      const coords = explicit || lookupCoordinates(trimmed);
       if (coords) {
         pointsMap.set(trimmed, coords);
         if (pointsMap.size >= 8) break; // Tối đa 8 điểm chính trên bản đồ
@@ -188,7 +297,9 @@ export function buildDynamicWaypoints(
   // Thêm điểm đến nếu chưa có và xác định được tọa độ
   const destName = destination.trim() || 'Điểm đến';
   if (!pointsMap.has(destName)) {
-    const destCoords = lookupCoordinates(destName);
+    const destCoords = isValidExplicitCoords(destName, endpointCoords?.destination)
+      ? { lat: Number(endpointCoords!.destination!.lat), lng: Number(endpointCoords!.destination!.lng) }
+      : lookupCoordinates(destName);
     if (destCoords) {
       pointsMap.set(destName, destCoords);
     }
@@ -235,6 +346,7 @@ export function buildAIPlanWaypoints(
     timeStart?: unknown;
     coordinates?: unknown;
   }[] = [],
+  endpointCoords?: EndpointCoordinates,
 ): Waypoint[] {
   const points = new Map<string, { name: string; lat: number; lng: number; arrivalTime?: string }>();
 
@@ -259,9 +371,11 @@ export function buildAIPlanWaypoints(
 
   const cleanOrigin = origin.trim() || 'Điểm khởi hành';
   const cleanDestination = destination.trim() || 'Điểm đến';
-  const originCoords = lookupCoordinates(cleanOrigin);
+  const originCoords = isValidExplicitCoords(cleanOrigin, endpointCoords?.origin)
+    ? { lat: Number(endpointCoords!.origin!.lat), lng: Number(endpointCoords!.origin!.lng) }
+    : lookupCoordinates(cleanOrigin);
   if (originCoords) {
-    addPoint(cleanOrigin, originCoords);
+    addPoint(cleanOrigin, originCoords, undefined, Boolean(endpointCoords?.origin));
   }
 
   for (const activity of activities) {
@@ -277,13 +391,7 @@ export function buildAIPlanWaypoints(
       : {};
     const lat = Number(coords.lat);
     const lng = Number(coords.lng);
-    const hasValidCoordinates =
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      lat >= 8 &&
-      lat <= 24 &&
-      lng >= 102 &&
-      lng <= 110;
+    const hasValidCoordinates = isValidExplicitCoords(name, { lat, lng });
     const resolvedCoords = hasValidCoordinates ? { lat, lng } : lookupCoordinates(name);
     if (!resolvedCoords) continue;
 
@@ -298,9 +406,11 @@ export function buildAIPlanWaypoints(
     if (points.size >= 49) break;
   }
 
-  const destCoords = lookupCoordinates(cleanDestination);
+  const destCoords = isValidExplicitCoords(cleanDestination, endpointCoords?.destination)
+    ? { lat: Number(endpointCoords!.destination!.lat), lng: Number(endpointCoords!.destination!.lng) }
+    : lookupCoordinates(cleanDestination);
   if (destCoords) {
-    addPoint(cleanDestination, destCoords);
+    addPoint(cleanDestination, destCoords, undefined, Boolean(endpointCoords?.destination));
   }
 
   const entries = Array.from(points.values());
@@ -329,12 +439,3 @@ export function buildAIPlanWaypoints(
   }));
 }
 
-export function dedupeWaypointsForMap(waypoints: readonly Waypoint[]): Waypoint[] {
-  const seenCoordinates = new Set<string>();
-  return waypoints.filter((waypoint) => {
-    const key = `${waypoint.lat.toFixed(4)},${waypoint.lng.toFixed(4)}`;
-    if (seenCoordinates.has(key)) return false;
-    seenCoordinates.add(key);
-    return true;
-  });
-}

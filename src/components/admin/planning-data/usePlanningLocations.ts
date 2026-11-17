@@ -1,8 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { TripData, Waypoint } from '../../../types/travel';
 import type { NewLocationForm } from './planningDataTypes';
 
 type UpdateTrip = (updatedTrip: TripData, message?: string) => Promise<void>;
+
+function mapWaypointsToLocations(waypoints: Waypoint[] | undefined): Waypoint[] {
+  return (waypoints || []).map((wp) => ({
+    ...wp,
+    category: wp.category || 'culture',
+    openHours: wp.openHours || '',
+    ticketPrice: wp.ticketPrice || '',
+    description: wp.description || '',
+    isHidden: wp.isHidden || false,
+  }));
+}
 
 export function usePlanningLocations(
   trip: TripData,
@@ -10,53 +21,39 @@ export function usePlanningLocations(
   showToast: (message: string) => void,
 ) {
   const [locations, setLocations] = useState<Waypoint[]>(() =>
-    (trip.waypoints || []).map((wp) => ({
-      ...wp,
-      category:
-        wp.category ||
-        (wp.name.includes('Bà Nà') || wp.name.includes('Sơn Trà')
-          ? 'nature'
-          : wp.name.includes('Đại Nội') || wp.name.includes('Hội An')
-            ? 'culture'
-            : 'entertainment'),
-      openHours:
-        wp.openHours ||
-        (wp.name.includes('Bà Nà')
-          ? '07:30 - 21:00'
-          : wp.name.includes('Đại Nội')
-            ? '08:00 - 17:30'
-            : '07:00 - 21:00'),
-      ticketPrice:
-        wp.ticketPrice ||
-        (wp.name.includes('Bà Nà')
-          ? '900.000 ₫'
-          : wp.name.includes('Đại Nội')
-            ? '200.000 ₫'
-            : 'Miễn phí'),
-      description: wp.description || 'Điểm tham quan nổi tiếng trong cung đường du lịch miền Trung.',
-      isHidden: wp.isHidden || false,
-    })),
+    mapWaypointsToLocations(trip.waypoints),
   );
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [filterInvalidOnly, setFilterInvalidOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingWaypoint, setEditingWaypoint] = useState<Waypoint | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newLocationForm, setNewLocationForm] = useState<NewLocationForm>({
-    code: `0${locations.length + 1}`,
+    code: `0${(trip.waypoints?.length || 0) + 1}`,
     name: '',
-    lat: '16.0544',
-    lng: '108.2022',
+    lat: '',
+    lng: '',
     category: 'culture',
     openHours: '08:00 - 18:00',
     ticketPrice: '100.000 ₫',
     description: '',
   });
 
+  useEffect(() => {
+    setLocations(mapWaypointsToLocations(trip.waypoints));
+    setEditingWaypoint(null);
+    setConfirmDeleteId(null);
+  }, [trip.id, trip.waypoints]);
+
   const syncLocationsToTrip = async (newLocations: Waypoint[], message?: string) => {
     setLocations(newLocations);
     if (onUpdateTrip) {
-      const updatedTrip: TripData = { ...trip, waypoints: newLocations };
+      const updatedTrip: TripData = {
+        ...trip,
+        waypoints: newLocations,
+        destinationsCount: newLocations.length || trip.totalDays,
+      };
       await onUpdateTrip(updatedTrip, message || 'Đã đồng bộ danh mục địa điểm du lịch!');
     }
   };
@@ -81,12 +78,12 @@ export function usePlanningLocations(
   const handleCreateLocation = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!newLocationForm.name.trim()) {
-      alert('Vui lòng nhập tên địa điểm!');
+      showToast('Vui lòng nhập tên địa điểm!');
       return;
     }
 
-    const lat = Number.parseFloat(newLocationForm.lat) || 16.0;
-    const lng = Number.parseFloat(newLocationForm.lng) || 108.0;
+    const lat = Number.parseFloat(newLocationForm.lat) || 0;
+    const lng = Number.parseFloat(newLocationForm.lng) || 0;
     const newWaypoint: Waypoint = {
       id: `wp-${Date.now()}`,
       code: newLocationForm.code.trim() || `WP-${locations.length + 1}`,
@@ -109,8 +106,8 @@ export function usePlanningLocations(
     setNewLocationForm({
       code: `0${updated.length + 1}`,
       name: '',
-      lat: '16.0544',
-      lng: '108.2022',
+      lat: '',
+      lng: '',
       category: 'culture',
       openHours: '08:00 - 18:00',
       ticketPrice: '100.000 ₫',
@@ -140,7 +137,7 @@ export function usePlanningLocations(
   };
 
   const handleDeleteLocation = async (id: string, name: string) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa địa điểm "${name}" khỏi cơ sở dữ liệu?`)) return;
+    setConfirmDeleteId(null);
     const updated = locations.filter((wp) => wp.id !== id);
     await syncLocationsToTrip(updated, `Đã xóa địa điểm "${name}"`);
     showToast(`Đã xóa địa điểm "${name}"`);
@@ -175,6 +172,8 @@ export function usePlanningLocations(
     setSearchQuery,
     editingWaypoint,
     setEditingWaypoint,
+    confirmDeleteId,
+    setConfirmDeleteId,
     isAddModalOpen,
     setIsAddModalOpen,
     newLocationForm,

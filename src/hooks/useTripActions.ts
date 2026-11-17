@@ -7,8 +7,37 @@ import { clearTripPendingOfflineSync } from '../utils/offlineStorage';
 import { cloneTripForTemplate, findMatchingActivityForWaypoint } from '../utils/tripHelpers';
 import { getTripComparableJson } from '../utils/tripRepository';
 import { countPassengerMembers, isUserTripOwnerOrAdmin } from '../utils/tripJoinHelpers';
-import { AuthSessionError, PayloadTooLargeError, type SingleFlightQueue } from '../utils/tripSyncHelpers';
+import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../utils/tripRouteSync';
+import {
+  AuthSessionError,
+  formatTripDatesRange,
+  parseTripDatesRange,
+  PayloadTooLargeError,
+  type SingleFlightQueue,
+} from '../utils/tripSyncHelpers';
 import { computeTripBudgetSummaryFields, syncBudgetAlertsIntoTrip } from '../utils/budgetAlerts';
+
+const HAS_EXPLICIT_DATE_REGEX =
+  /(\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s*[–—-]\s*\d{1,2}\s*THG\s*\d{1,2})/i;
+
+function resolveTripStartDateIso(tripData: TripData): string | null {
+  if (!HAS_EXPLICIT_DATE_REGEX.test(String(tripData.dates || ''))) {
+    return null;
+  }
+  return parseTripDatesRange(tripData.dates, tripData.totalDays || tripData.days.length || 1).startDate;
+}
+
+function computeUpdatedDatesRange(startDateIso: string, daysCount: number): string {
+  const match = startDateIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  const dt = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Math.max(0, daysCount - 1)),
+  );
+  const endIso = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    dt.getUTCDate(),
+  ).padStart(2, '0')}`;
+  return formatTripDatesRange(startDateIso, endIso);
+}
 
 interface UseTripActionsOptions {
   trip: TripData | null;
@@ -294,18 +323,18 @@ export function useTripActions({
     const allActs = updatedDays.flatMap((d) => d.activities);
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
-    const updatedTrip: TripData = {
+    const updatedTrip = syncTripRouteMetadata({
       ...trip,
       days: updatedDays,
       confirmedActivities: confirmed,
       pendingActivities: pending,
-    };
+    });
     await saveTripToFirestore(updatedTrip, message);
   };
 
   const handleApplyAutoArrangeTrip = async (updatedTrip: TripData, message: string) => {
     if (!ensureTripOwner(updatedTrip)) return;
-    await saveTripToFirestore(updatedTrip, message);
+    await saveTripToFirestore(syncTripRouteMetadata(updatedTrip), message);
   };
 
   const handleOpenAIOptimize = () => {
@@ -358,14 +387,14 @@ export function useTripActions({
       targetDayIndex,
     );
 
-    const updatedBase: TripData = {
+    const updatedBase = syncTripRouteMetadata({
       ...trip,
       alerts: remainingAlerts,
       days: updatedDays,
       aiSavingsEstimate: costSaved || trip.aiSavingsEstimate || '',
       confirmedActivities: confirmed,
       pendingActivities: pending,
-    };
+    });
     const updatedWithBudget: TripData = {
       ...updatedBase,
       ...computeTripBudgetSummaryFields(updatedBase),
@@ -415,13 +444,13 @@ export function useTripActions({
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
-    const updatedDraft: TripData = {
+    const updatedDraft = syncTripRouteMetadata({
       ...trip,
       totalActivities: allActs.length,
       confirmedActivities: confirmed,
       pendingActivities: pending,
       days: updatedDays,
-    };
+    });
     const updatedBase: TripData = {
       ...updatedDraft,
       ...computeTripBudgetSummaryFields(updatedDraft),
@@ -438,22 +467,23 @@ export function useTripActions({
   const handleAddDay = async () => {
     if (!ensureTripOwner(trip)) return;
     const nextDayIndex = trip.days.length > 0 ? Math.max(...trip.days.map((d) => d.dayIndex)) + 1 : 1;
-    const dayNamesCycle = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-    const dayName = dayNamesCycle[(nextDayIndex - 1) % 7];
-    const newDay = {
+    const startDateIso = resolveTripStartDateIso(trip);
+    const calendarMeta = buildCalendarDayMeta(startDateIso || '', nextDayIndex);
+    const newDay: DaySchedule = {
       dayIndex: nextDayIndex,
-      dateLabel: `${dayName} ${nextDayIndex}`,
-      dayName,
-      dateNum: nextDayIndex,
-      fullDate: `Ngày ${nextDayIndex}`,
+      ...calendarMeta,
       confirmedCount: 0,
       pendingCount: 0,
       dispatcherNote: 'Chặng mới được thêm vào lịch trình',
       activities: [],
     };
     const updatedDays = [...trip.days, newDay];
+    const nextDates = startDateIso
+      ? computeUpdatedDatesRange(startDateIso, updatedDays.length) || trip.dates
+      : trip.dates;
     const updatedTrip: TripData = {
       ...trip,
+      dates: nextDates,
       totalDays: updatedDays.length,
       days: updatedDays,
     };
@@ -467,7 +497,7 @@ export function useTripActions({
       showToast('Hành trình cần ít nhất 1 ngày!', 'error');
       return;
     }
-    const updatedDays = trip.days
+    const reindexedDays = trip.days
       .filter((d) => d.dayIndex !== dayIndexToDelete)
       .map((d, idx) => {
         const nextIdx = idx + 1;
@@ -489,6 +519,12 @@ export function useTripActions({
           fullDate: nextFullDate,
         };
       });
+    const startDateIso = resolveTripStartDateIso(trip);
+    const updatedDays = startDateIso ? syncDaysWithStartDate(reindexedDays, startDateIso) : reindexedDays;
+    const nextDates = startDateIso
+      ? computeUpdatedDatesRange(startDateIso, updatedDays.length) || trip.dates
+      : trip.dates;
+
     const deletedDayObj = trip.days.find((d) => d.dayIndex === dayIndexToDelete);
     const deletedActIds = new Set((deletedDayObj?.activities || []).map((a) => a.id));
     const updatedInvoices = (trip.invoices || []).map((inv) => {
@@ -508,8 +544,9 @@ export function useTripActions({
     });
     const allActs = updatedDays.flatMap((d) => d.activities);
 
-    const updatedDraft: TripData = {
+    const updatedDraft = syncTripRouteMetadata({
       ...trip,
+      dates: nextDates,
       totalDays: updatedDays.length,
       days: updatedDays,
       invoices: updatedInvoices,
@@ -517,7 +554,7 @@ export function useTripActions({
       confirmedActivities: allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length,
       pendingActivities: allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
       currentDay: Math.min(currentDayIndex, updatedDays.length),
-    };
+    });
     const updatedBase: TripData = {
       ...updatedDraft,
       ...computeTripBudgetSummaryFields(updatedDraft),
@@ -557,12 +594,12 @@ export function useTripActions({
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
-    const statusDraft: TripData = {
+    const statusDraft = syncTripRouteMetadata({
       ...trip,
       confirmedActivities: confirmed,
       pendingActivities: pending,
       days: updatedDays,
-    };
+    });
     const statusBase: TripData = {
       ...statusDraft,
       ...computeTripBudgetSummaryFields(statusDraft),
@@ -605,14 +642,14 @@ export function useTripActions({
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
-    const deletedDraft: TripData = {
+    const deletedDraft = syncTripRouteMetadata({
       ...trip,
       totalActivities: allActs.length,
       confirmedActivities: confirmed,
       pendingActivities: pending,
       invoices: updatedInvoices,
       days: updatedDays,
-    };
+    });
     const deletedBase: TripData = {
       ...deletedDraft,
       ...computeTripBudgetSummaryFields(deletedDraft),
@@ -641,13 +678,13 @@ export function useTripActions({
     const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
     const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
-    const editedDraft: TripData = {
+    const editedDraft = syncTripRouteMetadata({
       ...trip,
       totalActivities: allActs.length,
       confirmedActivities: confirmed,
       pendingActivities: pending,
       days: updatedDays,
-    };
+    });
     const editedBase: TripData = {
       ...editedDraft,
       ...computeTripBudgetSummaryFields(editedDraft),

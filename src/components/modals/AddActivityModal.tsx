@@ -3,6 +3,7 @@ import { X, Clock, MapPin, Tag, FileText, Plus, DollarSign } from 'lucide-react'
 import { Activity } from '../../types/travel';
 import { validateActivityTimeRange } from '../../utils/tripSyncHelpers';
 import { lookupCoordinates } from '../../utils/vietnamGeo';
+import { PlaceAutocompleteInput, type PlaceCoordinates } from '../common/PlaceAutocompleteInput';
 
 interface AddActivityModalProps {
   isOpen: boolean;
@@ -26,6 +27,9 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [timeStart, setTimeStart] = useState('09:00');
   const [timeEnd, setTimeEnd] = useState('11:00');
   const [location, setLocation] = useState(defaultLocation);
+  const [coordinates, setCoordinates] = useState<PlaceCoordinates | undefined>(() =>
+    defaultLocation ? lookupCoordinates(defaultLocation) ?? undefined : undefined,
+  );
   const [type, setType] = useState<Activity['type']>('sightseeing');
   const [status, setStatus] = useState<Activity['status']>('Đã xác nhận');
   const [details, setDetails] = useState('');
@@ -39,6 +43,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
       setTimeStart('09:00');
       setTimeEnd('11:00');
       setLocation(defaultLocation);
+      setCoordinates(defaultLocation ? lookupCoordinates(defaultLocation) ?? undefined : undefined);
       setType('sightseeing');
       setStatus('Đã xác nhận');
       setDetails('');
@@ -61,7 +66,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     setTimeError(null);
 
     const resolvedLocation = location.trim() || defaultLocation || 'Điểm tham quan';
-    const coords = lookupCoordinates(resolvedLocation) || lookupCoordinates(title.trim());
+    const coords = coordinates || lookupCoordinates(resolvedLocation) || lookupCoordinates(title.trim());
 
     const newActivity: Activity = {
       id: `act-custom-${Date.now()}`,
@@ -96,7 +101,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
           {days && days.length > 1 && (
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Chọn ngày trong hành trình</label>
@@ -173,12 +178,12 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               <MapPin className="w-3.5 h-3.5 text-teal-600" />
               <span>Địa điểm</span>
             </label>
-            <input
-              type="text"
+            <PlaceAutocompleteInput
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChangeText={setLocation}
+              coordinates={coordinates}
+              onChangeCoordinates={setCoordinates}
               placeholder="VD: Nhà hàng Bé Đen, Thị trấn Lăng Cô"
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none"
             />
           </div>
 

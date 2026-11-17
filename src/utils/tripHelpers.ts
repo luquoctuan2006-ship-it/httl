@@ -80,7 +80,7 @@ function hasNonZeroCoordinatePair(lat: unknown, lng: unknown): lat is number {
 /**
  * Quy tắc khớp duy nhất giữa hoạt động và điểm dừng (theo tên địa điểm/tiêu đề hoặc tọa độ thực).
  */
-export function doesActivityMatchWaypoint(activity: Activity, waypoint: Waypoint): boolean {
+function doesActivityMatchWaypoint(activity: Activity, waypoint: Waypoint): boolean {
   const wpName = (waypoint.name || '').trim().toLowerCase();
   const loc = (activity.location || '').trim().toLowerCase();
   const title = (activity.title || '').trim().toLowerCase();

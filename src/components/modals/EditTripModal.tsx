@@ -6,6 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, Calendar, DollarSign, MapPin, Truck, CheckCircle2 } from 'lucide-react';
 import { TripData } from '../../types/travel';
+import { syncDaysWithStartDate, syncTripRouteMetadata } from '../../utils/tripRouteSync';
+import { lookupCoordinates } from '../../utils/vietnamGeo';
+import { PlaceAutocompleteInput, type PlaceCoordinates } from '../common/PlaceAutocompleteInput';
 import {
   formatTripDatesRange,
   parseTripDatesRange,
@@ -17,6 +20,18 @@ interface EditTripModalProps {
   onClose: () => void;
   trip: TripData;
   onSave: (updatedFields: Partial<TripData>) => Promise<void>;
+}
+
+function resolveInitialPlaceCoords(trip: TripData, placeName: string): PlaceCoordinates | undefined {
+  const clean = (placeName || '').trim().toLowerCase();
+  if (clean && Array.isArray(trip.waypoints)) {
+    const wp = trip.waypoints.find((w) => w.name.trim().toLowerCase() === clean);
+    if (wp && (Math.abs(wp.lat) > 0.0001 || Math.abs(wp.lng) > 0.0001)) {
+      return { lat: wp.lat, lng: wp.lng };
+    }
+  }
+  const matched = lookupCoordinates(placeName);
+  return matched ? { lat: matched.lat, lng: matched.lng } : undefined;
 }
 
 export const EditTripModal: React.FC<EditTripModalProps> = ({
@@ -33,7 +48,13 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
   const [dateError, setDateError] = useState<string | null>(null);
   const [status, setStatus] = useState(trip.status);
   const [originFull, setOriginFull] = useState(trip.originFull);
+  const [originCoords, setOriginCoords] = useState<PlaceCoordinates | undefined>(() =>
+    resolveInitialPlaceCoords(trip, trip.originFull),
+  );
   const [destinationFull, setDestinationFull] = useState(trip.destinationFull);
+  const [destinationCoords, setDestinationCoords] = useState<PlaceCoordinates | undefined>(() =>
+    resolveInitialPlaceCoords(trip, trip.destinationFull),
+  );
   const [budgetTotalInput, setBudgetTotalInput] = useState(
     String(Math.round(trip.budgetTotal ?? 0))
   );
@@ -57,7 +78,9 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
       setDateError(null);
       setStatus(trip.status);
       setOriginFull(trip.originFull);
+      setOriginCoords(resolveInitialPlaceCoords(trip, trip.originFull));
       setDestinationFull(trip.destinationFull);
+      setDestinationCoords(resolveInitialPlaceCoords(trip, trip.destinationFull));
       setBudgetTotalInput(String(Math.round(trip.budgetTotal ?? 0)));
       setBudgetError(null);
       setVehicle(trip.vehicle || '');
@@ -98,20 +121,43 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
       const formattedDates = formatTripDatesRange(startDate, endDate) || trip.dates;
       const cleanVehicle = vehicle.trim() || trip.vehicle || '';
       const cleanDriver = driver.trim() || 'Chưa phân công';
+      const cleanOrigin = originFull.trim() || trip.originFull;
+      const cleanDestination = destinationFull.trim() || trip.destinationFull;
+      const syncedDays = syncDaysWithStartDate(trip.days || [], startDate);
+      const draftWithEndpoints: TripData = {
+        ...trip,
+        origin: cleanOrigin.slice(0, 3).toUpperCase(),
+        originFull: cleanOrigin,
+        destination: cleanDestination.slice(0, 3).toUpperCase(),
+        destinationFull: cleanDestination,
+        days: syncedDays,
+      };
+      const routeSynced = syncTripRouteMetadata(draftWithEndpoints, {
+        origin: originCoords || null,
+        destination: destinationCoords || null,
+      });
 
       await onSave({
         title: title.trim() || trip.title,
         code: code.trim().toUpperCase() || trip.code,
         dates: formattedDates,
         status,
-        originFull: originFull.trim() || trip.originFull,
-        destinationFull: destinationFull.trim() || trip.destinationFull,
+        origin: draftWithEndpoints.origin,
+        originFull: cleanOrigin,
+        destination: draftWithEndpoints.destination,
+        destinationFull: cleanDestination,
+        days: syncedDays,
+        waypoints: routeSynced.waypoints,
+        destinationsCount: routeSynced.destinationsCount,
+        totalKm: routeSynced.totalKm,
         budgetTotal,
         budgetRemaining,
         budgetUsedPercent,
         vehicle: cleanVehicle,
         telematics: {
           ...trip.telematics,
+          from: cleanOrigin,
+          to: cleanDestination,
           vehicleType: cleanVehicle,
           driver: cleanDriver,
           driverPhone: driverPhone.trim(),
@@ -173,7 +219,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-mono font-bold text-teal-700 uppercase"
-                placeholder="VN-1024"
+                placeholder="VD: VN-101"
               />
             </div>
           </div>
@@ -246,12 +292,13 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
                 <span>Điểm khởi hành</span>
               </label>
-              <input
-                type="text"
+              <PlaceAutocompleteInput
                 value={originFull}
-                onChange={(e) => setOriginFull(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
+                onChangeText={setOriginFull}
+                coordinates={originCoords}
+                onChangeCoordinates={setOriginCoords}
                 placeholder="Đà Nẵng"
+                inputClassName="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
               />
             </div>
             <div>
@@ -259,12 +306,13 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 <MapPin className="w-3.5 h-3.5 text-teal-600" />
                 <span>Điểm đến chính</span>
               </label>
-              <input
-                type="text"
+              <PlaceAutocompleteInput
                 value={destinationFull}
-                onChange={(e) => setDestinationFull(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
+                onChangeText={setDestinationFull}
+                coordinates={destinationCoords}
+                onChangeCoordinates={setDestinationCoords}
                 placeholder="Huế"
+                inputClassName="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
               />
             </div>
           </div>

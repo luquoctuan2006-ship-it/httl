@@ -1,4 +1,14 @@
 import type { Express, RequestHandler } from 'express';
+import { normalizeVietnameseText, searchLocalPlaces } from '../../utils/vietnamGeo';
+
+export interface GeocodePlaceSuggestion {
+  id: string;
+  name: string;
+  displayName: string;
+  lat: number;
+  lng: number;
+  source: 'local' | 'osm';
+}
 
 export interface RoadRoutePoint {
   lat: number;
@@ -18,12 +28,31 @@ interface CacheEntry {
   legs: RoadRouteLegResult[];
 }
 
+interface GeocodeCacheEntry {
+  expiresAt: number;
+  source: 'osm' | 'local';
+  results: GeocodePlaceSuggestion[];
+}
+
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 200;
 const OSRM_TIMEOUT_MS = 6500;
+const NOMINATIM_TIMEOUT_MS = 5000;
+const NOMINATIM_MIN_INTERVAL_MS = 1050;
 const MAX_POINTS_PER_BATCH = 25;
 
 const routeCache = new Map<string, CacheEntry>();
+const geocodeCache = new Map<string, GeocodeCacheEntry>();
+let nextAllowedNominatimAt = 0;
+
+async function waitForNominatimSlot(): Promise<void> {
+  const now = Date.now();
+  const waitMs = Math.max(0, nextAllowedNominatimAt - now);
+  nextAllowedNominatimAt = Math.max(now, nextAllowedNominatimAt) + NOMINATIM_MIN_INTERVAL_MS;
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
 
 function formatCoordKey(pt: RoadRoutePoint): string {
   return `${pt.lat.toFixed(5)},${pt.lng.toFixed(5)}`;
@@ -192,11 +221,212 @@ export async function computeRoadRouteLegs(
   return { status: 200, source: 'osrm', cached: false, legs: allLegs };
 }
 
+function buildShortNominatimName(rawName: unknown, displayName: string): string {
+  const explicitName = typeof rawName === 'string' ? rawName.trim() : '';
+  if (explicitName) return explicitName.slice(0, 120);
+  const firstSegment = displayName.split(',')[0]?.trim() || displayName.trim();
+  return firstSegment.slice(0, 120);
+}
+
+async function queryNominatim(
+  query: string,
+  countryCode: string | null,
+  fetchImpl: typeof fetch,
+): Promise<{ ok: boolean; results: GeocodePlaceSuggestion[] }> {
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    addressdetails: '1',
+    limit: '6',
+    'accept-language': 'vi',
+    q: query,
+  });
+  if (countryCode) {
+    params.set('countrycodes', countryCode);
+  }
+  const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS);
+
+  try {
+    const response = await fetchImpl(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'VoyagerTravelOps/1.0',
+      },
+    });
+    if (!response.ok) {
+      return { ok: false, results: [] };
+    }
+    const payload = (await response.json()) as unknown;
+    if (!Array.isArray(payload)) {
+      return { ok: false, results: [] };
+    }
+
+    const parsed: GeocodePlaceSuggestion[] = [];
+    for (const rawItem of payload) {
+      if (!rawItem || typeof rawItem !== 'object') continue;
+      const item = rawItem as Record<string, unknown>;
+      const lat = Number(item.lat);
+      const lng = Number(item.lon);
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180 ||
+        (Math.abs(lat) <= 0.0001 && Math.abs(lng) <= 0.0001)
+      ) {
+        continue;
+      }
+
+      const displayName =
+        typeof item.display_name === 'string' && item.display_name.trim()
+          ? item.display_name.trim().slice(0, 220)
+          : `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      const name = buildShortNominatimName(item.name, displayName);
+      const osmId = item.place_id ?? item.osm_id ?? `${lat.toFixed(5)}-${lng.toFixed(5)}`;
+
+      parsed.push({
+        id: `osm-${String(osmId)}`,
+        name,
+        displayName,
+        lat: Number(lat.toFixed(5)),
+        lng: Number(lng.toFixed(5)),
+        source: 'osm',
+      });
+    }
+
+    return { ok: true, results: parsed };
+  } catch (err) {
+    console.warn('[Nominatim Geocoding] Không thể truy vấn OpenStreetMap:', err);
+    return { ok: false, results: [] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function mergeGeocodeSuggestions(
+  osmResults: readonly GeocodePlaceSuggestion[],
+  localResults: readonly GeocodePlaceSuggestion[],
+): GeocodePlaceSuggestion[] {
+  const merged: GeocodePlaceSuggestion[] = [];
+  const addIfUnique = (candidate: GeocodePlaceSuggestion) => {
+    const candidateNorm = normalizeVietnameseText(candidate.name);
+    const duplicate = merged.some(
+      (existing) =>
+        Math.abs(existing.lat - candidate.lat) < 0.001 &&
+        Math.abs(existing.lng - candidate.lng) < 0.001 &&
+        normalizeVietnameseText(existing.name) === candidateNorm,
+    );
+    if (!duplicate) {
+      merged.push(candidate);
+    }
+  };
+
+  for (const item of osmResults) addIfUnique(item);
+  for (const item of localResults) addIfUnique(item);
+  return merged.slice(0, 8);
+}
+
+export async function searchPlaces(
+  rawQuery: unknown,
+  options: { fetchImpl?: typeof fetch; bypassCache?: boolean } = {},
+): Promise<
+  | { status: 200; cached: boolean; source: 'osm' | 'local' | 'fallback'; results: GeocodePlaceSuggestion[] }
+  | { status: 400; error: string }
+> {
+  const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
+  if (query.length < 2 || query.length > 150) {
+    return {
+      status: 400,
+      error: 'Từ khóa tìm kiếm địa điểm phải có từ 2 đến 150 ký tự.',
+    };
+  }
+
+  const cacheKey = normalizeVietnameseText(query) || query.toLowerCase();
+  const now = Date.now();
+  if (!options.bypassCache) {
+    const cached = geocodeCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return {
+        status: 200,
+        cached: true,
+        source: cached.source,
+        results: cached.results,
+      };
+    }
+  }
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const localResults = searchLocalPlaces(query, 4);
+
+  if (!options.fetchImpl) {
+    await waitForNominatimSlot();
+  }
+  const vnSearch = await queryNominatim(query, 'vn', fetchImpl);
+  let osmResults = vnSearch.results;
+  let osmSucceeded = vnSearch.ok;
+
+  if (vnSearch.ok && osmResults.length === 0) {
+    if (!options.fetchImpl) {
+      await waitForNominatimSlot();
+    }
+    const globalSearch = await queryNominatim(query, null, fetchImpl);
+    osmSucceeded = globalSearch.ok;
+    osmResults = globalSearch.results;
+  }
+
+  const merged = mergeGeocodeSuggestions(osmResults, localResults);
+  const source: 'osm' | 'local' | 'fallback' = osmResults.length > 0
+    ? 'osm'
+    : localResults.length > 0
+      ? 'local'
+      : 'fallback';
+
+  if (osmSucceeded && !options.bypassCache) {
+    if (geocodeCache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = geocodeCache.keys().next().value;
+      if (oldestKey) geocodeCache.delete(oldestKey);
+    }
+    geocodeCache.set(cacheKey, {
+      expiresAt: now + CACHE_TTL_MS,
+      source: osmResults.length > 0 ? 'osm' : 'local',
+      results: merged,
+    });
+  }
+
+  return {
+    status: 200,
+    cached: false,
+    source,
+    results: merged,
+  };
+}
+
 export function registerRoutingRoutes(
   app: Express,
-  dependencies: { requireAuth: RequestHandler },
+  dependencies: { requireAuth: RequestHandler; geocodeRateLimiter?: RequestHandler },
 ) {
-  const { requireAuth } = dependencies;
+  const { requireAuth, geocodeRateLimiter } = dependencies;
+  const geocodeMiddlewares: RequestHandler[] = geocodeRateLimiter
+    ? [requireAuth, geocodeRateLimiter]
+    : [requireAuth];
+
+  app.get('/api/routing/geocode', ...geocodeMiddlewares, async (req, res) => {
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    const result = await searchPlaces(query);
+    if (result.status === 400) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    return res.json({
+      success: true,
+      cached: result.cached,
+      source: result.source,
+      results: result.results,
+    });
+  });
 
   app.post('/api/routing/road', requireAuth, async (req, res) => {
     const rawPoints = (req.body as { points?: unknown })?.points;

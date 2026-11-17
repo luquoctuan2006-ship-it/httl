@@ -81,7 +81,7 @@ export function getEndLocation(destination: string): string {
   return parts[parts.length - 1] || 'Hà Nội';
 }
 
-export function formatDateDisplay(dateStr: string): string {
+function formatDateDisplay(dateStr: string): string {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
   if (parts.length === 3) {
@@ -98,7 +98,7 @@ export function getTodayISODate(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function computeEndDateIso(startDateIso: string, totalDays: number): string {
+function computeEndDateIso(startDateIso: string, totalDays: number): string {
   const match = String(startDateIso || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return startDateIso;
   const year = Number(match[1]);
@@ -127,6 +127,7 @@ export function buildDayCalendarMetadata(
   rawTheme?: string,
 ): Pick<DaySchedule, 'dayName' | 'dateNum' | 'dateLabel' | 'fullDate'> {
   const cleanTheme = String(rawTheme || '')
+    .replace(/^(?:CN|T[2-7]),\s*\d{1,2}\/\d{1,2}\/\d{4}\s*(?:•|:|-)?\s*/i, '')
     .replace(/^Ngày\s*\d+\s*[:•–-]?\s*/i, '')
     .trim();
 
@@ -335,10 +336,11 @@ function isUsableCoordinatePair(coords: unknown): coords is { lat: number; lng: 
   return (
     Number.isFinite(lat) &&
     Number.isFinite(lng) &&
-    lat >= 8 &&
-    lat <= 24 &&
-    lng >= 102 &&
-    lng <= 110
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180 &&
+    (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)
   );
 }
 

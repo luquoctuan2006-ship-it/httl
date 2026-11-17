@@ -1,4 +1,5 @@
 import { Edit2, Plus, X } from 'lucide-react';
+import { PlaceAutocompleteInput } from '../../common/PlaceAutocompleteInput';
 import type { ManualPlannerTabProps } from './ManualPlannerTab';
 
 type ManualActivityFormProps = Pick<
@@ -18,6 +19,8 @@ type ManualActivityFormProps = Pick<
   | 'setActTimeEnd'
   | 'actLocation'
   | 'setActLocation'
+  | 'actCoordinates'
+  | 'setActCoordinates'
   | 'actCost'
   | 'setActCost'
   | 'actDetails'
@@ -42,6 +45,8 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
     setActTimeEnd,
     actLocation,
     setActLocation,
+    actCoordinates,
+    setActCoordinates,
     actCost,
     setActCost,
     actDetails,
@@ -117,7 +122,7 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
                         </select>
                       </div>
 
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-4">
                         <label className="block font-bold text-slate-700 mb-1">Giờ bắt đầu</label>
                         <input
                           type="time"
@@ -127,7 +132,7 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
                         />
                       </div>
 
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-4">
                         <label className="block font-bold text-slate-700 mb-1">Giờ kết thúc</label>
                         <input
                           type="time"
@@ -137,18 +142,7 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
                         />
                       </div>
 
-                      <div className="sm:col-span-3">
-                        <label className="block font-bold text-slate-700 mb-1">Địa điểm cụ thể</label>
-                        <input
-                          type="text"
-                          value={actLocation}
-                          onChange={(e) => setActLocation(e.target.value)}
-                          placeholder="VD: Đường 2/4, Vĩnh Phước, Nha Trang"
-                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 bg-white outline-none"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-4">
                         <label className="block font-bold text-slate-700 mb-1">Chi phí dự kiến (VNĐ)</label>
                         <input
                           type="number"
@@ -158,6 +152,18 @@ export function ManualActivityForm(props: ManualActivityFormProps) {
                           onChange={(e) => setActCost(e.target.value === '' ? '' : Number(e.target.value))}
                           placeholder="VD: 500000"
                           className="w-full px-3 py-1.5 rounded-xl border border-slate-300 bg-white font-mono outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-12">
+                        <label className="block font-bold text-slate-700 mb-1">Địa điểm cụ thể</label>
+                        <PlaceAutocompleteInput
+                          value={actLocation}
+                          onChangeText={setActLocation}
+                          coordinates={actCoordinates}
+                          onChangeCoordinates={setActCoordinates}
+                          placeholder="VD: Tháp Bà Ponagar, Nha Trang hoặc tìm địa điểm trên bản đồ"
+                          inputClassName="w-full pl-8 pr-8 py-1.5 rounded-xl border border-slate-300 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600"
                         />
                       </div>
 

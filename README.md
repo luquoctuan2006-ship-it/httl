@@ -55,7 +55,6 @@ Menu quản trị có bốn mục chính: **Tổng quan**, **Quản lý người
    - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` và `VITE_FIREBASE_DATABASE_ID` dùng cho Firebase client. Nếu không đặt, client đọc giá trị trong `firebase-applet-config.json`.
    - `GEMINI_API_KEY` chỉ dùng phía server; không đổi thành `VITE_*` và không đưa vào mã client.
    - Đặt Firebase Admin service account ở `secrets/firebase-service-account.json`, hoặc chỉ định đường dẫn bằng `FIREBASE_SERVICE_ACCOUNT_PATH`.
-   - `VITE_CARTO_API_KEY` là tùy chọn. Bản đồ hiện chỉ dùng lớp đường phố.
    - `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_CACHE_TTL_MS` và `GEMINI_TIMEOUT_MS` là tùy chọn. Mặc định lần lượt là `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `300000` ms và `30000` ms.
 
    Không commit `.env`, service account hoặc dữ liệu runtime trong `data/`. Không chia sẻ API key và thông tin xác thực.

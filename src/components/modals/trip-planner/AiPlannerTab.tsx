@@ -12,12 +12,16 @@ import {
   Wallet,
 } from 'lucide-react';
 
+import { PlaceAutocompleteInput, type PlaceCoordinates } from '../../common/PlaceAutocompleteInput';
+
 type StateSetter<T> = React.Dispatch<React.SetStateAction<T>>;
 
 interface AiPlannerTabProps {
   isActive: boolean;
   aiDestination: string;
   setAiDestination: StateSetter<string>;
+  aiDestinationCoordinates?: PlaceCoordinates;
+  setAiDestinationCoordinates: StateSetter<PlaceCoordinates | undefined>;
   aiDays: number;
   setAiDays: StateSetter<number>;
   aiStartDate: string;
@@ -44,6 +48,8 @@ export function AiPlannerTab(props: AiPlannerTabProps) {
     isActive,
     aiDestination,
     setAiDestination,
+    aiDestinationCoordinates,
+    setAiDestinationCoordinates,
     aiDays,
     setAiDays,
     aiStartDate,
@@ -83,12 +89,13 @@ export function AiPlannerTab(props: AiPlannerTabProps) {
                     <MapPin className="w-3.5 h-3.5 text-teal-600" />
                     <span>Điểm đến du lịch mong muốn</span>
                   </label>
-                  <input
-                    type="text"
+                  <PlaceAutocompleteInput
                     value={aiDestination}
-                    onChange={(e) => setAiDestination(e.target.value)}
+                    onChangeText={setAiDestination}
+                    coordinates={aiDestinationCoordinates}
+                    onChangeCoordinates={setAiDestinationCoordinates}
                     placeholder="VD: Nha Trang, Đà Lạt, Sa Pa, Phú Quốc, Huế..."
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none"
+                    inputClassName="w-full pl-8 pr-8 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none"
                   />
                 </div>
 

@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { MapPin, Clock, Navigation, Car, DollarSign, Plus, CheckCircle2 } from 'lucide-react';
+import { MapPin, Clock, Navigation, DollarSign, Plus, CheckCircle2 } from 'lucide-react';
 import type { TripData } from '../../types/travel';
 import { LocationsTab } from './planning-data/LocationsTab';
 import { HoursTab } from './planning-data/HoursTab';
 import { DistanceTab } from './planning-data/DistanceTab';
-import { VehiclesTab } from './planning-data/VehiclesTab';
 import { CostsTab } from './planning-data/CostsTab';
 import { AddLocationModal } from './planning-data/AddLocationModal';
 import { EditLocationModal } from './planning-data/EditLocationModal';
-import { AddVehicleModal } from './planning-data/AddVehicleModal';
 import { AddCostModal } from './planning-data/AddCostModal';
 import { usePlanningLocations } from './planning-data/usePlanningLocations';
 import { usePlanningResources } from './planning-data/usePlanningResources';
@@ -20,14 +18,13 @@ interface AdminPlanningDataProps {
   onUpdateTrip?: (updatedTrip: TripData, message?: string) => Promise<void>;
 }
 
-type PlanningSubTab = 'locations' | 'hours' | 'distance' | 'vehicles' | 'costs';
+type PlanningSubTab = 'locations' | 'hours' | 'distance' | 'costs';
 
 const planningSubTabs = [
   { id: 'locations', label: '1. Địa điểm du lịch', icon: MapPin },
   { id: 'hours', label: '2. Giờ hoạt động & Định mức', icon: Clock },
   { id: 'distance', label: '3. Khoảng cách & Tuyến đường', icon: Navigation },
-  { id: 'vehicles', label: '4. Phương tiện & Vận hành', icon: Car },
-  { id: 'costs', label: '5. Chi phí tham khảo', icon: DollarSign },
+  { id: 'costs', label: '4. Chi phí tham khảo', icon: DollarSign },
 ] as const;
 
 export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, onUpdateTrip }) => {
@@ -111,10 +108,7 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
       {/* SUBTAB 3: KHOẢNG CÁCH & TUYẾN ĐƯỜNG LIÊN VÙNG */}
       <DistanceTab {...route} locations={locations} activeSubTab={activeSubTab} />
 
-      {/* SUBTAB 4: PHƯƠNG TIỆN & ĐIỀU PHỐI (DYNAMIC TRUY XUẤT TỪ SERVER) */}
-      <VehiclesTab {...resources} activeSubTab={activeSubTab} />
-
-      {/* SUBTAB 5: CHI PHÍ THAM KHẢO & ĐỊNH MỨC (DYNAMIC TỪ LOCATIONS + SERVER) */}
+      {/* SUBTAB 4: CHI PHÍ THAM KHẢO & ĐỊNH MỨC (DYNAMIC TỪ LOCATIONS + SERVER) */}
       <CostsTab {...resources} activeSubTab={activeSubTab} />
 
       {/* Modal: Thêm Địa Điểm Mới */}
@@ -122,9 +116,6 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
 
       {/* Modal: Chỉnh sửa Địa Điểm */}
       <EditLocationModal {...locationData} />
-
-      {/* Modal: Thêm Phương Tiện Mới */}
-      <AddVehicleModal {...resources} />
 
       {/* Modal: Thêm Định Mức Chi Phí Mới */}
       <AddCostModal {...resources} />

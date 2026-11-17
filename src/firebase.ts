@@ -18,7 +18,7 @@ const requiredFirebaseValues = [
   environmentConfig.firestoreDatabaseId,
 ];
 
-export const firebaseAuthConfigured = requiredFirebaseValues.every(Boolean);
+const firebaseAuthConfigured = requiredFirebaseValues.every(Boolean);
 
 const app = firebaseAuthConfigured
   ? getApps().length

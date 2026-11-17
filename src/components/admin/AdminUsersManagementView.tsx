@@ -45,6 +45,7 @@ export const AdminUsersManagementView: React.FC = () => {
     phone: '',
     role: 'Khách du lịch' as ManagedUser['role'],
   });
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -184,7 +185,7 @@ export const AdminUsersManagementView: React.FC = () => {
 
   // Xóa user
   const handleDeleteUser = async (userId: string, name: string) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa tài khoản "${name}" khỏi hệ thống?`)) return;
+    setConfirmDeleteUserId(null);
 
     const previousUsers = [...users];
     setUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -208,7 +209,7 @@ export const AdminUsersManagementView: React.FC = () => {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserForm.name.trim() || !newUserForm.email.trim()) {
-      alert('Vui lòng nhập họ tên và email!');
+      showToast('Vui lòng nhập họ tên và email!');
       return;
     }
 
@@ -471,13 +472,30 @@ export const AdminUsersManagementView: React.FC = () => {
                     {user.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                   </button>
                   {user.email !== 'luquoctuan2006@gmail.com' && (
-                    <button
-                      onClick={() => handleDeleteUser(user.id, user.name)}
-                      title="Xóa tài khoản"
-                      className="p-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 transition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    confirmDeleteUserId === user.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => void handleDeleteUser(user.id, user.name)}
+                          className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition"
+                        >
+                          Xóa
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteUserId(null)}
+                          className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-bold transition"
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteUserId(user.id)}
+                        title="Xóa tài khoản"
+                        className="p-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )
                   )}
                 </div>
               </div>

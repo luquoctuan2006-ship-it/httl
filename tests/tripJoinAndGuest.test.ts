@@ -9,11 +9,16 @@ import {
   generateTripJoinCode,
   guestTripToReadOnlyTripData,
   isUserTripOwnerOrAdmin,
-  isUserTripParticipant,
   isValidJoinCodeFormat,
   normalizeJoinCode,
   sanitizeTripForGuest,
+  sanitizeTripForParticipant,
 } from '../src/utils/tripJoinHelpers';
+import {
+  clearStoredGuestSession,
+  loadStoredGuestSession,
+  saveStoredGuestSession,
+} from '../src/utils/guestSession';
 import {
   canAccessTrip,
   isTripOwnerOrAdmin,
@@ -198,7 +203,6 @@ test('participant HK user can read trip but cannot overwrite full trip via upser
   assert.equal(canAccessTrip(tripDoc, { uid: 'user-b', role: 'user' }), true);
   assert.equal(isTripOwnerOrAdmin(tripDoc, { uid: 'user-b', role: 'user' }), false);
   assert.equal(isUserTripOwnerOrAdmin(tripDoc, 'user-b', 'user'), false);
-  assert.equal(isUserTripParticipant(tripDoc, 'user-b'), true);
 
   const db = createMockDb({ [tripDoc.id]: tripDoc });
 
@@ -299,4 +303,194 @@ test('sanitizeTripForGuest strips financial data, UIDs, AI notes, and passenger 
   assert.equal(readOnlyTrip.budgetTotal, 0);
   assert.deepEqual(readOnlyTrip.aiSuggestions, []);
   assert.equal(readOnlyTrip.days.length, source.days.length);
+});
+
+test('sanitizeTripForParticipant strips financials, hidden waypoints, budget alerts, and other users UIDs while keeping viewer and companion links', () => {
+  const source: TripData = {
+    ...structuredClone(initialTripData),
+    id: 'trip-part-1',
+    ownerId: 'user-a',
+    participantUids: ['user-b', 'user-c'],
+    budgetTotal: 90000000,
+    budgetUsed: 30000000,
+    budgetRemaining: 60000000,
+    budgetUsedPercent: 33,
+    invoices: [
+      { id: 'inv-secret', title: 'Hotel Invoice', category: 'hotel', amount: 12000000, date: '2026-06-01' },
+    ],
+    customCategoryAllocations: { hotel: 40000000 },
+    aiSuggestions: [
+      {
+        id: 'ai-cost-1',
+        title: 'Internal AI cost tip',
+        badge: 'Chi phí',
+        description: 'Gợi ý tối ưu chi phí nội bộ',
+      },
+    ],
+    aiSavingsEstimate: '5.000.000 ₫',
+    aiConfidence: '92%',
+    waypoints: [
+      { id: 'wp-vis', code: 'WP1', name: 'Điểm công khai', lat: 10.7, lng: 106.6, xPercent: 20, yPercent: 30, status: 'pending' },
+      { id: 'wp-hid', code: 'WP2', name: 'Điểm nội bộ', lat: 10.8, lng: 106.7, xPercent: 40, yPercent: 50, status: 'pending', isHidden: true },
+    ],
+    alerts: [
+      {
+        id: 'alert-budget-1',
+        title: 'Vượt ngân sách',
+        description: 'Chi phí vượt 10%',
+        severity: 'warning',
+        category: 'budget',
+        timeAgo: '09:00',
+      },
+      {
+        id: 'alert-weather-1',
+        title: 'Cảnh báo mưa',
+        description: 'Mưa nhẹ buổi chiều',
+        severity: 'info',
+        category: 'weather',
+        timeAgo: '14:00',
+      },
+    ],
+    members: [
+      {
+        id: 'mem-owner',
+        name: 'Trưởng đoàn A',
+        avatar: 'TA',
+        role: 'Trưởng đoàn',
+        phone: '0901111111',
+        status: 'online',
+        attendanceStatus: 'Có mặt',
+        uid: 'user-a',
+        memberType: 'account',
+      },
+      {
+        id: 'mem-viewer',
+        name: 'Thành viên B',
+        avatar: 'TB',
+        role: 'Khách du lịch',
+        phone: '0902222222',
+        status: 'online',
+        attendanceStatus: 'Có mặt',
+        uid: 'user-b',
+        memberType: 'account',
+      },
+      {
+        id: 'mem-other',
+        name: 'Thành viên C',
+        avatar: 'TC',
+        role: 'Khách du lịch',
+        phone: '0903333333',
+        status: 'online',
+        attendanceStatus: 'Có mặt',
+        uid: 'user-c',
+        memberType: 'account',
+      },
+      {
+        id: 'mem-guest-b',
+        name: 'Bé Bi (người thân B)',
+        avatar: 'BB',
+        role: 'Khách du lịch',
+        phone: '',
+        status: 'online',
+        attendanceStatus: 'Chưa điểm danh',
+        memberType: 'guest',
+        invitedByUid: 'user-b',
+        invitedByName: 'Thành viên B',
+      },
+      {
+        id: 'mem-guest-c',
+        name: 'Người thân C',
+        avatar: 'NC',
+        role: 'Khách du lịch',
+        phone: '',
+        status: 'online',
+        attendanceStatus: 'Chưa điểm danh',
+        memberType: 'guest',
+        invitedByUid: 'user-c',
+        invitedByName: 'Thành viên C',
+      },
+    ],
+  };
+
+  const sanitized = sanitizeTripForParticipant(source, 'user-b');
+  const rawJson = JSON.stringify(sanitized);
+
+  // Financials & internal fields are zeroed or stripped
+  assert.equal(sanitized.budgetTotal, 0);
+  assert.equal(sanitized.budgetUsed, 0);
+  assert.equal(sanitized.budgetRemaining, 0);
+  assert.equal(sanitized.budgetUsedPercent, 0);
+  assert.equal((sanitized as unknown as Record<string, unknown>).invoices, undefined);
+  assert.equal((sanitized as unknown as Record<string, unknown>).customCategoryAllocations, undefined);
+  assert.equal((sanitized as unknown as Record<string, unknown>).participantUids, undefined);
+  assert.deepEqual(sanitized.aiSuggestions, []);
+  assert.equal(sanitized.aiSavingsEstimate, '');
+  assert.equal(sanitized.aiConfidence, '');
+  assert.equal(rawJson.includes('Hotel Invoice'), false);
+  assert.equal(rawJson.includes('Internal AI cost tip'), false);
+
+  // Activity costs stripped
+  const firstAct = sanitized.days[0]?.activities[0];
+  assert.ok(firstAct);
+  assert.equal((firstAct as unknown as Record<string, unknown>).cost, undefined);
+
+  // Hidden waypoints & budget alerts filtered out while public/weather alerts stay
+  assert.deepEqual(sanitized.waypoints.map((w) => w.id), ['wp-vis']);
+  assert.deepEqual(sanitized.alerts.map((a) => a.id), ['alert-weather-1']);
+
+  // ownerId stays intact for client isTripOwner check, other UIDs are stripped
+  assert.equal(sanitized.ownerId, 'user-a');
+  assert.equal(sanitized.members.find((m) => m.id === 'mem-owner')?.uid, undefined);
+  assert.equal(sanitized.members.find((m) => m.id === 'mem-other')?.uid, undefined);
+  assert.equal(sanitized.members.find((m) => m.id === 'mem-guest-c')?.invitedByUid, undefined);
+
+  // Viewer's own uid and viewer's invited companion link are preserved
+  assert.equal(sanitized.members.find((m) => m.id === 'mem-viewer')?.uid, 'user-b');
+  assert.equal(sanitized.members.find((m) => m.id === 'mem-guest-b')?.invitedByUid, 'user-b');
+});
+
+test('guestSession persists and clears sanitized trip data in localStorage for offline PWA resume', () => {
+  const makeStorage = () => {
+    const map = new Map<string, string>();
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        map.set(k, v);
+      },
+      removeItem: (k: string) => {
+        map.delete(k);
+      },
+    };
+  };
+
+  const prevWindow = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = {
+    localStorage: makeStorage(),
+    sessionStorage: makeStorage(),
+  };
+
+  try {
+    const guestTrip = sanitizeTripForGuest({
+      ...structuredClone(initialTripData),
+      id: 'trip-guest-offline',
+      joinCode: 'OFF123',
+    });
+    saveStoredGuestSession('off123', 'Nguyễn Khách', guestTrip);
+
+    const loaded = loadStoredGuestSession();
+    assert.ok(loaded);
+    assert.equal(loaded.joinCode, 'OFF123');
+    assert.equal(loaded.guestName, 'Nguyễn Khách');
+    assert.equal(loaded.trip?.id, 'trip-guest-offline');
+    assert.ok(typeof loaded.cachedAt === 'string' && loaded.cachedAt.length > 0);
+
+    clearStoredGuestSession();
+    assert.equal(loadStoredGuestSession(), null);
+  } finally {
+    if (prevWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window;
+    } else {
+      (globalThis as { window?: unknown }).window = prevWindow;
+    }
+  }
 });

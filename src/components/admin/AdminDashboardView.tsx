@@ -30,8 +30,8 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
   onOpenAIOptimize,
 }) => {
   const [timeframe, setTimeframe] = useState<'day' | 'week' | 'month'>('week');
-  const [activeModel, setActiveModel] = useState<string>('gemini-3.8-flash');
-  const [userCount, setUserCount] = useState({ total: 6, active: 5, locked: 1 });
+  const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash');
+  const [userCount, setUserCount] = useState({ total: 0, active: 0, locked: 0 });
   const [aiMetrics, setAiMetrics] = useState({ totalCalls: 0, successRate: 100, failedCalls: 0 });
 
   // Load stats from server if available
@@ -101,56 +101,39 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
     return combinedTrips.reduce((acc, t) => acc + (t.isSummary ? t.totalDays || 0 : t.days?.length || 0), 0);
   }, [combinedTrips]);
 
-  // Chart data based on timeframe dynamically computed from real counts
+  // Chart data computed from real counts without inflating empty values
   const chartBars = useMemo(() => {
     const totalAi = aiMetrics.totalCalls;
     const totalUsers = userCount.total;
+    const labels =
+      timeframe === 'day'
+        ? ['06h', '09h', '12h', '15h', '18h', '21h']
+        : timeframe === 'month'
+          ? ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4']
+          : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
-    if (timeframe === 'day') {
-      const labels = ['06h', '09h', '12h', '15h', '18h', '21h'];
-      const maxVal = Math.max(totalAi, totalUsers, 1);
-      const weights = [0.1, 0.3, 0.2, 0.25, 0.1, 0.05];
-      return labels.map((label, idx) => {
-        const aiCount = Math.round(totalAi * weights[idx]);
-        const uCount = Math.round(totalUsers * weights[idx]);
-        const hVal = Math.min(100, Math.max(8, Math.round(((aiCount + uCount) / maxVal) * 85)));
-        return {
-          label,
-          ai: aiCount,
-          users: uCount,
-          height: `${hVal}%`,
-        };
-      });
-    }
-    if (timeframe === 'month') {
-      const labels = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'];
-      const maxVal = Math.max(totalAi, totalUsers, 1);
-      const weights = [0.2, 0.35, 0.3, 0.15];
-      return labels.map((label, idx) => {
-        const aiCount = Math.round(totalAi * weights[idx]);
-        const uCount = Math.round(totalUsers * weights[idx]);
-        const hVal = Math.min(100, Math.max(8, Math.round(((aiCount + uCount) / maxVal) * 85)));
-        return {
-          label,
-          ai: aiCount,
-          users: uCount,
-          height: `${hVal}%`,
-        };
-      });
-    }
-    // Week
-    const labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-    const maxVal = Math.max(totalAi, totalUsers, 1);
-    const weights = [0.12, 0.18, 0.25, 0.15, 0.15, 0.1, 0.05];
+    const distributeCounts = (total: number, count: number): number[] => {
+      if (total <= 0) return Array.from({ length: count }, () => 0);
+      const base = Math.floor(total / count);
+      const remainder = total % count;
+      return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+    };
+
+    const aiSeries = distributeCounts(totalAi, labels.length);
+    const userSeries = distributeCounts(totalUsers, labels.length);
+    const maxVal = Math.max(...aiSeries, ...userSeries, 1);
+
     return labels.map((label, idx) => {
-      const aiCount = Math.round(totalAi * weights[idx]);
-      const uCount = Math.round(totalUsers * weights[idx]);
-      const hVal = Math.min(100, Math.max(8, Math.round(((aiCount + uCount) / maxVal) * 85)));
+      const aiCount = aiSeries[idx];
+      const uCount = userSeries[idx];
+      const aiHeight = aiCount === 0 ? 4 : Math.min(100, Math.max(12, Math.round((aiCount / maxVal) * 85)));
+      const userHeight = uCount === 0 ? 4 : Math.min(100, Math.max(12, Math.round((uCount / maxVal) * 85)));
       return {
         label,
         ai: aiCount,
         users: uCount,
-        height: `${hVal}%`,
+        height: `${aiHeight}%`,
+        userHeight: `${userHeight}%`,
       };
     });
   }, [timeframe, aiMetrics.totalCalls, userCount.total]);
@@ -341,7 +324,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
                     </span>
                   </div>
                   <div
-                    style={{ height: `calc(${bar.height} * 0.8)` }}
+                    style={{ height: bar.userHeight }}
                     className="w-1/2 rounded-t-lg bg-sky-500/70 group-hover:bg-sky-400 transition-all relative"
                   >
                     <span className="opacity-0 group-hover:opacity-100 transition absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-800 text-[10px] text-sky-300 font-bold px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap z-10">

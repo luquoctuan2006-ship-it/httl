@@ -1,6 +1,6 @@
 import type { Express, Request, RequestHandler } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import type { ReferenceCostRecord, SystemConfig, VehicleRecord } from '../types/systemConfig';
+import type { ReferenceCostRecord, SystemConfig } from '../types/systemConfig';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 
@@ -8,7 +8,6 @@ interface FleetRouteDependencies {
   requireAuth: RequestHandler;
   requireAdmin: RequestHandler;
   getSystemConfig: () => SystemConfig;
-  getVehicles: () => VehicleRecord[];
   getReferenceCosts: () => ReferenceCostRecord[];
   setSystemConfig: (config: SystemConfig) => void;
   syncSystemConfigIfStale: () => Promise<void>;
@@ -21,126 +20,13 @@ export function registerFleetRoutes(app: Express, dependencies: FleetRouteDepend
     requireAuth,
     requireAdmin,
     getSystemConfig,
-    getVehicles,
     getReferenceCosts,
     setSystemConfig,
     syncSystemConfigIfStale,
     saveSystemConfig,
     recordAuditLog,
   } = dependencies;
-  // ==================== VEHICLES MANAGEMENT ====================
-  // Danh sách đội xe dùng cho cả điều phối viên & người dùng tạo/gán xe vào chuyến đi
-  app.get('/api/vehicles', requireAuth, async (_req, res) => {
-    await syncSystemConfigIfStale();
-    return res.json({
-      success: true,
-      vehicles: getVehicles(),
-    });
-  });
-  
-  app.get('/api/admin/vehicles', requireAuth, requireAdmin, async (_req, res) => {
-    await syncSystemConfigIfStale();
-    return res.json({
-      success: true,
-      vehicles: getVehicles(),
-    });
-  });
-  
-  app.post('/api/admin/vehicles', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
-    const { type, speedAvg, capacity, consumption, status } = req.body;
-    if (!type) {
-      return res.status(400).json({ success: false, error: 'Thiếu loại phương tiện' });
-    }
-  
-    const newVeh: VehicleRecord = {
-      id: `veh-${Date.now()}`,
-      type: String(type).trim().slice(0, 100),
-      speedAvg: String(speedAvg || '45 km/h').trim().slice(0, 30),
-      capacity: String(capacity || '16 khách').trim().slice(0, 30),
-      consumption: String(consumption || '12L / 100km').trim().slice(0, 30),
-      status: status || 'Sẵn sàng điều phối',
-    };
-  
-    const nextVehicles = [newVeh, ...getVehicles()];
-    const nextConfig: SystemConfig = { ...getSystemConfig(), vehicles: nextVehicles };
-    try {
-      await saveSystemConfig(nextConfig);
-    } catch (err) {
-      console.error('[Vehicles] Failed to persist to Firestore:', err);
-      return res.status(503).json({ success: false, error: 'Không thể lưu danh sách xe vào Firestore' });
-    }
-  
-    setSystemConfig(nextConfig);
-    recordAuditLog(req.authUser?.email || 'Admin', `Thêm phương tiện mới: ${newVeh.type} (${newVeh.capacity})`);
-  
-    return res.json({
-      success: true,
-      vehicle: newVeh,
-      vehicles: getVehicles(),
-    });
-  });
-  
-  app.patch('/api/admin/vehicles/:vehicleId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
-    const { vehicleId } = req.params;
-    const idx = getVehicles().findIndex((v) => v.id === vehicleId);
-    if (idx === -1) {
-      return res.status(404).json({ success: false, error: 'Không tìm thấy phương tiện' });
-    }
-  
-    const { type, speedAvg, capacity, consumption, status } = req.body;
-    const updatedVeh: VehicleRecord = {
-      ...getVehicles()[idx],
-      ...(type ? { type: String(type).trim().slice(0, 100) } : {}),
-      ...(speedAvg ? { speedAvg: String(speedAvg).trim().slice(0, 30) } : {}),
-      ...(capacity ? { capacity: String(capacity).trim().slice(0, 30) } : {}),
-      ...(consumption ? { consumption: String(consumption).trim().slice(0, 30) } : {}),
-      ...(status ? { status } : {}),
-    };
-  
-    const nextVehicles = getVehicles().map((v, i) => (i === idx ? updatedVeh : v));
-    const nextConfig: SystemConfig = { ...getSystemConfig(), vehicles: nextVehicles };
-    try {
-      await saveSystemConfig(nextConfig);
-    } catch (err) {
-      console.error('[Vehicles] Failed to update in Firestore:', err);
-      return res.status(503).json({ success: false, error: 'Không thể cập nhật phương tiện vào Firestore' });
-    }
-  
-    setSystemConfig(nextConfig);
-    recordAuditLog(req.authUser?.email || 'Admin', `Cập nhật thông số phương tiện: ${updatedVeh.type} - Trạng thái: ${updatedVeh.status}`);
-  
-    return res.json({
-      success: true,
-      vehicle: updatedVeh,
-      vehicles: getVehicles(),
-    });
-  });
-  
-  app.delete('/api/admin/vehicles/:vehicleId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
-    const { vehicleId } = req.params;
-    const target = getVehicles().find((v) => v.id === vehicleId);
-    if (!target) {
-      return res.status(404).json({ success: false, error: 'Không tìm thấy phương tiện' });
-    }
-  
-    const nextVehicles = getVehicles().filter((v) => v.id !== vehicleId);
-    const nextConfig: SystemConfig = { ...getSystemConfig(), vehicles: nextVehicles };
-    try {
-      await saveSystemConfig(nextConfig);
-    } catch (err) {
-      console.error('[Vehicles] Failed to delete in Firestore:', err);
-      return res.status(503).json({ success: false, error: 'Không thể xóa phương tiện khỏi Firestore' });
-    }
-  
-    setSystemConfig(nextConfig);
-    recordAuditLog(req.authUser?.email || 'Admin', `Xóa phương tiện: ${target.type}`);
-  
-    return res.json({
-      success: true,
-      vehicles: getVehicles(),
-    });
-  });
-  
+
   // ==================== REFERENCE COSTS MANAGEMENT ====================
   app.get('/api/admin/reference-costs', requireAuth, requireAdmin, async (_req, res) => {
     await syncSystemConfigIfStale();

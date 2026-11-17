@@ -153,15 +153,6 @@ test('Authorization (real upsertTripForUser): another non-admin user is forbidde
   assert.equal(attackRes.status, 'forbidden');
 });
 
-// Admin validation schema tests
-function validateVehicle(v: unknown): boolean {
-  if (!v || typeof v !== 'object') return false;
-  const item = v as Record<string, unknown>;
-  const id = typeof item.id === 'string' && item.id.trim();
-  const type = typeof item.type === 'string' && item.type.trim();
-  return Boolean(id && type);
-}
-
 function validateCost(c: unknown): boolean {
   if (!c || typeof c !== 'object') return false;
   const item = c as Record<string, unknown>;
@@ -171,12 +162,7 @@ function validateCost(c: unknown): boolean {
   return Boolean(id && name && price);
 }
 
-test('Admin config: validates vehicles and referenceCosts schema', () => {
-  assert.equal(validateVehicle({ id: 'veh-1', type: 'Xe 29 chỗ' }), true);
-  assert.equal(validateVehicle({ id: '', type: 'Xe 29 chỗ' }), false);
-  assert.equal(validateVehicle({ id: 'veh-1', type: '' }), false);
-  assert.equal(validateVehicle(null), false);
-
+test('Admin config: validates referenceCosts schema', () => {
   assert.equal(validateCost({ id: 'cost-1', item: 'Vé Bà Nà', price: '1.250.000 đ' }), true);
   assert.equal(validateCost({ id: 'cost-1', item: '', price: '1.250.000 đ' }), false);
   assert.equal(validateCost({ id: 'cost-1', item: 'Vé Bà Nà', price: '' }), false);

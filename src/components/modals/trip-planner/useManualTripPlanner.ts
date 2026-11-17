@@ -1,7 +1,10 @@
 import React, { useState, type Dispatch, type SetStateAction } from 'react';
 import type { Activity, DaySchedule, TripData } from '../../../types/travel';
 import { autoArrangeDayActivities } from '../../../utils/scheduleAutoArranger';
-import { getTodayISODate, resolveActivityCoordinatesWithFallback, type TripCreatorOwner } from './helpers';
+import { syncDaysWithStartDate } from '../../../utils/tripRouteSync';
+import { lookupCoordinates } from '../../../utils/vietnamGeo';
+import type { PlaceCoordinates } from '../../common/PlaceAutocompleteInput';
+import { buildDayCalendarMetadata, getTodayISODate, resolveActivityCoordinatesWithFallback, type TripCreatorOwner } from './helpers';
 import { buildManualTrip } from './buildManualTrip';
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
@@ -15,42 +18,19 @@ interface UseManualTripPlannerOptions {
   setIsSaving: StateSetter<boolean>;
 }
 
-function createInitialManualDays(): DaySchedule[] {
-  return [
-    {
-      dayIndex: 1,
-      dateLabel: 'Ngày 1',
-      dayName: 'N1',
-      dateNum: 1,
-      fullDate: 'Ngày 1: Khởi hành & Tham quan',
+function createInitialManualDays(startDateIso: string): DaySchedule[] {
+  const themes = ['Khởi hành & Tham quan', 'Trải nghiệm thực tế', 'Mua sắm & Kết thúc'];
+  return themes.map((theme, idx) => {
+    const dayIndex = idx + 1;
+    return {
+      dayIndex,
+      ...buildDayCalendarMetadata(startDateIso, dayIndex, theme),
       confirmedCount: 0,
       pendingCount: 0,
       dispatcherNote: '',
       activities: [],
-    },
-    {
-      dayIndex: 2,
-      dateLabel: 'Ngày 2',
-      dayName: 'N2',
-      dateNum: 2,
-      fullDate: 'Ngày 2: Trải nghiệm thực tế',
-      confirmedCount: 0,
-      pendingCount: 0,
-      dispatcherNote: '',
-      activities: [],
-    },
-    {
-      dayIndex: 3,
-      dateLabel: 'Ngày 3',
-      dayName: 'N3',
-      dateNum: 3,
-      fullDate: 'Ngày 3: Mua sắm & Kết thúc',
-      confirmedCount: 0,
-      pendingCount: 0,
-      dispatcherNote: '',
-      activities: [],
-    },
-  ];
+    };
+  });
 }
 
 function generateRandomTripCode(): string {
@@ -65,16 +45,26 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
   const [tripTitle, setTripTitle] = useState('');
   const [tripCode, setTripCode] = useState(generateRandomTripCode);
   const [origin, setOrigin] = useState('');
+  const [originCoordinates, setOriginCoordinates] = useState<PlaceCoordinates | undefined>(undefined);
   const [destination, setDestination] = useState('');
-  const [startDate, setStartDate] = useState(getTodayISODate());
+  const [destinationCoordinates, setDestinationCoordinates] = useState<PlaceCoordinates | undefined>(undefined);
+  const [startDate, setStartDateState] = useState(getTodayISODate);
   const [totalDays, setTotalDays] = useState(3);
   const [vehicle, setVehicle] = useState('Xe 29 chỗ tiêu chuẩn');
   const [membersCount, setMembersCount] = useState(15);
   const [budgetEstimated, setBudgetEstimated] = useState<number | ''>('');
 
   // Danh sách các ngày trong lịch trình thủ công
-  const [manualDays, setManualDays] = useState<DaySchedule[]>(createInitialManualDays);
+  const [manualDays, setManualDays] = useState<DaySchedule[]>(() => createInitialManualDays(getTodayISODate()));
   const [activeDayIndex, setActiveDayIndex] = useState(1);
+
+  const setStartDate: StateSetter<string> = (nextVal) => {
+    setStartDateState((prevStart) => {
+      const resolved = typeof nextVal === 'function' ? nextVal(prevStart) : nextVal;
+      setManualDays((prevDays) => syncDaysWithStartDate(prevDays, resolved));
+      return resolved;
+    });
+  };
 
   // State thêm / sửa hoạt động trong ngày
   const [isActivityFormOpen, setIsActivityFormOpen] = useState(false);
@@ -83,6 +73,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
   const [actTimeStart, setActTimeStart] = useState('08:00');
   const [actTimeEnd, setActTimeEnd] = useState('09:30');
   const [actLocation, setActLocation] = useState('');
+  const [actCoordinates, setActCoordinates] = useState<PlaceCoordinates | undefined>(undefined);
   const [actType, setActType] = useState<Activity['type']>('sightseeing');
   const [actCost, setActCost] = useState<number | ''>('');
   const [actDetails, setActDetails] = useState('');
@@ -99,10 +90,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
         for (let i = prev.length + 1; i <= validCount; i++) {
           added.push({
             dayIndex: i,
-            dateLabel: `Ngày ${i}`,
-            dayName: `N${i}`,
-            dateNum: i,
-            fullDate: `Ngày ${i}: Lịch trình chi tiết`,
+            ...buildDayCalendarMetadata(startDate, i, 'Lịch trình chi tiết'),
             confirmedCount: 0,
             pendingCount: 0,
             dispatcherNote: '',
@@ -138,7 +126,11 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
       setActTimeStart('08:00');
       setActTimeEnd('09:30');
     }
-    setActLocation(destination || '');
+    const defaultLoc = destination || '';
+    setActLocation(defaultLoc);
+    setActCoordinates(
+      destinationCoordinates ?? (defaultLoc ? lookupCoordinates(defaultLoc) ?? undefined : undefined),
+    );
     setActType('sightseeing');
     setActCost('');
     setActDetails('');
@@ -153,6 +145,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
     setActTimeStart(act.timeStart);
     setActTimeEnd(act.timeEnd);
     setActLocation(act.location);
+    setActCoordinates(act.coordinates);
     setActType(act.type || 'sightseeing');
     setActCost(act.cost || '');
     setActDetails(act.details || '');
@@ -188,7 +181,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
 
     const costNum = typeof actCost === 'number' ? actCost : Number(actCost) || 0;
     const cleanActLocation = actLocation.trim() || destination || 'Điểm tham quan';
-    const resolvedCoords = resolveActivityCoordinatesWithFallback(cleanActLocation, cleanTitle);
+    const resolvedCoords = resolveActivityCoordinatesWithFallback(cleanActLocation, cleanTitle, actCoordinates);
 
     setManualDays((prevDays) =>
       prevDays.map((day) => {
@@ -199,8 +192,6 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
           // Cập nhật
           updatedActivities = day.activities.map((a) => {
             if (a.id !== editingActivityId) return a;
-            const locationUnchanged = (a.location || '').trim().toLowerCase() === cleanActLocation.toLowerCase();
-            const nextCoords = resolvedCoords || (locationUnchanged ? a.coordinates : undefined);
             const { coordinates: _oldCoords, ...restAct } = a;
             return {
               ...restAct,
@@ -211,7 +202,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
               type: actType,
               cost: costNum,
               details: actDetails.trim(),
-              ...(nextCoords ? { coordinates: nextCoords } : {}),
+              ...(resolvedCoords ? { coordinates: resolvedCoords } : {}),
             };
           });
         } else {
@@ -298,10 +289,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
       ...prev,
       {
         dayIndex: nextIdx,
-        dateLabel: `Ngày ${nextIdx}`,
-        dayName: `N${nextIdx}`,
-        dateNum: nextIdx,
-        fullDate: `Ngày ${nextIdx}: Lịch trình bổ sung`,
+        ...buildDayCalendarMetadata(startDate, nextIdx, 'Lịch trình bổ sung'),
         confirmedCount: 0,
         pendingCount: 0,
         dispatcherNote: '',
@@ -319,13 +307,14 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
       return;
     }
     const filtered = manualDays.filter((d) => d.dayIndex !== idxToDelete);
-    const reindexed = filtered.map((d, i) => ({
-      ...d,
-      dayIndex: i + 1,
-      dateLabel: `Ngày ${i + 1}`,
-      dayName: `N${i + 1}`,
-      dateNum: i + 1,
-    }));
+    const reindexed = filtered.map((d, i) => {
+      const nextIdx = i + 1;
+      return {
+        ...d,
+        dayIndex: nextIdx,
+        ...buildDayCalendarMetadata(startDate, nextIdx, d.fullDate),
+      };
+    });
     setManualDays(reindexed);
     setTotalDays(reindexed.length);
     setActiveDayIndex((prev) => (prev > reindexed.length ? reindexed.length : prev));
@@ -339,19 +328,24 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
   const totalActivitiesCount = manualDays.reduce((sum, d) => sum + d.activities.length, 0);
 
   const resetManualForm = () => {
+    const freshToday = getTodayISODate();
     setTripTitle('');
     setTripCode(generateRandomTripCode());
     setOrigin('');
+    setOriginCoordinates(undefined);
     setDestination('');
-    setStartDate(getTodayISODate());
+    setDestinationCoordinates(undefined);
+    setStartDateState(freshToday);
     setTotalDays(3);
     setVehicle('Xe 29 chỗ tiêu chuẩn');
     setMembersCount(15);
     setBudgetEstimated('');
-    setManualDays(createInitialManualDays());
+    setManualDays(createInitialManualDays(freshToday));
     setActiveDayIndex(1);
     setIsActivityFormOpen(false);
     setEditingActivityId(null);
+    setActLocation('');
+    setActCoordinates(undefined);
     setActFormError(null);
   };
 
@@ -371,7 +365,9 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
         tripTitle,
         tripCode,
         origin,
+        originCoordinates,
         destination,
+        destinationCoordinates,
         startDate,
         totalDays,
         vehicle,
@@ -393,14 +389,17 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
   };
 
   return {
-    tripTitle, setTripTitle, tripCode, setTripCode, origin, setOrigin, destination, setDestination,
+    tripTitle, setTripTitle, tripCode, setTripCode,
+    origin, setOrigin, originCoordinates, setOriginCoordinates,
+    destination, setDestination, destinationCoordinates, setDestinationCoordinates,
     startDate, setStartDate, totalDays, onUpdateTotalDays: handleUpdateTotalDays, vehicle, setVehicle,
     membersCount, setMembersCount, budgetEstimated, setBudgetEstimated, manualDays, activeDayIndex,
     setActiveDayIndex, currentDay, onAddNewDay: handleAddNewDay, onDeleteActiveDay: handleDeleteActiveDay,
     onAutoArrangeCurrentDay: handleAutoArrangeCurrentDay, onOpenAddActivity: handleOpenAddActivity,
     isActivityFormOpen, setIsActivityFormOpen, onSaveActivity: handleSaveActivity, actFormError,
     editingActivityId, actTitle, setActTitle, actType, setActType, actTimeStart, setActTimeStart,
-    actTimeEnd, setActTimeEnd, actLocation, setActLocation, actCost, setActCost, actDetails, setActDetails,
+    actTimeEnd, setActTimeEnd, actLocation, setActLocation, actCoordinates, setActCoordinates,
+    actCost, setActCost, actDetails, setActDetails,
     setManualDays, onEditActivity: handleOpenEditActivity, onDeleteActivity: handleDeleteActivity,
     totalActivitiesCount, totalCalculatedCost, onApplyTraditionalSchedule: handleApplyTraditionalSchedule,
   };

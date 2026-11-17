@@ -950,7 +950,7 @@ export function UserDashboard({
             <ActivityDetailModal
               activity={selectedActivity}
               onClose={() => setSelectedActivity(null)}
-              onUpdateStatus={handleUpdateActivityStatus}
+              onUpdateStatus={isTripOwner ? handleUpdateActivityStatus : undefined}
               onDeleteActivity={isTripOwner ? handleDeleteActivity : undefined}
               onEditActivity={isTripOwner ? handleEditActivity : undefined}
               canEdit={isTripOwner}

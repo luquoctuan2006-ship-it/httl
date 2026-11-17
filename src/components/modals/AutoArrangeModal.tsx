@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Sparkles,
@@ -13,6 +13,7 @@ import {
   Calendar,
   Layers,
   Sliders,
+  Route,
 } from 'lucide-react';
 import { DaySchedule, TripData } from '../../types/travel';
 import {
@@ -20,6 +21,8 @@ import {
   autoArrangeEntireTrip,
   detectDayScheduleConflicts,
 } from '../../utils/scheduleAutoArranger';
+import { buildAIPlanWaypoints, isLegacyHashedCoordinate } from '../../utils/vietnamGeo';
+import { fetchRealOsrmRouteSummary } from '../dashboard/live-route-map/useRoadRouting';
 
 interface AutoArrangeModalProps {
   isOpen: boolean;
@@ -40,27 +43,84 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
 }) => {
   const [scope, setScope] = useState<'day' | 'trip'>('day');
   const [bufferMinutes, setBufferMinutes] = useState<number>(20);
+  const [optimizeRouteOrder, setOptimizeRouteOrder] = useState<boolean>(true);
   const [isApplying, setIsApplying] = useState<boolean>(false);
+
+  const dayResult = useMemo(
+    () => autoArrangeDay(currentDay, bufferMinutes, { optimizeRouteOrder }),
+    [currentDay, bufferMinutes, optimizeRouteOrder],
+  );
+  const conflicts = useMemo(
+    () => detectDayScheduleConflicts(currentDay.activities, bufferMinutes),
+    [currentDay.activities, bufferMinutes],
+  );
+  const tripResult = useMemo(
+    () => autoArrangeEntireTrip(trip, { defaultBuffer: bufferMinutes, optimizeRouteOrder }),
+    [trip, bufferMinutes, optimizeRouteOrder],
+  );
 
   if (!isOpen) return null;
 
-  // Tính toán kết quả sắp xếp tự động dựa trên cấu hình
-  const dayResult = autoArrangeDay(currentDay, bufferMinutes);
-  const conflicts = detectDayScheduleConflicts(currentDay.activities, bufferMinutes);
-  const tripResult = autoArrangeEntireTrip(trip);
+  const activeRouteOpt = scope === 'day' ? dayResult.routeOptimization : tripResult.routeOptimization;
 
   const handleApply = async () => {
     setIsApplying(true);
     try {
       if (scope === 'day') {
-        await onApplyDay(
-          dayResult.updatedDay,
-          `Đã tự động sắp xếp lại lịch trình Ngày ${currentDay.dayIndex} (${dayResult.adjustments.length} điều chỉnh)!`
-        );
+        if (optimizeRouteOrder && dayResult.routeOptimization?.changedOrder) {
+          const updatedDays = trip.days.map((d) =>
+            d.dayIndex === dayResult.updatedDay.dayIndex ? dayResult.updatedDay : d,
+          );
+          const allActs = updatedDays.flatMap((d) => d.activities || []);
+          const nextWaypoints = buildAIPlanWaypoints(
+            trip.originFull || trip.origin || 'Điểm khởi hành',
+            trip.destinationFull || trip.destination || 'Điểm đến',
+            allActs,
+          );
+          const locatedCoords = nextWaypoints.filter(
+            (wp) =>
+              (Math.abs(wp.lat) > 0.0001 || Math.abs(wp.lng) > 0.0001) &&
+              !isLegacyHashedCoordinate(wp.name || '', wp.lat, wp.lng),
+          );
+          const osrmSummary = await fetchRealOsrmRouteSummary(locatedCoords);
+          const updatedTrip: TripData = {
+            ...trip,
+            days: updatedDays,
+            ...(nextWaypoints.length >= 2 ? { waypoints: nextWaypoints, destinationsCount: nextWaypoints.length } : {}),
+            ...(osrmSummary ? { totalKm: osrmSummary.totalKm } : {}),
+          };
+          const savedLabel =
+            dayResult.routeOptimization.savedKm > 0
+              ? ` (tiết kiệm ${dayResult.routeOptimization.savedKm} km)`
+              : '';
+          await onApplyTrip(
+            updatedTrip,
+            `Đã tối ưu lộ trình Ngày ${currentDay.dayIndex}${savedLabel}!`,
+          );
+        } else {
+          await onApplyDay(
+            dayResult.updatedDay,
+            `Đã tự động sắp xếp lại lịch trình Ngày ${currentDay.dayIndex} (${dayResult.adjustments.length} điều chỉnh)!`,
+          );
+        }
       } else {
+        let finalTrip = tripResult.updatedTrip;
+        const locatedCoords = (finalTrip.waypoints || []).filter(
+          (wp) =>
+            (Math.abs(wp.lat) > 0.0001 || Math.abs(wp.lng) > 0.0001) &&
+            !isLegacyHashedCoordinate(wp.name || '', wp.lat, wp.lng),
+        );
+        const osrmSummary = await fetchRealOsrmRouteSummary(locatedCoords);
+        if (osrmSummary) {
+          finalTrip = { ...finalTrip, totalKm: osrmSummary.totalKm };
+        }
+        const savedLabel =
+          tripResult.routeOptimization && tripResult.routeOptimization.savedKm > 0
+            ? ` · Tiết kiệm ${tripResult.routeOptimization.savedKm} km (${tripResult.routeOptimization.savedPercent}%)`
+            : '';
         await onApplyTrip(
-          tripResult.updatedTrip,
-          `Đã tự động tối ưu & xếp lịch toàn bộ ${trip.totalDays} ngày (${tripResult.totalAdjustmentsCount} điều chỉnh)!`
+          finalTrip,
+          `Đã tối ưu & xếp lịch toàn bộ ${trip.totalDays} ngày (${tripResult.totalAdjustmentsCount} điều chỉnh${savedLabel})!`,
         );
       }
       onClose();
@@ -82,24 +142,25 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-extrabold tracking-tight">
-                Tự động Lập & Sắp xếp lại Khung giờ Lịch trình
+                Tự động Xếp lịch &amp; Tối ưu Thứ tự Điểm đến (TSP)
               </h3>
               <p className="text-xs text-teal-100 font-medium">
-                Loại bỏ chồng chéo thời gian, chèn đệm di chuyển an toàn & tối ưu trình tự hoạt động
+                Sắp xếp lộ trình ngắn nhất (Nearest Neighbor + 2-opt), loại bỏ chồng chéo &amp; chèn đệm di chuyển
               </p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5 max-h-[72vh] overflow-y-auto text-xs">
+        <div className="p-6 space-y-4 max-h-[72vh] overflow-y-auto text-xs">
           {/* Controls: Scope & Buffer */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
             <div>
@@ -111,7 +172,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setScope('day')}
-                  className={`py-1.5 px-2 rounded-lg font-bold text-center transition ${
+                  className={`py-1.5 px-2 rounded-lg font-bold text-center transition cursor-pointer ${
                     scope === 'day'
                       ? 'bg-teal-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -122,7 +183,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setScope('trip')}
-                  className={`py-1.5 px-2 rounded-lg font-bold text-center transition ${
+                  className={`py-1.5 px-2 rounded-lg font-bold text-center transition cursor-pointer ${
                     scope === 'trip'
                       ? 'bg-teal-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -148,7 +209,77 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                 <option value={30}>30 phút (Đoàn đông / Giờ cao điểm)</option>
               </select>
             </div>
+
+            {/* TSP Toggle */}
+            <label className="sm:col-span-2 flex items-start gap-2.5 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-teal-300 transition">
+              <input
+                type="checkbox"
+                checked={optimizeRouteOrder}
+                onChange={(e) => setOptimizeRouteOrder(e.target.checked)}
+                className="mt-0.5 rounded accent-teal-600"
+              />
+              <div className="flex-1">
+                <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <Route className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Tối ưu thứ tự điểm đến theo khoảng cách (TSP Nearest Neighbor + 2-opt)</span>
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Giữ nguyên điểm xuất phát / đã hoàn tất và tự động sắp xếp lại các điểm tiếp theo sao cho tổng quãng đường di chuyển ngắn nhất.
+                </p>
+              </div>
+            </label>
           </div>
+
+          {/* TSP Distance Savings Card */}
+          {optimizeRouteOrder && activeRouteOpt && activeRouteOpt.originalKm > 0 && (
+            <div
+              className={`p-3.5 rounded-2xl border flex flex-col gap-2 ${
+                activeRouteOpt.savedKm > 0
+                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                  : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Route className={`w-4 h-4 ${activeRouteOpt.savedKm > 0 ? 'text-emerald-600' : 'text-teal-600'}`} />
+                  <span className="font-extrabold text-xs">
+                    {activeRouteOpt.savedKm > 0
+                      ? 'Phát hiện lộ trình ngắn hơn bằng thuật toán TSP'
+                      : 'Thứ tự điểm đến hiện tại đã là tuyến ngắn nhất'}
+                  </span>
+                </div>
+                {activeRouteOpt.savedKm > 0 && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px] tabular-nums">
+                    Tiết kiệm được {activeRouteOpt.savedKm} km ({activeRouteOpt.savedPercent}%)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold">
+                <span>
+                  Quãng đường ban đầu:{' '}
+                  <strong className={activeRouteOpt.savedKm > 0 ? 'line-through text-slate-500' : 'text-slate-900'}>
+                    {activeRouteOpt.originalKm} km
+                  </strong>
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-emerald-600" />
+                <span>
+                  Sau tối ưu TSP:{' '}
+                  <strong className="text-emerald-700">{activeRouteOpt.optimizedKm} km</strong>
+                </span>
+              </div>
+
+              {scope === 'day' &&
+                activeRouteOpt.changedOrder &&
+                activeRouteOpt.orderedStopNames &&
+                activeRouteOpt.orderedStopNames.length >= 2 && (
+                  <p className="text-[11px] text-emerald-900 bg-white/80 rounded-xl px-3 py-2 border border-emerald-200/70">
+                    <strong className="font-bold">Thứ tự gợi ý: </strong>
+                    {activeRouteOpt.orderedStopNames.join(' → ')}
+                  </p>
+                )}
+            </div>
+          )}
 
           {/* Diagnostic overview */}
           {scope === 'day' ? (
@@ -171,7 +302,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                 <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-900 flex items-center gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    Hiện tại Ngày {currentDay.dayIndex} không có xung đột nghiêm trọng. Thuật toán sẽ tối ưu thêm khoảng đệm {bufferMinutes} phút di chuyển.
+                    Ngày {currentDay.dayIndex} không có xung đột giờ. Thuật toán đảm bảo khoảng đệm {bufferMinutes} phút giữa các điểm.
                   </span>
                 </div>
               )}
@@ -184,7 +315,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                   Phân tích tự động toàn bộ {trip.totalDays} ngày:
                 </strong>
                 <p className="mt-0.5 text-[11px]">
-                  Tìm thấy {tripResult.totalAdjustmentsCount} vị trí có thể căn chỉnh lại giờ để hành trình xuyên suốt, tránh trễ giờ ăn trưa và check-in khách sạn.
+                  Tìm thấy {tripResult.totalAdjustmentsCount} hoạt động có thể tối ưu thứ tự di chuyển và cân chỉnh lại khung giờ hợp lý.
                 </p>
               </div>
             </div>
@@ -202,7 +333,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
             {scope === 'day' ? (
               dayResult.adjustments.length === 0 ? (
                 <div className="p-4 text-center rounded-xl bg-slate-50 border border-slate-200 text-slate-500 italic">
-                  Các mốc giờ hiện tại đã rất chuẩn, không cần điều chỉnh thêm.
+                  Các mốc giờ và thứ tự điểm hiện tại đã rất chuẩn, không cần điều chỉnh thêm.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -232,6 +363,10 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                   ))}
                 </div>
               )
+            ) : tripResult.dayAdjustments.length === 0 ? (
+              <div className="p-4 text-center rounded-xl bg-slate-50 border border-slate-200 text-slate-500 italic">
+                Toàn bộ hành trình hiện tại đã được sắp xếp hợp lý.
+              </div>
             ) : (
               <div className="space-y-3">
                 {tripResult.dayAdjustments.map((dayAdj) => (
@@ -241,7 +376,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
                     </span>
                     <div className="space-y-1.5">
                       {dayAdj.adjustments.map((adj, idx) => (
-                        <div key={idx} className="bg-white p-2 rounded-lg border border-slate-100 flex items-center justify-between text-[11px]">
+                        <div key={idx} className="bg-white p-2 rounded-lg border border-slate-100 flex items-center justify-between text-[11px] gap-2">
                           <span className="font-semibold text-slate-800 truncate max-w-[240px]">
                             {adj.activityTitle}
                           </span>
@@ -265,7 +400,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+            className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition cursor-pointer"
           >
             Đóng
           </button>
@@ -279,10 +414,10 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
             <Sparkles className="w-4 h-4 text-amber-300" />
             <span>
               {isApplying
-                ? 'Đang áp dụng lịch tự động...'
+                ? 'Đang tối ưu & tính cự ly...'
                 : scope === 'day'
-                ? `Áp dụng lịch tự động cho Ngày ${currentDay.dayIndex}`
-                : 'Áp dụng lịch tự động cho Toàn Tour'}
+                  ? `Áp dụng cho Ngày ${currentDay.dayIndex}`
+                  : 'Áp dụng cho Toàn Tour'}
             </span>
           </button>
         </div>
@@ -290,3 +425,4 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
     </div>
   );
 };
+

@@ -21,6 +21,8 @@ import {
 import type { GuestTripData } from '../../types/travel';
 import { buildRouteProgress, formatTravelDuration } from '../../utils/routeProgress';
 import { buildGuestInviteUrl, guestTripToReadOnlyTripData, isStaffRole } from '../../utils/tripJoinHelpers';
+import { OfflineIndicator } from '../dashboard/OfflineIndicator';
+import { PWAInstallButton } from '../dashboard/PWAInstallButton';
 
 const LiveRouteMap = lazy(() =>
   import('../dashboard/LiveRouteMap').then((m) => ({ default: m.LiveRouteMap })),
@@ -31,6 +33,7 @@ interface GuestTripViewProps {
   guestName: string;
   joinCode: string;
   enteredFromAccount?: boolean;
+  cachedAt?: string;
   onRefresh: () => Promise<void>;
   onExitGuestMode: () => void;
 }
@@ -42,6 +45,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
   guestName,
   joinCode,
   enteredFromAccount = false,
+  cachedAt,
   onRefresh,
   onExitGuestMode,
 }) => {
@@ -120,6 +124,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <PWAInstallButton variant="compact" />
             <button
               type="button"
               onClick={() => void handleRefreshClick()}
@@ -193,6 +198,8 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5 space-y-5">
+        <OfflineIndicator cachedAt={cachedAt} />
+
         {/* Operational / Weather Alerts Notice */}
         {guestTrip.alerts.length > 0 && activeTab === 'schedule' && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">

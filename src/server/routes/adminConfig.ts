@@ -1,7 +1,7 @@
 import type { Express, Request, RequestHandler } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { ALLOWED_CONFLICT_CHECK_KEYS, ALLOWED_PRIORITY_KEYS } from '../../utils/scheduleValidator';
-import type { ReferenceCostRecord, SystemConfig, VehicleRecord } from '../types/systemConfig';
+import type { ReferenceCostRecord, SystemConfig } from '../types/systemConfig';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 
@@ -11,7 +11,6 @@ interface AdminConfigState {
   dynamicGeminiTemperature: number;
   dynamicGeminiMaxTokens: number;
   dynamicGeminiSystemPrompt: string;
-  activeVehicles: VehicleRecord[];
   activeReferenceCosts: ReferenceCostRecord[];
 }
 
@@ -45,7 +44,7 @@ export function registerAdminConfigRoutes(app: Express, dependencies: AdminConfi
   // Update System & AI Configuration
   app.post('/api/admin/config', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
     await syncSystemConfigIfStale(true);
-    const { activeSystemConfig, dynamicGeminiModel, dynamicGeminiTemperature, dynamicGeminiMaxTokens, dynamicGeminiSystemPrompt, activeVehicles, activeReferenceCosts } = getConfigState();
+    const { activeSystemConfig, dynamicGeminiModel, dynamicGeminiTemperature, dynamicGeminiMaxTokens, dynamicGeminiSystemPrompt, activeReferenceCosts } = getConfigState();
     const body = req.body || {};
     const { aiModel, temperature, maxTokens, systemPrompt, maintenanceMode, sessionTimeout, backupAutoSchedule, rules, auditAction } = body;
   
@@ -58,7 +57,6 @@ export function registerAdminConfigRoutes(app: Express, dependencies: AdminConfi
       sessionTimeout !== undefined ||
       backupAutoSchedule !== undefined ||
       rules !== undefined ||
-      body.vehicles !== undefined ||
       body.referenceCosts !== undefined;
   
     if (!hasConfigChanges && typeof auditAction === 'string' && auditAction.trim()) {
@@ -79,7 +77,6 @@ export function registerAdminConfigRoutes(app: Express, dependencies: AdminConfi
     let newSessionTimeout = activeSystemConfig.sessionTimeout;
     let newBackupAutoSchedule = activeSystemConfig.backupAutoSchedule;
     let newRules = { ...activeSystemConfig.rules };
-    let newVehicles = activeVehicles;
     let newReferenceCosts = activeReferenceCosts;
   
     if (aiModel !== undefined) {
@@ -249,31 +246,6 @@ export function registerAdminConfigRoutes(app: Express, dependencies: AdminConfi
       newRules = validatedRules;
     }
   
-    const VALID_VEHICLE_STATUSES = new Set(['Sẵn sàng điều phối', 'Đang chạy tour', 'Bảo dưỡng định kỳ']);
-    if (body.vehicles !== undefined) {
-      if (!Array.isArray(body.vehicles)) {
-        return res.status(400).json({ success: false, error: 'vehicles phải là danh sách mảng.' });
-      }
-      const validatedVehicles: VehicleRecord[] = [];
-      for (let i = 0; i < body.vehicles.length; i++) {
-        const v = body.vehicles[i];
-        if (!v || typeof v !== 'object') {
-          return res.status(400).json({ success: false, error: `Phương tiện thứ ${i + 1} không hợp lệ.` });
-        }
-        const id = typeof v.id === 'string' && v.id.trim() ? v.id.trim().slice(0, 64) : '';
-        const type = typeof v.type === 'string' && v.type.trim() ? v.type.trim().slice(0, 100) : '';
-        if (!id || !type) {
-          return res.status(400).json({ success: false, error: `Phương tiện thứ ${i + 1} thiếu id hoặc loại xe.` });
-        }
-        const speedAvg = typeof v.speedAvg === 'string' ? v.speedAvg.slice(0, 30) : '45 km/h';
-        const capacity = typeof v.capacity === 'string' ? v.capacity.slice(0, 30) : '16 khách';
-        const consumption = typeof v.consumption === 'string' ? v.consumption.slice(0, 30) : '12L / 100km';
-        const status: VehicleRecord['status'] = VALID_VEHICLE_STATUSES.has(v.status) ? v.status : 'Sẵn sàng điều phối';
-        validatedVehicles.push({ id, type, speedAvg, capacity, consumption, status });
-      }
-      newVehicles = validatedVehicles;
-    }
-  
     if (body.referenceCosts !== undefined) {
       if (!Array.isArray(body.referenceCosts)) {
         return res.status(400).json({ success: false, error: 'referenceCosts phải là danh sách mảng.' });
@@ -307,7 +279,6 @@ export function registerAdminConfigRoutes(app: Express, dependencies: AdminConfi
       sessionTimeout: newSessionTimeout,
       backupAutoSchedule: newBackupAutoSchedule,
       rules: newRules,
-      vehicles: newVehicles,
       referenceCosts: newReferenceCosts,
     };
   

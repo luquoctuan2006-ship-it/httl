@@ -1,4 +1,5 @@
 import { Compass } from 'lucide-react';
+import { PlaceAutocompleteInput } from '../../common/PlaceAutocompleteInput';
 import type { ManualPlannerTabProps } from './ManualPlannerTab';
 
 type ManualTripBasicsProps = Pick<
@@ -9,8 +10,12 @@ type ManualTripBasicsProps = Pick<
   | 'setTripCode'
   | 'origin'
   | 'setOrigin'
+  | 'originCoordinates'
+  | 'setOriginCoordinates'
   | 'destination'
   | 'setDestination'
+  | 'destinationCoordinates'
+  | 'setDestinationCoordinates'
   | 'startDate'
   | 'setStartDate'
   | 'totalDays'
@@ -31,8 +36,12 @@ export function ManualTripBasics(props: ManualTripBasicsProps) {
     setTripCode,
     origin,
     setOrigin,
+    originCoordinates,
+    setOriginCoordinates,
     destination,
     setDestination,
+    destinationCoordinates,
+    setDestinationCoordinates,
     startDate,
     setStartDate,
     totalDays,
@@ -86,12 +95,13 @@ export function ManualTripBasics(props: ManualTripBasicsProps) {
                     <label className="block font-bold text-slate-700 mb-1">
                       Điểm xuất phát (Origin)
                     </label>
-                    <input
-                      type="text"
+                    <PlaceAutocompleteInput
                       value={origin}
-                      onChange={(e) => setOrigin(e.target.value)}
+                      onChangeText={setOrigin}
+                      coordinates={originCoordinates}
+                      onChangeCoordinates={setOriginCoordinates}
                       placeholder="VD: TP. Hồ Chí Minh / Hà Nội"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600"
+                      inputClassName="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600"
                     />
                   </div>
 
@@ -99,12 +109,13 @@ export function ManualTripBasics(props: ManualTripBasicsProps) {
                     <label className="block font-bold text-slate-700 mb-1">
                       Điểm đến chính (Destination)
                     </label>
-                    <input
-                      type="text"
+                    <PlaceAutocompleteInput
                       value={destination}
-                      onChange={(e) => setDestination(e.target.value)}
+                      onChangeText={setDestination}
+                      coordinates={destinationCoordinates}
+                      onChangeCoordinates={setDestinationCoordinates}
                       placeholder="VD: Nha Trang / Đà Lạt / Phú Quốc"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600"
+                      inputClassName="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600"
                     />
                   </div>
 

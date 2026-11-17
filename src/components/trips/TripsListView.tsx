@@ -62,6 +62,17 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
     return counts;
   }, [trips]);
 
+  const hasAnyOwnedTrip = useMemo(
+    () =>
+      trips.some((t) =>
+        isUserTripOwnerOrAdmin(t, currentUserUid, isAdmin ? 'admin' : 'user'),
+      ),
+    [trips, currentUserUid, isAdmin],
+  );
+
+  const effectiveSortMode: SortMode =
+    sortMode === 'budget_desc' && !hasAnyOwnedTrip ? 'recent' : sortMode;
+
   const filteredTrips = useMemo(() => {
     const matched = trips.filter((trip) => {
       if (statusFilter !== 'all' && trip.status !== statusFilter) return false;
@@ -75,17 +86,17 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
       );
     });
 
-    if (sortMode === 'title_asc') {
+    if (effectiveSortMode === 'title_asc') {
       return [...matched].sort((a, b) => a.title.localeCompare(b.title, 'vi'));
     }
-    if (sortMode === 'budget_desc') {
+    if (effectiveSortMode === 'budget_desc') {
       return [...matched].sort((a, b) => (b.budgetTotal || 0) - (a.budgetTotal || 0));
     }
-    if (sortMode === 'days_desc') {
+    if (effectiveSortMode === 'days_desc') {
       return [...matched].sort((a, b) => (b.totalDays || 0) - (a.totalDays || 0));
     }
     return matched;
-  }, [trips, statusFilter, normalizedQuery, sortMode]);
+  }, [trips, statusFilter, normalizedQuery, effectiveSortMode]);
 
   const confirmDelete = () => {
     if (tripToDelete && onDeleteTrip) {
@@ -160,13 +171,13 @@ export const TripsListView: React.FC<TripsListViewProps> = ({
           <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
           <label className="font-semibold text-slate-500">Sắp xếp:</label>
           <select
-            value={sortMode}
+            value={effectiveSortMode}
             onChange={(e) => setSortMode(e.target.value as SortMode)}
             className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-bold outline-none focus:border-teal-500"
           >
             <option value="recent">Mới cập nhật</option>
             <option value="title_asc">Tên tour (A → Z)</option>
-            <option value="budget_desc">Ngân sách cao nhất</option>
+            {hasAnyOwnedTrip && <option value="budget_desc">Ngân sách cao nhất</option>}
             <option value="days_desc">Số ngày dài nhất</option>
           </select>
         </div>

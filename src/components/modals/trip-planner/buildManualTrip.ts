@@ -20,7 +20,9 @@ interface BuildManualTripInput {
   tripTitle: string;
   tripCode: string;
   origin: string;
+  originCoordinates?: { lat: number; lng: number };
   destination: string;
+  destinationCoordinates?: { lat: number; lng: number };
   startDate: string;
   totalDays: number;
   vehicle: string;
@@ -36,7 +38,9 @@ export function buildManualTrip({
   tripTitle,
   tripCode,
   origin,
+  originCoordinates,
   destination,
+  destinationCoordinates,
   startDate,
   totalDays,
   vehicle,
@@ -84,10 +88,19 @@ export function buildManualTrip({
     };
   });
 
-  const allActivityLocations = enrichedDays
-    .flatMap((day) => day.activities.map((activity) => activity.location))
-    .filter(Boolean);
-  const dynamicWaypoints = buildDynamicWaypoints(cleanOrigin, cleanDestination, allActivityLocations);
+  const allActivityStops = enrichedDays
+    .flatMap((day) =>
+      day.activities
+        .filter((activity) => Boolean(activity.location?.trim()))
+        .map((activity) => ({
+          location: activity.location,
+          ...(activity.coordinates ? { coordinates: activity.coordinates } : {}),
+        })),
+    );
+  const dynamicWaypoints = buildDynamicWaypoints(cleanOrigin, cleanDestination, allActivityStops, {
+    origin: originCoordinates || null,
+    destination: destinationCoordinates || null,
+  });
   const estimatedKm = computeEstimatedRouteKm(dynamicWaypoints, totalDays * 75);
   const members = buildMembers(membersCount, owner, `trip-manual-${stamp}`);
   const membersOnline = members.filter((m) => m.status === 'online').length;

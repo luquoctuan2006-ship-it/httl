@@ -9,11 +9,13 @@ interface CostsTabProps {
   setIsAddCostOpen: React.Dispatch<React.SetStateAction<boolean>>;
   allCombinedCosts: ReferenceCostItem[];
   isLoadingCosts: boolean;
+  confirmDeleteCostId: string | null;
+  setConfirmDeleteCostId: React.Dispatch<React.SetStateAction<string | null>>;
   handleDeleteCost: (id: string, name: string) => Promise<void>;
 }
 
 export const CostsTab: React.FC<CostsTabProps> = (props) => {
-  const { activeSubTab, costCategoryFilter, setCostCategoryFilter, setIsAddCostOpen, allCombinedCosts, isLoadingCosts, handleDeleteCost } = props;
+  const { activeSubTab, costCategoryFilter, setCostCategoryFilter, setIsAddCostOpen, allCombinedCosts, isLoadingCosts, confirmDeleteCostId, setConfirmDeleteCostId, handleDeleteCost } = props;
   return (
     <>
       {activeSubTab === 'costs' && (
@@ -73,9 +75,24 @@ export const CostsTab: React.FC<CostsTabProps> = (props) => {
                     <div className="col-span-1 flex justify-end">
                       {item.id.startsWith('wp-cost-') ? (
                         <span className="text-[10px] text-slate-500 font-mono italic">Auto-sync</span>
+                      ) : confirmDeleteCostId === item.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => void handleDeleteCost(item.id, item.item)}
+                            className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition"
+                          >
+                            Xóa
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteCostId(null)}
+                            className="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-bold transition"
+                          >
+                            Hủy
+                          </button>
+                        </div>
                       ) : (
                         <button
-                          onClick={() => handleDeleteCost(item.id, item.item)}
+                          onClick={() => setConfirmDeleteCostId(item.id)}
                           className="p-1 rounded-lg text-slate-500 hover:text-rose-400 transition"
                           title="Xóa định mức"
                         >

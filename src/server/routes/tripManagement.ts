@@ -18,6 +18,7 @@ import {
   isValidJoinCodeFormat,
   MAX_GUEST_COMPANIONS_PER_PASSENGER,
   normalizeJoinCode,
+  sanitizeTripForParticipant,
 } from '../../utils/tripJoinHelpers';
 import { detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';
 import { buildRouteProgress } from '../../utils/routeProgress';
@@ -91,6 +92,12 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
     return generateTripJoinCode(6);
   }
 
+  function serializeTripForViewer(trip: TripData, user?: DecodedIdToken): TripData {
+    return isTripOwnerOrAdmin(trip, user)
+      ? trip
+      : sanitizeTripForParticipant(trip, user?.uid);
+  }
+
   app.get('/api/trips', requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const rawLimit = Number(req.query.limit);
@@ -106,15 +113,18 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           startAfterId,
           summaryOnly: true,
         });
-        const firstId = summaryTrips[0]?.id;
-        const activeTrip = firstId ? await getTripById(firstId) : null;
+        const sanitizedSummaries = summaryTrips.map((item) => serializeTripForViewer(item, req.authUser));
+        const firstId = sanitizedSummaries[0]?.id;
+        const rawActiveTrip = firstId ? await getTripById(firstId) : null;
+        const activeTrip = rawActiveTrip ? serializeTripForViewer(rawActiveTrip, req.authUser) : null;
         const trips = activeTrip
-          ? summaryTrips.map((item) => (item.id === activeTrip.id ? activeTrip : item))
-          : summaryTrips;
+          ? sanitizedSummaries.map((item) => (item.id === activeTrip.id ? activeTrip : item))
+          : sanitizedSummaries;
         return res.json({ success: true, activeTrip: activeTrip || trips[0] || null, trips, hasMore, nextCursor });
       }
 
-      const { trips, hasMore, nextCursor } = await listTripsForUser(req.authUser!, { limit, startAfterId });
+      const { trips: rawTrips, hasMore, nextCursor } = await listTripsForUser(req.authUser!, { limit, startAfterId });
+      const trips = rawTrips.map((item) => serializeTripForViewer(item, req.authUser));
       return res.json({ success: true, activeTrip: trips[0] || null, trips, hasMore, nextCursor });
     } catch (error) {
       console.error('Error loading trips:', error);
@@ -126,7 +136,8 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   const getActiveTripHandler = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const trips = await loadUserTrips(req.authUser!);
-      return res.json({ success: true, trip: trips[0] || null });
+      const activeTrip = trips[0] ? serializeTripForViewer(trips[0], req.authUser) : null;
+      return res.json({ success: true, trip: activeTrip });
     } catch (error) {
       console.error('Error loading active trip:', error);
       return res.status(503).json({ success: false, error: 'Không thể tải chuyến đi' });
@@ -367,7 +378,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
 
       return res.json({
         success: true,
-        trip: txResult.trip,
+        trip: serializeTripForViewer(txResult.trip, user),
         alreadyJoined: txResult.alreadyJoined,
         message: txResult.alreadyJoined
           ? `Bạn đã ở trong chuyến đi "${txResult.trip.title}".`
@@ -385,7 +396,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       if (!trip || !canAccessTrip(trip, req.authUser)) {
         return res.status(404).json({ success: false, error: 'Không tìm thấy chuyến đi' });
       }
-      return res.json({ success: true, trip });
+      return res.json({ success: true, trip: serializeTripForViewer(trip, req.authUser) });
     } catch {
       return res.status(503).json({ success: false, error: 'Không thể tải chuyến đi' });
     }
@@ -414,7 +425,9 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         `Xóa chuyến đi: ${existing.title} (${existing.code})`
       );
   
-      const remainingTrips = await loadUserTrips(req.authUser!);
+      const remainingTrips = (await loadUserTrips(req.authUser!)).map((item) =>
+        serializeTripForViewer(item, req.authUser),
+      );
       return res.json({
         success: true,
         message: `Đã xóa chuyến đi ${existing.title} thành công`,
@@ -1055,7 +1068,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         success: true,
         member: txResult.member,
         joinCode: txResult.trip.joinCode,
-        trip: txResult.trip,
+        trip: serializeTripForViewer(txResult.trip, user),
         message: `Đã thêm "${txResult.member.name}" vào danh sách hành khách.`,
       });
     } catch (error) {
@@ -1125,7 +1138,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         return res.status(403).json({ success: false, error: 'Bạn không có quyền xóa thành viên này' });
       }
 
-      return res.json({ success: true, trip: txResult.trip });
+      return res.json({ success: true, trip: serializeTripForViewer(txResult.trip, user) });
     } catch (error) {
       console.error('Error removing guest companion:', error);
       return res.status(503).json({ success: false, error: 'Không thể xóa người thân khỏi đoàn' });

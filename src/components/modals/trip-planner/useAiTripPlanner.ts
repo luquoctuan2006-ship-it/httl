@@ -6,7 +6,8 @@ import {
   resolveInitialTripCategoryAllocations,
 } from '../../../utils/budgetAlerts';
 import { countPassengerMembers } from '../../../utils/tripJoinHelpers';
-import { buildAIPlanWaypoints } from '../../../utils/vietnamGeo';
+import { buildAIPlanWaypoints, lookupCoordinates } from '../../../utils/vietnamGeo';
+import type { PlaceCoordinates } from '../../common/PlaceAutocompleteInput';
 import type { TripData } from '../../../types/travel';
 import {
   buildMembers,
@@ -48,6 +49,7 @@ export function useAiTripPlanner({
   // STATE CHO LẬP LỊCH TỰ ĐỘNG BẰNG GEMINI AI
   // ==========================================
   const [aiDestination, setAiDestination] = useState('');
+  const [aiDestinationCoordinates, setAiDestinationCoordinates] = useState<PlaceCoordinates | undefined>(undefined);
   const [aiDays, setAiDays] = useState(3);
   const [aiStartDate, setAiStartDate] = useState(getTodayISODate());
   const [aiBudget, setAiBudget] = useState('Tiêu chuẩn (30 - 45 triệu)');
@@ -196,7 +198,10 @@ export function useAiTripPlanner({
           ? aiGeneratedPlan.routeSummary.destination.trim()
           : getEndLocation(aiDestination);
 
-      const aiWaypoints = buildAIPlanWaypoints(startName, endName, formattedActivities);
+      const aiWaypoints = buildAIPlanWaypoints(startName, endName, formattedActivities, {
+        origin: lookupCoordinates(startName),
+        destination: aiDestinationCoordinates || lookupCoordinates(endName),
+      });
 
       const rawTotalKm = Number(aiGeneratedPlan.routeSummary?.totalKm);
       const totalKm =
@@ -302,7 +307,8 @@ export function useAiTripPlanner({
   };
 
   return {
-    aiDestination, setAiDestination, aiDays, setAiDays, aiStartDate, setAiStartDate, aiBudget, setAiBudget,
+    aiDestination, setAiDestination, aiDestinationCoordinates, setAiDestinationCoordinates,
+    aiDays, setAiDays, aiStartDate, setAiStartDate, aiBudget, setAiBudget,
     aiTravelStyle, setAiTravelStyle, aiGroupType, setAiGroupType, aiPreferences, setAiPreferences,
     aiIsLoading, aiJobStatus, aiGeneratedPlan, getStartLocation, onGenerateAI: handleGenerateAI,
     onApplyAIPlan: handleApplyAIPlan,

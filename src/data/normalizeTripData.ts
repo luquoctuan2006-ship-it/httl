@@ -1,7 +1,52 @@
-import { initialTripData } from './mockData';
 import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice, RouteStopWeather } from '../types/travel';
 import { isLegacyHashedCoordinate } from '../utils/vietnamGeo';
 import { countPassengerMembers, getMemberInitials, isValidJoinCodeFormat, normalizeJoinCode } from '../utils/tripJoinHelpers';
+
+function createEmptyTripTemplate(overrides?: { id?: string; isSummary?: boolean }): TripData {
+  return {
+    id: overrides?.id?.trim() ? overrides.id.trim().slice(0, 128) : `trip-${Date.now()}`,
+    ...(overrides?.isSummary ? { isSummary: true } : {}),
+    code: 'VN-TOUR',
+    title: 'Chuyến đi mới',
+    status: 'Chuẩn bị',
+    dates: '',
+    origin: '',
+    originFull: '',
+    destination: '',
+    destinationFull: '',
+    destinationsCount: 0,
+    totalKm: 0,
+    vehicle: 'Xe du lịch',
+    currentDay: 1,
+    totalDays: 1,
+    totalActivities: 0,
+    confirmedActivities: 0,
+    pendingActivities: 0,
+    budgetTotal: 0,
+    budgetUsed: 0,
+    budgetRemaining: 0,
+    budgetUsedPercent: 0,
+    membersOnline: 0,
+    membersTotal: 0,
+    membersStatus: 'Chưa điểm danh',
+    weather: { temp: 0, description: '', rainProb: '', rainProbTime: '' },
+    telematics: {
+      from: '',
+      to: '',
+      vehicleType: 'Xe du lịch',
+      driver: 'Chưa phân công',
+      driverPhone: '',
+      passengerCount: 0,
+    },
+    waypoints: [],
+    alerts: [],
+    aiSuggestions: [],
+    aiSavingsEstimate: '0 ₫',
+    aiConfidence: '',
+    members: [],
+    days: [],
+  };
+}
 
 export const MAX_INVOICES_PER_TRIP = 100;
 
@@ -192,7 +237,7 @@ const MAX_DAYS = 30;
 const MAX_ACTIVITIES_PER_DAY = 50;
 
 export function normalizeTripData(value: unknown): TripData {
-  if (!value || typeof value !== 'object') return structuredClone(initialTripData);
+  if (!value || typeof value !== 'object') return createEmptyTripTemplate();
 
   const candidate = value as Record<string, unknown>;
   const dayNamesCycle = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -532,16 +577,7 @@ export function normalizeTripData(value: unknown): TripData {
 
 export function normalizeTripSummary(value: unknown, fallbackId?: string): TripData {
   if (!value || typeof value !== 'object') {
-    return {
-      ...structuredClone(initialTripData),
-      ...(fallbackId ? { id: fallbackId } : {}),
-      isSummary: true,
-      days: [],
-      waypoints: [],
-      alerts: [],
-      aiSuggestions: [],
-      members: [],
-    };
+    return createEmptyTripTemplate({ id: fallbackId, isSummary: true });
   }
 
   const candidate = value as Record<string, unknown>;

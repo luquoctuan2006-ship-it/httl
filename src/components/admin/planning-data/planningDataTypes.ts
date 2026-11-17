@@ -1,15 +1,6 @@
 import type { Waypoint } from '../../../types/travel';
 export type { Waypoint };
 
-export interface VehicleItem {
-  id: string;
-  type: string;
-  speedAvg: string;
-  capacity: string;
-  consumption: string;
-  status: 'Sẵn sàng điều phối' | 'Đang chạy tour' | 'Bảo dưỡng định kỳ';
-}
-
 export interface ReferenceCostItem {
   id: string;
   category: string;
@@ -27,14 +18,6 @@ export interface NewLocationForm {
   openHours: string;
   ticketPrice: string;
   description: string;
-}
-
-export interface NewVehicleForm {
-  type: string;
-  speedAvg: string;
-  capacity: string;
-  consumption: string;
-  status: VehicleItem['status'];
 }
 
 export interface NewCostForm {

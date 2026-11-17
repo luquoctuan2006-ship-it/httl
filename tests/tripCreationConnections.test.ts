@@ -10,7 +10,8 @@ import {
   normalizeAiMoney,
   normalizeAiSuggestions,
 } from '../src/components/modals/trip-planner/helpers';
-import { buildDynamicWaypoints } from '../src/utils/vietnamGeo';
+import { buildAIPlanWaypoints, buildDynamicWaypoints } from '../src/utils/vietnamGeo';
+import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../src/utils/tripRouteSync';
 import { countUnreadAlerts } from '../src/utils/seenAlerts';
 
 test('buildManualTrip connects owner account, calendar dates, coordinates, route distance, and budget/schedule alerts', () => {
@@ -260,4 +261,146 @@ test('countUnreadAlerts counts only alerts not yet seen by user', () => {
   assert.equal(countUnreadAlerts(alerts, new Set()), 2);
   assert.equal(countUnreadAlerts(alerts, new Set(['a-1'])), 1);
   assert.equal(countUnreadAlerts(alerts, new Set(['a-1', 'a-2'])), 0);
+});
+
+test('buildManualTrip and buildAIPlanWaypoints preserve custom geocoded origin and destination coordinates outside dictionary', () => {
+  const trip = buildManualTrip({
+    tripTitle: 'Tour địa điểm mới tự chọn',
+    tripCode: 'custom-01',
+    origin: 'Điểm xuất phát A',
+    originCoordinates: { lat: 10.775, lng: 106.701 },
+    destination: 'Suối Mơ Tự Do',
+    destinationCoordinates: { lat: 11.451, lng: 107.123 },
+    startDate: '2026-12-01',
+    totalDays: 1,
+    vehicle: 'Xe 16 chỗ',
+    membersCount: 2,
+    budgetEstimated: 3000000,
+    totalCalculatedCost: 0,
+    totalActivitiesCount: 0,
+    manualDays: [
+      {
+        dayIndex: 1,
+        dateLabel: 'Ngày 1',
+        dayName: 'N1',
+        dateNum: 1,
+        fullDate: 'Ngày 1',
+        confirmedCount: 0,
+        pendingCount: 0,
+        dispatcherNote: '',
+        activities: [],
+      },
+    ],
+  });
+
+  const originWp = trip.waypoints.find((w) => w.name === 'Điểm xuất phát A');
+  const destWp = trip.waypoints.find((w) => w.name === 'Suối Mơ Tự Do');
+  assert.ok(originWp);
+  assert.ok(destWp);
+  assert.equal(originWp!.lat, 10.775);
+  assert.equal(destWp!.lat, 11.451);
+  assert.ok(trip.totalKm > 50);
+
+  const aiWps = buildAIPlanWaypoints(
+    'Điểm xuất phát A',
+    'Suối Mơ Tự Do',
+    [],
+    {
+      origin: { lat: 10.775, lng: 106.701 },
+      destination: { lat: 11.451, lng: 107.123 },
+    },
+  );
+  assert.equal(aiWps.length, 2);
+  assert.equal(aiWps[1].lat, 11.451);
+});
+
+test('syncTripRouteMetadata and syncDaysWithStartDate keep map waypoints and calendar dates aligned after edits', () => {
+  const baseTrip = buildManualTrip({
+    tripTitle: 'Tour miền Trung',
+    tripCode: 'mt-02',
+    origin: 'Đà Nẵng',
+    destination: 'Huế',
+    startDate: '2026-11-16',
+    totalDays: 2,
+    vehicle: 'Xe 29 chỗ',
+    membersCount: 4,
+    budgetEstimated: 8000000,
+    totalCalculatedCost: 0,
+    totalActivitiesCount: 1,
+    manualDays: [
+      {
+        dayIndex: 1,
+        dateLabel: 'Ngày 1',
+        dayName: 'N1',
+        dateNum: 1,
+        fullDate: 'Ngày 1: Khởi hành',
+        confirmedCount: 1,
+        pendingCount: 0,
+        dispatcherNote: '',
+        activities: [
+          {
+            id: 'a1',
+            timeStart: '09:00',
+            timeEnd: '11:00',
+            title: 'Tham quan Hội An',
+            location: 'Hội An',
+            status: 'Hoàn tất',
+            type: 'sightseeing',
+            details: '',
+            cost: 100000,
+          },
+        ],
+      },
+      {
+        dayIndex: 2,
+        dateLabel: 'Ngày 2',
+        dayName: 'N2',
+        dateNum: 2,
+        fullDate: 'Ngày 2: Kinh thành Huế',
+        confirmedCount: 0,
+        pendingCount: 0,
+        dispatcherNote: '',
+        activities: [],
+      },
+    ],
+  });
+
+  // Shift start date and verify calendar headers preserve themes
+  const shiftedDays = syncDaysWithStartDate(baseTrip.days, '2026-11-20');
+  assert.equal(shiftedDays[0].dayName, 'T6');
+  assert.equal(shiftedDays[0].dateNum, 20);
+  assert.ok(shiftedDays[0].fullDate.includes('Khởi hành'));
+
+  const extraMeta = buildCalendarDayMeta('2026-11-20', 3);
+  assert.equal(extraMeta.dayName, 'CN');
+  assert.equal(extraMeta.dateNum, 22);
+
+  // Add an activity in Quảng Bình and sync route metadata
+  const modifiedTrip = syncTripRouteMetadata({
+    ...baseTrip,
+    days: [
+      baseTrip.days[0],
+      {
+        ...baseTrip.days[1],
+        activities: [
+          {
+            id: 'a2',
+            timeStart: '10:00',
+            timeEnd: '12:00',
+            title: 'Tham quan Động Phong Nha',
+            location: 'Phong Nha',
+            status: 'Đang diễn ra',
+            type: 'sightseeing',
+            details: '',
+            cost: 250000,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.ok(modifiedTrip.waypoints.some((w) => w.name === 'Phong Nha' && w.status === 'current'));
+  assert.ok(modifiedTrip.waypoints.some((w) => w.name === 'Hội An' && w.status === 'completed'));
+  assert.equal(modifiedTrip.destinationsCount, modifiedTrip.waypoints.length);
+  assert.ok(modifiedTrip.totalKm > baseTrip.totalKm);
 });

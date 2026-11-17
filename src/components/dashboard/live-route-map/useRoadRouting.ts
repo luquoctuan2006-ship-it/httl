@@ -95,3 +95,40 @@ export function useRoadRouting(stops: RouteStopItem[], guestJoinCode?: string) {
 
   return { roadLegsMap, isRoutingLoading };
 }
+
+export async function fetchRealOsrmRouteSummary(
+  points: readonly { lat: number; lng: number }[],
+  guestJoinCode?: string,
+): Promise<{ totalKm: number; totalMinutes: number; source: 'osrm' } | null> {
+  if (points.length < 2) return null;
+  try {
+    const res = guestJoinCode
+      ? await fetch('/api/guest/routing/road', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ joinCode: guestJoinCode, points }),
+        })
+      : await authenticatedFetch('/api/routing/road', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ points }),
+        });
+    if (!res.ok) return null;
+    const data = await safeJsonResponse<RoutingApiResponse>(res);
+    if (data?.source === 'osrm' && Array.isArray(data.legs) && data.legs.length > 0) {
+      const totalKm = Math.round(
+        data.legs.reduce((sum, leg) => sum + (Number.isFinite(leg.distanceKm) ? leg.distanceKm : 0), 0),
+      );
+      const totalMinutes = Math.round(
+        data.legs.reduce((sum, leg) => sum + (Number.isFinite(leg.durationMinutes) ? leg.durationMinutes : 0), 0),
+      );
+      if (totalKm > 0) {
+        return { totalKm, totalMinutes, source: 'osrm' };
+      }
+    }
+  } catch {
+    // Graceful fallback when OSRM is unreachable
+  }
+  return null;
+}
+

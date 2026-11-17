@@ -150,7 +150,7 @@ export function AdminDashboard({
   setSelectedActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
   handleSelectTab: (tab: string) => void;
   handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
-  handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string) => void;
+  handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string, recommendationData?: any) => void;
   handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
   handleUpdateActivityStatus: (id: string, newStatus: Activity['status']) => void;
   handleDeleteActivity: (id: string) => void;
@@ -257,7 +257,7 @@ export function AdminDashboard({
             setCurrentDayIndex(dayIdx);
             setCurrentTab('schedule');
           }}
-          onSelectLocation={() => setCurrentTab(isAdminMode ? 'trips' : 'locations')}
+          onSelectLocation={() => setCurrentTab(isAdminMode ? 'trips' : 'map')}
           onSelectMember={() => setCurrentTab(isAdminMode ? 'trips' : 'members')}
           onToggleAttendance={handleToggleMemberAttendance}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}

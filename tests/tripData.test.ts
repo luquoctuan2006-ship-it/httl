@@ -278,4 +278,25 @@ test('offlineStorage preserves full cached trip against matching-version summary
   assert.equal(pendingAttempt.cache, null);
 });
 
+test('normalizeTripData and normalizeTripSummary never fall back to mockData VN-1024 on null or invalid input', async () => {
+  const { normalizeTripSummary } = await import('../src/data/normalizeTripData');
+
+  const fallbackTrip = normalizeTripData(null);
+  assert.notEqual(fallbackTrip.code, 'VN-1024');
+  assert.equal(fallbackTrip.code, 'VN-TOUR');
+  assert.equal(fallbackTrip.title, 'Chuyến đi mới');
+  assert.deepEqual(fallbackTrip.days, []);
+  assert.deepEqual(fallbackTrip.waypoints, []);
+  assert.deepEqual(fallbackTrip.members, []);
+  assert.deepEqual(fallbackTrip.alerts, []);
+  assert.equal(fallbackTrip.budgetTotal, 0);
+  assert.equal(fallbackTrip.budgetUsed, 0);
+
+  const fallbackSummary = normalizeTripSummary(undefined, 'custom-empty-id');
+  assert.equal(fallbackSummary.id, 'custom-empty-id');
+  assert.equal(fallbackSummary.isSummary, true);
+  assert.notEqual(fallbackSummary.code, 'VN-1024');
+  assert.deepEqual(fallbackSummary.days, []);
+  assert.equal(fallbackSummary.budgetTotal, 0);
+});
 

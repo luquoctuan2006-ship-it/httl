@@ -213,8 +213,9 @@ export default function App() {
 
         const resolvedName = result.guestName || guestName?.trim() || 'Hành khách';
         const resolvedCode = result.joinCode || cleanCode;
+        const nowIso = new Date().toISOString();
         if (!enteredFromAccount) {
-          saveStoredGuestSession(resolvedCode, resolvedName);
+          saveStoredGuestSession(resolvedCode, resolvedName, result.trip);
           clearGuestCodeFromUrl();
         }
         setGuestSession({
@@ -222,8 +223,23 @@ export default function App() {
           guestName: resolvedName,
           trip: result.trip,
           enteredFromAccount,
+          cachedAt: nowIso,
         });
       } catch (error) {
+        if (!enteredFromAccount) {
+          const stored = loadStoredGuestSession();
+          if (stored?.trip && stored.joinCode === cleanCode) {
+            setGuestSession({
+              joinCode: stored.joinCode,
+              guestName: stored.guestName,
+              trip: stored.trip,
+              enteredFromAccount: false,
+              cachedAt: stored.cachedAt,
+            });
+            showToast('Đang hiển thị lịch trình hành khách đã lưu ngoại tuyến.', 'info');
+            return;
+          }
+        }
         showToast(error instanceof Error ? error.message : 'Không thể mở giao diện Hành khách.', 'error');
       }
     },
@@ -244,7 +260,11 @@ export default function App() {
       if (!response.ok || !result?.success || !result.trip) {
         throw new Error(result?.error || 'Mã chuyến đi hiện đã đóng hoặc không còn hợp lệ.');
       }
-      setGuestSession((prev) => (prev ? { ...prev, trip: result.trip! } : null));
+      const nowIso = new Date().toISOString();
+      if (!guestSession.enteredFromAccount) {
+        saveStoredGuestSession(guestSession.joinCode, guestSession.guestName, result.trip);
+      }
+      setGuestSession((prev) => (prev ? { ...prev, trip: result.trip!, cachedAt: nowIso } : null));
       showToast('Đã làm mới lịch trình chuyến đi.', 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Không thể làm mới lịch trình.', 'error');
@@ -263,6 +283,17 @@ export default function App() {
     const stored = loadStoredGuestSession();
     const codeToRestore = urlGuestCode || stored?.joinCode || '';
     if (!codeToRestore) return;
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine && stored?.trip && stored.joinCode === codeToRestore) {
+      setGuestSession({
+        joinCode: stored.joinCode,
+        guestName: stored.guestName,
+        trip: stored.trip,
+        enteredFromAccount: false,
+        cachedAt: stored.cachedAt,
+      });
+      return;
+    }
 
     const guestNameToUse = urlGuestCode ? '' : stored?.guestName || '';
     void handleOpenGuestModeWithCode(codeToRestore, guestNameToUse, false);
@@ -314,6 +345,7 @@ export default function App() {
           guestName={guestSession.guestName}
           joinCode={guestSession.joinCode}
           enteredFromAccount={guestSession.enteredFromAccount}
+          cachedAt={guestSession.cachedAt}
           onRefresh={handleRefreshGuestTrip}
           onExitGuestMode={handleExitGuestMode}
         />
@@ -335,13 +367,14 @@ export default function App() {
         <AuthScreen
           initialGuestCode={urlGuestCode}
           onEnterGuestTrip={({ joinCode, guestName, trip }) => {
-            saveStoredGuestSession(joinCode, guestName);
+            saveStoredGuestSession(joinCode, guestName, trip);
             clearGuestCodeFromUrl();
             setGuestSession({
               joinCode,
               guestName,
               trip,
               enteredFromAccount: false,
+              cachedAt: new Date().toISOString(),
             });
           }}
         />

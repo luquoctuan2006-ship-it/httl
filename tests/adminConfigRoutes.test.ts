@@ -25,7 +25,6 @@ const initialConfig: SystemConfig = {
     conflictChecks: {},
     optimizationPriorities: {},
   },
-  vehicles: [],
   referenceCosts: [],
 };
 
@@ -52,7 +51,6 @@ test('admin config update returns and audits the newly saved config', async () =
       dynamicGeminiTemperature: currentConfig.temperature,
       dynamicGeminiMaxTokens: currentConfig.maxTokens,
       dynamicGeminiSystemPrompt: currentConfig.systemPrompt,
-      activeVehicles: currentConfig.vehicles,
       activeReferenceCosts: currentConfig.referenceCosts,
     }),
     setConfigState: (config) => {
