@@ -64,28 +64,28 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
         type="button"
         onClick={onOpenMap}
         disabled={!onOpenMap}
-        className={`text-left bg-white rounded-xl p-4 sm:p-5 border border-slate-200 transition flex flex-col justify-between ${
-          onOpenMap ? 'hover:border-teal-300 cursor-pointer' : ''
+        className={`text-left bg-white rounded-xl p-4 sm:p-5 border border-neutral-200 transition flex flex-col justify-between ${
+          onOpenMap ? 'hover:border-blue-500 cursor-pointer' : ''
         }`}
       >
         <div>
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+          <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
             <span className="font-medium inline-flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-teal-600" />
+              <MapPin className="w-3.5 h-3.5 text-red-600" />
               Tuyến hành trình
             </span>
-            <span className="tabular-nums text-[11px]">{trip.totalKm} km</span>
+            <span className="tabular-nums text-[11px] font-mono">{trip.totalKm} km</span>
           </div>
-          <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight truncate">
+          <div className="text-lg sm:text-xl font-bold text-neutral-950 tracking-tight truncate">
             {trip.origin || trip.originFull} → {trip.destination || trip.destinationFull}
           </div>
-          <div className="text-xs text-slate-500 mt-1 truncate">
+          <div className="text-xs text-neutral-500 mt-1 truncate">
             {trip.originFull} đến {trip.destinationFull}
           </div>
         </div>
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 tabular-nums">
+        <div className="mt-3 pt-2.5 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500 tabular-nums">
           <span className="truncate">{trip.destinationsCount} điểm dừng · {trip.vehicle}</span>
-          <span className="font-semibold text-slate-800 shrink-0 ml-2">
+          <span className="font-semibold text-neutral-950 shrink-0 ml-2">
             Ngày {trip.currentDay}/{trip.totalDays}
           </span>
         </div>
@@ -95,28 +95,28 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
       <button
         type="button"
         onClick={onOpenSchedule}
-        className="text-left bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-teal-300 transition flex flex-col justify-between cursor-pointer"
+        className="text-left bg-white rounded-xl p-4 sm:p-5 border border-neutral-200 hover:border-blue-500 transition flex flex-col justify-between cursor-pointer"
       >
         <div>
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+          <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
             <span className="font-medium inline-flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-teal-600" />
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
               Lịch trình
             </span>
-            <span className="tabular-nums text-[11px] font-medium text-emerald-700">
+            <span className="tabular-nums text-[11px] font-semibold text-blue-700">
               {completedPercent}% hoàn tất
             </span>
           </div>
-          <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+          <div className="text-lg sm:text-xl font-bold text-neutral-950 tracking-tight tabular-nums">
             {totalCount} hoạt động
           </div>
-          <div className="text-xs text-slate-500 mt-1 tabular-nums">
+          <div className="text-xs text-neutral-500 mt-1 tabular-nums">
             {confirmedCount} đã xác nhận · {pendingCount} chờ xử lý
           </div>
         </div>
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 tabular-nums">
+        <div className="mt-3 pt-2.5 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500 tabular-nums">
           <span>Đã hoàn thành</span>
-          <span className="font-semibold text-slate-800">
+          <span className="font-semibold text-neutral-950">
             {completedCount}/{totalCount} mục
           </span>
         </div>
@@ -129,42 +129,42 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
           onClick={onOpenBudget}
           className={`text-left rounded-xl p-4 sm:p-5 border transition flex flex-col justify-between cursor-pointer ${
             isOver
-              ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300'
+              ? 'bg-red-50/50 border-red-300 hover:border-red-500'
               : isNear
-                ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300'
-                : 'bg-white border-slate-200 hover:border-teal-300'
+                ? 'bg-red-50/20 border-red-200 hover:border-red-400'
+                : 'bg-white border-neutral-200 hover:border-blue-500'
           }`}
         >
           <div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+            <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
               <span className="font-medium inline-flex items-center gap-1.5">
-                <Wallet className={`w-3.5 h-3.5 ${isOver ? 'text-rose-600' : isNear ? 'text-amber-600' : 'text-teal-600'}`} />
+                <Wallet className={`w-3.5 h-3.5 ${isOver || isNear ? 'text-red-600' : 'text-blue-600'}`} />
                 Ngân sách
               </span>
               <span
                 className={`text-[11px] font-semibold tabular-nums ${
-                  isOver ? 'text-rose-700' : isNear ? 'text-amber-700' : 'text-slate-500'
+                  isOver ? 'text-red-700' : isNear ? 'text-red-600' : 'text-neutral-600'
                 }`}
               >
                 {isOver ? 'Vượt mức' : isNear ? 'Gần chạm mức (≥85%)' : `${rawBudgetPercent}% đã dùng`}
               </span>
             </div>
-            <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+            <div className="text-lg sm:text-xl font-bold text-neutral-950 tracking-tight tabular-nums">
               {formatMillions(trip.budgetTotal)}
             </div>
-            <div className="text-xs text-slate-500 mt-1 tabular-nums">
+            <div className="text-xs text-neutral-500 mt-1 tabular-nums">
               {isOver ? (
-                <span className="font-semibold text-rose-700">Vượt {formatShortMillions(overAmount)}</span>
+                <span className="font-semibold text-red-700">Vượt {formatShortMillions(overAmount)}</span>
               ) : (
                 <span>Còn lại {formatShortMillions(trip.budgetRemaining)}</span>
               )}
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100">
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+          <div className="mt-3 pt-2.5 border-t border-neutral-100">
+            <div className="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${
-                  isOver ? 'bg-rose-500' : isNear ? 'bg-amber-500' : 'bg-teal-600'
+                  isOver || isNear ? 'bg-red-600' : 'bg-blue-600'
                 }`}
                 style={{ width: `${Math.min(rawBudgetPercent, 100)}%` }}
               />
@@ -177,28 +177,28 @@ export const MetricCards: React.FC<MetricCardsProps> = ({
       <button
         type="button"
         onClick={onOpenMembers}
-        className="text-left bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-teal-300 transition flex flex-col justify-between cursor-pointer"
+        className="text-left bg-white rounded-xl p-4 sm:p-5 border border-neutral-200 hover:border-blue-500 transition flex flex-col justify-between cursor-pointer"
       >
         <div>
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+          <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
             <span className="font-medium inline-flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-teal-600" />
+              <Users className="w-3.5 h-3.5 text-neutral-900" />
               Đoàn &amp; Thành viên
             </span>
             <span className="tabular-nums text-[11px]">
               {trip.membersOnline}/{trip.membersTotal} trực tuyến
             </span>
           </div>
-          <div className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+          <div className="text-lg sm:text-xl font-bold text-neutral-950 tracking-tight tabular-nums">
             {trip.membersTotal} thành viên
           </div>
-          <div className="text-xs text-slate-500 mt-1 tabular-nums truncate">
+          <div className="text-xs text-neutral-500 mt-1 tabular-nums truncate">
             {trip.membersStatus}
           </div>
         </div>
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+        <div className="mt-3 pt-2.5 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
           <span>Chi tiết điểm danh</span>
-          <span className="font-semibold text-teal-700">Mở danh sách →</span>
+          <span className="font-semibold text-blue-600">Mở danh sách →</span>
         </div>
       </button>
     </div>

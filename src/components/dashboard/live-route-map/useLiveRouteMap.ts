@@ -35,10 +35,10 @@ function buildStopMarkerIcon(
   const isCompleted = stop.status === 'completed';
   const signature = `${stop.order}|${stop.status}|${isSelected ? 1 : 0}`;
 
-  const bgColor = isCurrent ? '#0D9488' : isCompleted ? '#059669' : '#6366F1';
+  const bgColor = isCurrent ? '#DC2626' : isCompleted ? '#111827' : '#2563EB';
   const ringShadow = isSelected
-    ? '0 0 0 4px rgba(20, 184, 166, 0.35), 0 6px 12px rgba(15, 23, 42, 0.3)'
-    : '0 4px 6px -1px rgba(0, 0, 0, 0.25)';
+    ? '0 0 0 4px rgba(37, 99, 235, 0.35), 0 6px 12px rgba(10, 10, 10, 0.35)'
+    : '0 4px 6px -1px rgba(0, 0, 0, 0.28)';
 
   const pulseRing = isCurrent
     ? `<div style="
@@ -46,7 +46,7 @@ function buildStopMarkerIcon(
         width: 40px;
         height: 40px;
         border-radius: 9999px;
-        background: rgba(13, 148, 136, 0.28);
+        background: rgba(220, 38, 38, 0.28);
         animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
         top: -20px;
         left: -20px;
@@ -95,8 +95,8 @@ function buildStopPopupContent(
 
   const legLine =
     stop.distanceFromPrevKm > 0
-      ? `<div style="color:#475569;margin-top:3px;">Di chuyển (${sourceLabel}): <strong>${stop.distanceFromPrevKm} km</strong> (~${escapeHtml(formatTravelDuration(stop.travelMinutesFromPrev))})</div>`
-      : `<div style="color:#0D9488;margin-top:3px;font-weight:600;">Điểm khởi đầu tuyến</div>`;
+      ? `<div style="color:#404040;margin-top:3px;">Di chuyển (${sourceLabel}): <strong>${stop.distanceFromPrevKm} km</strong> (~${escapeHtml(formatTravelDuration(stop.travelMinutesFromPrev))})</div>`
+      : `<div style="color:#2563EB;margin-top:3px;font-weight:600;">Điểm khởi đầu tuyến</div>`;
 
   const dayTimeLine = [
     stop.dayIndex ? `Ngày ${stop.dayIndex}` : '',
@@ -106,17 +106,17 @@ function buildStopPopupContent(
     .join(' • ');
 
   const weatherLine = stopWeather
-    ? `<div style="color:#0369A1;margin-top:3px;font-weight:600;">Thời tiết hôm nay: ${stopWeather.temp}°C • ${escapeHtml(stopWeather.description)}${stopWeather.rainProb ? ` • Mưa ${escapeHtml(stopWeather.rainProb)}` : ''}</div>`
+    ? `<div style="color:#1D4ED8;margin-top:3px;font-weight:600;">Thời tiết hôm nay: ${stopWeather.temp}°C • ${escapeHtml(stopWeather.description)}${stopWeather.rainProb ? ` • Mưa ${escapeHtml(stopWeather.rainProb)}` : ''}</div>`
     : '';
 
   const html = `
     <div style="font-family: sans-serif; font-size: 12px; padding: 2px; min-width: 200px;">
-      <strong style="color: #0F172A; font-size: 13px;">#${stop.order}. ${escapeHtml(stop.name)}</strong><br/>
-      <span style="color: ${isCompleted ? '#059669' : isCurrent ? '#0D9488' : '#6366F1'}; font-weight: 700;">
+      <strong style="color: #0A0A0A; font-size: 13px;">#${stop.order}. ${escapeHtml(stop.name)}</strong><br/>
+      <span style="color: ${isCompleted ? '#111827' : isCurrent ? '#DC2626' : '#2563EB'}; font-weight: 700;">
         ${escapeHtml(STATUS_LABEL[stop.status] || '')}
       </span>
-      ${dayTimeLine ? `<br/><span style="color: #64748B;">${escapeHtml(dayTimeLine)}</span>` : ''}
-      ${stop.activityTitle ? `<br/><span style="color: #334155;">Hoạt động: ${escapeHtml(stop.activityTitle)}</span>` : ''}
+      ${dayTimeLine ? `<br/><span style="color: #525252;">${escapeHtml(dayTimeLine)}</span>` : ''}
+      ${stop.activityTitle ? `<br/><span style="color: #262626;">Hoạt động: ${escapeHtml(stop.activityTitle)}</span>` : ''}
       ${legLine}
       ${weatherLine}
     </div>
@@ -249,10 +249,10 @@ export function useLiveRouteMap({
       const segmentLine = L.polyline(
         lineCoords,
         legDone
-          ? { color: '#059669', weight: 4.5, opacity: 0.92 }
+          ? { color: '#111827', weight: 4.5, opacity: 0.92 }
           : hasOsrmPath
-            ? { color: '#0F766E', weight: 4, opacity: 0.85, dashArray: '8, 6' }
-            : { color: '#0F766E', weight: 3.5, opacity: 0.72, dashArray: '4, 8' },
+            ? { color: '#2563EB', weight: 4, opacity: 0.88, dashArray: '8, 6' }
+            : { color: '#DC2626', weight: 3.5, opacity: 0.78, dashArray: '4, 8' },
       );
       segmentLine.addTo(routeLayer);
 
@@ -267,15 +267,15 @@ export function useLiveRouteMap({
           className: 'route-segment-pill',
           html: `
             <div style="
-              background: rgba(255,255,255,0.94);
-              color: #0F172A;
-              border: 1px solid ${curr.legSource === 'osrm' ? '#99F6E4' : '#CBD5E1'};
+              background: rgba(10,10,15,0.92);
+              color: #FFFFFF;
+              border: 1px solid ${curr.legSource === 'osrm' ? '#3B82F6' : '#EF4444'};
               border-radius: 9999px;
               padding: 2px 7px;
               font-size: 10px;
               font-weight: 700;
               white-space: nowrap;
-              box-shadow: 0 2px 4px rgba(15,23,42,0.12);
+              box-shadow: 0 2px 6px rgba(0,0,0,0.22);
               transform: translate(-50%, -50%);
               pointer-events: none;
             ">

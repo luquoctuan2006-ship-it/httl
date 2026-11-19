@@ -186,22 +186,22 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden text-slate-800 max-h-[92vh] flex flex-col">
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-lg w-full border border-neutral-200 shadow-2xl overflow-hidden text-neutral-800 max-h-[92vh] flex flex-col">
+        <div className="px-6 py-4 bg-neutral-950 border-b-2 border-blue-600 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-teal-300 border border-teal-500/30 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
               <User className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-extrabold">Quản lý Tài khoản</h3>
-              <p className="text-[11px] text-slate-400">{authUser.email}</p>
+              <p className="text-[11px] text-neutral-400">{authUser.email}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/10 transition"
+            className="p-1.5 rounded-lg hover:bg-white/15 transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -212,39 +212,39 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             <div
               className={`p-3 rounded-xl border flex items-start gap-2 font-semibold ${
                 feedback.type === 'success'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-rose-50 border-rose-200 text-rose-800'
+                  ? 'bg-blue-50 border-blue-200 text-blue-900'
+                  : 'bg-red-50 border-red-200 text-red-800'
               }`}
             >
               {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
               ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
               )}
               <span>{feedback.text}</span>
             </div>
           )}
 
           {/* Thông tin hồ sơ */}
-          <form onSubmit={handleSaveName} className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <form onSubmit={handleSaveName} className="space-y-3 p-4 rounded-2xl bg-neutral-50 border border-neutral-200">
             <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-teal-600" />
+              <h4 className="font-extrabold text-neutral-950 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-blue-600" />
                 <span>Thông tin cá nhân</span>
               </h4>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-neutral-950 text-blue-300">
                 {authUser.role === 'admin' ? 'Quản trị viên (Admin)' : 'Người dùng (User)'}
               </span>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Tên hiển thị *</label>
+              <label className="block font-bold text-neutral-700 mb-1">Tên hiển thị *</label>
               <input
                 type="text"
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-teal-500 outline-none"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:border-blue-600 outline-none"
                 placeholder="Nhập họ tên..."
               />
             </div>
@@ -253,7 +253,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               <button
                 type="submit"
                 disabled={savingProfile}
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold transition disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
               >
                 {savingProfile ? 'Đang lưu...' : 'Lưu tên hiển thị'}
               </button>
@@ -261,46 +261,46 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           </form>
 
           {/* Đổi mật khẩu */}
-          <form onSubmit={handleChangePassword} className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-            <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-teal-600" />
+          <form onSubmit={handleChangePassword} className="space-y-3 p-4 rounded-2xl bg-neutral-50 border border-neutral-200">
+            <h4 className="font-extrabold text-neutral-950 flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5 text-blue-600" />
               <span>Đổi mật khẩu</span>
             </h4>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Mật khẩu hiện tại *</label>
+              <label className="block font-bold text-neutral-700 mb-1">Mật khẩu hiện tại *</label>
               <input
                 type="password"
                 required
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-teal-500 outline-none"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:border-blue-600 outline-none"
                 placeholder="••••••••"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Mật khẩu mới *</label>
+                <label className="block font-bold text-neutral-700 mb-1">Mật khẩu mới *</label>
                 <input
                   type="password"
                   required
                   minLength={6}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-teal-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:border-blue-600 outline-none"
                   placeholder="Ít nhất 6 ký tự"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Xác nhận mật khẩu mới *</label>
+                <label className="block font-bold text-neutral-700 mb-1">Xác nhận mật khẩu mới *</label>
                 <input
                   type="password"
                   required
                   minLength={6}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-teal-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:border-blue-600 outline-none"
                   placeholder="Nhập lại mật khẩu"
                 />
               </div>
@@ -311,7 +311,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 type="button"
                 onClick={handleSendResetEmail}
                 disabled={sendingReset}
-                className="inline-flex items-center gap-1.5 text-teal-700 hover:text-teal-800 font-bold hover:underline disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 text-blue-700 hover:text-blue-800 font-bold hover:underline disabled:opacity-50"
               >
                 <Mail className="w-3.5 h-3.5" />
                 <span>{sendingReset ? 'Đang gửi email...' : 'Gửi email đặt lại mật khẩu'}</span>
@@ -320,7 +320,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               <button
                 type="submit"
                 disabled={savingPassword}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold transition disabled:opacity-50"
               >
                 {savingPassword ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
               </button>
@@ -328,14 +328,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           </form>
 
           {/* Vùng nguy hiểm: Tự xóa tài khoản và toàn bộ dữ liệu cá nhân */}
-          <div className="space-y-3 p-4 rounded-2xl bg-rose-50/70 border border-rose-200">
+          <div className="space-y-3 p-4 rounded-2xl bg-red-50/70 border border-red-200">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h4 className="font-extrabold text-rose-900 flex items-center gap-1.5">
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <h4 className="font-extrabold text-red-900 flex items-center gap-1.5">
+                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
                   <span>Xóa vĩnh viễn tài khoản</span>
                 </h4>
-                <p className="text-[11px] text-rose-700 mt-0.5">
+                <p className="text-[11px] text-red-700 mt-0.5">
                   Toàn bộ chuyến đi, hóa đơn và hồ sơ cá nhân của bạn sẽ bị xóa sạch khỏi hệ thống và không thể khôi phục.
                 </p>
               </div>
@@ -343,7 +343,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 font-bold shrink-0 transition"
+                  className="px-3 py-1.5 rounded-xl bg-white border border-red-300 text-red-700 hover:bg-red-100 font-bold shrink-0 transition"
                 >
                   Xóa tài khoản
                 </button>
@@ -351,23 +351,23 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </div>
 
             {showDeleteConfirm && (
-              <form onSubmit={handleDeleteAccount} className="space-y-3 pt-2 border-t border-rose-200">
+              <form onSubmit={handleDeleteAccount} className="space-y-3 pt-2 border-t border-red-200">
                 {firebaseAuth?.currentUser?.providerData?.some((p) => p.providerId === 'password') && (
                   <div>
-                    <label className="block font-bold text-rose-900 mb-1">Mật khẩu hiện tại *</label>
+                    <label className="block font-bold text-red-900 mb-1">Mật khẩu hiện tại *</label>
                     <input
                       type="password"
                       required
                       value={deletePassword}
                       onChange={(e) => setDeletePassword(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-slate-900 focus:border-rose-500 outline-none"
+                      className="w-full px-3 py-2 rounded-xl border border-red-200 bg-white text-neutral-900 focus:border-red-600 outline-none"
                       placeholder="Nhập mật khẩu để xác nhận"
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="block font-bold text-rose-900 mb-1">
+                  <label className="block font-bold text-red-900 mb-1">
                     Nhập chữ <span className="font-black underline">XOA</span> để xác nhận *
                   </label>
                   <input
@@ -375,7 +375,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                     required
                     value={deleteConfirmText}
                     onChange={(e) => setDeleteConfirmText(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-slate-900 focus:border-rose-500 outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-red-200 bg-white text-neutral-900 focus:border-red-600 outline-none"
                     placeholder="XOA"
                   />
                 </div>
@@ -388,14 +388,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                       setDeletePassword('');
                       setDeleteConfirmText('');
                     }}
-                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold"
+                    className="px-3 py-2 rounded-xl bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 font-bold"
                   >
                     Hủy bỏ
                   </button>
                   <button
                     type="submit"
                     disabled={deletingAccount}
-                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition disabled:opacity-50"
                   >
                     {deletingAccount ? 'Đang xóa dữ liệu...' : 'Xác nhận xóa vĩnh viễn'}
                   </button>

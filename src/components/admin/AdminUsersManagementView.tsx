@@ -256,23 +256,23 @@ export const AdminUsersManagementView: React.FC = () => {
     <div className="space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-xs font-bold text-white shadow-2xl animate-fade-in">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-2xl animate-fade-in">
           <CheckCircle2 className="w-4 h-4" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-neutral-800 bg-[#090B11] p-6 shadow-xl">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/40">
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-600/20 text-blue-300 border border-blue-500/40">
               Quản trị Người dùng & Phân quyền
             </span>
-            <span className="text-xs text-slate-400 font-semibold">{users.length} tài khoản</span>
+            <span className="text-xs text-neutral-400 font-semibold">{users.length} tài khoản</span>
           </div>
           <h2 className="mt-2 text-2xl font-black text-white">Quản lý Tài khoản & Phân quyền (RBAC)</h2>
-          <p className="mt-1 text-xs text-slate-400 max-w-xl">
+          <p className="mt-1 text-xs text-neutral-400 max-w-xl">
             Tra cứu danh sách người dùng, Khóa/Mở khóa tài khoản khi có vi phạm, phân chia vai trò và ghi nhận lịch sử thay đổi trên hệ thống.
           </p>
         </div>
@@ -281,14 +281,14 @@ export const AdminUsersManagementView: React.FC = () => {
           <button
             onClick={() => void fetchUsers(false)}
             disabled={isLoading}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            className="p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-700 transition"
             title="Làm mới danh sách"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md shadow-teal-900/30 transition active:scale-95"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-950/40 transition active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Thêm User Mới</span>
@@ -298,44 +298,44 @@ export const AdminUsersManagementView: React.FC = () => {
 
       {/* Dynamic User Statistics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Tổng tài khoản</span>
+        <div className="rounded-2xl border border-neutral-800 bg-[#090B11] p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">Tổng tài khoản</span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white">{userStats.total}</span>
-            <span className="text-xs text-slate-500">người dùng ({userStats.active} hoạt động)</span>
+            <span className="text-2xl font-black text-white tabular-nums">{userStats.total}</span>
+            <span className="text-xs text-neutral-500 tabular-nums">người dùng ({userStats.active} hoạt động)</span>
           </div>
         </div>
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">Quản trị viên (Admin)</span>
+        <div className="rounded-2xl border border-neutral-800 bg-[#090B11] p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 block">Quản trị viên (Admin)</span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-400">{userStats.admins}</span>
-            <span className="text-xs text-slate-500">toàn quyền hệ thống</span>
+            <span className="text-2xl font-black text-red-400 tabular-nums">{userStats.admins}</span>
+            <span className="text-xs text-neutral-500">toàn quyền hệ thống</span>
           </div>
         </div>
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 block">Khách du lịch (User)</span>
+        <div className="rounded-2xl border border-neutral-800 bg-[#090B11] p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block">Khách du lịch (User)</span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-teal-300">{userStats.tourists}</span>
-            <span className="text-xs text-slate-500">tài khoản người dùng</span>
+            <span className="text-2xl font-black text-blue-300 tabular-nums">{userStats.tourists}</span>
+            <span className="text-xs text-neutral-500">tài khoản người dùng</span>
           </div>
         </div>
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-[#090B11] p-3">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Tìm theo tên, email, số điện thoại..."
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -347,7 +347,7 @@ export const AdminUsersManagementView: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e: any) => setStatusFilter(e.target.value)}
-            className="bg-slate-800 border border-slate-700 text-xs text-slate-300 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none"
+            className="bg-neutral-900 border border-neutral-700 text-xs text-neutral-300 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none"
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="active">Đang hoạt động</option>
@@ -361,8 +361,8 @@ export const AdminUsersManagementView: React.FC = () => {
               onClick={() => setRoleFilter(r)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                 roleFilter === r
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-neutral-900 text-neutral-400 hover:text-white hover:bg-neutral-800 border border-neutral-800'
               }`}
             >
               {r === 'all' ? 'Tất cả vai trò' : r}
@@ -372,8 +372,8 @@ export const AdminUsersManagementView: React.FC = () => {
       </div>
 
       {/* Users Table */}
-      <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
-        <div className="hidden md:grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/60">
+      <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-[#090B11] shadow-xl">
+        <div className="hidden md:grid grid-cols-12 gap-3 bg-neutral-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
           <span className="col-span-4">Người dùng</span>
           <span className="col-span-3">Phân quyền (RBAC)</span>
           <span className="col-span-2 text-center">Trạng thái</span>
@@ -381,46 +381,46 @@ export const AdminUsersManagementView: React.FC = () => {
           <span className="col-span-1 text-right">Thao tác</span>
         </div>
 
-        <div className="divide-y divide-slate-800/60">
+        <div className="divide-y divide-neutral-800/70">
           {isLoading ? (
             <div className="p-12 text-center space-y-3">
-              <RefreshCw className="w-6 h-6 text-teal-400 animate-spin mx-auto" />
-              <p className="text-xs text-slate-400 font-semibold">Đang nạp danh sách tài khoản từ hệ thống...</p>
+              <RefreshCw className="w-6 h-6 text-blue-400 animate-spin mx-auto" />
+              <p className="text-xs text-neutral-400 font-semibold">Đang nạp danh sách tài khoản từ hệ thống...</p>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs">
+            <div className="p-8 text-center text-neutral-400 text-xs">
               Không tìm thấy người dùng phù hợp với điều kiện tìm kiếm.
             </div>
           ) : (
             filteredUsers.map((user) => (
               <div
                 key={user.id}
-                className="flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center px-6 py-4 hover:bg-slate-800/40 transition text-sm"
+                className="flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center px-6 py-4 hover:bg-neutral-900/60 transition text-sm"
               >
                 {/* User Info */}
                 <div className="md:col-span-4 flex items-center gap-3">
                   <div
                     className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
                       user.isLocked
-                        ? 'bg-rose-950 border border-rose-800 text-rose-300'
-                        : 'bg-slate-800 border border-slate-700 text-teal-300'
+                        ? 'bg-red-950 border border-red-800 text-red-300'
+                        : 'bg-neutral-900 border border-neutral-700 text-blue-300'
                     }`}
                   >
                     {user.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <strong className={`font-bold ${user.isLocked ? 'text-slate-400 line-through' : 'text-white'}`}>
+                      <strong className={`font-bold ${user.isLocked ? 'text-neutral-500 line-through' : 'text-white'}`}>
                         {user.name}
                       </strong>
                       {user.role === 'Admin' && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-red-600/20 text-red-300 border border-red-500/40">
                           ROOT
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400">{user.email}</p>
-                    <p className="text-[11px] text-slate-500 font-mono">{user.phone}</p>
+                    <p className="text-xs text-neutral-400">{user.email}</p>
+                    <p className="text-[11px] text-neutral-500 font-mono">{user.phone}</p>
                   </div>
                 </div>
 
@@ -430,7 +430,7 @@ export const AdminUsersManagementView: React.FC = () => {
                     value={user.role === 'Admin' ? 'Admin' : 'Khách du lịch'}
                     onChange={(e: any) => handleChangeRole(user.id, e.target.value)}
                     disabled={user.email === 'luquoctuan2006@gmail.com'}
-                    className="w-full max-w-[170px] bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+                    className="w-full max-w-[170px] bg-neutral-900 border border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
                   >
                     <option value="Admin">Admin (Quản trị)</option>
                     <option value="Khách du lịch">Khách du lịch (User)</option>
@@ -440,21 +440,21 @@ export const AdminUsersManagementView: React.FC = () => {
                 {/* Trạng thái khóa */}
                 <div className="md:col-span-2 text-center">
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${
                       user.isLocked
-                        ? 'bg-rose-950/80 text-rose-300 border border-rose-800'
-                        : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
+                        ? 'bg-red-950/80 text-red-300 border-red-800'
+                        : 'bg-blue-950/80 text-blue-300 border-blue-800'
                     }`}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${user.isLocked ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${user.isLocked ? 'bg-red-400' : 'bg-blue-400'}`} />
                     {user.isLocked ? 'Đã khóa' : 'Hoạt động'}
                   </span>
                 </div>
 
                 {/* Đăng nhập gần nhất */}
-                <div className="md:col-span-2 text-center text-xs text-slate-400">
+                <div className="md:col-span-2 text-center text-xs text-neutral-400">
                   <span>{user.lastLogin}</span>
-                  <span className="block text-[10px] text-slate-500">Tạo: {user.createdAt}</span>
+                  <span className="block text-[10px] text-neutral-500">Tạo: {user.createdAt}</span>
                 </div>
 
                 {/* Thao tác (Khóa / Mở khóa / Xóa) */}
@@ -465,8 +465,8 @@ export const AdminUsersManagementView: React.FC = () => {
                     title={user.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản này'}
                     className={`p-2 rounded-xl border text-xs transition font-bold disabled:opacity-30 ${
                       user.isLocked
-                        ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-600/30'
-                        : 'bg-rose-600/20 text-rose-300 border-rose-500/40 hover:bg-rose-600/30'
+                        ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30'
+                        : 'bg-red-600/20 text-red-300 border-red-500/40 hover:bg-red-600/30'
                     }`}
                   >
                     {user.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
@@ -476,13 +476,13 @@ export const AdminUsersManagementView: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => void handleDeleteUser(user.id, user.name)}
-                          className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition"
+                          className="px-2 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold transition"
                         >
                           Xóa
                         </button>
                         <button
                           onClick={() => setConfirmDeleteUserId(null)}
-                          className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-bold transition"
+                          className="px-2 py-1 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-200 text-[10px] font-bold transition"
                         >
                           Hủy
                         </button>
@@ -491,7 +491,7 @@ export const AdminUsersManagementView: React.FC = () => {
                       <button
                         onClick={() => setConfirmDeleteUserId(user.id)}
                         title="Xóa tài khoản"
-                        className="p-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 transition"
+                        className="p-2 rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-500/50 transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -507,7 +507,7 @@ export const AdminUsersManagementView: React.FC = () => {
                 type="button"
                 onClick={handleLoadMore}
                 disabled={isLoadingMore}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-800 text-teal-400 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-blue-400 text-xs font-bold transition cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMore ? 'animate-spin' : ''}`} />
                 <span>{isLoadingMore ? 'Đang tải thêm...' : 'Tải thêm người dùng'}</span>
@@ -519,16 +519,16 @@ export const AdminUsersManagementView: React.FC = () => {
 
       {/* Modal: Thêm User mới */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 animate-fade-in">
-          <div className="relative w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl border border-neutral-700 bg-neutral-950 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-teal-400" />
+                <Users className="w-5 h-5 text-blue-400" />
                 <h3 className="font-black text-white text-base">Thêm Người Dùng Mới</h3>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -536,46 +536,46 @@ export const AdminUsersManagementView: React.FC = () => {
 
             <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Họ và Tên *</label>
+                <label className="text-neutral-300 font-bold block mb-1">Họ và Tên *</label>
                 <input
                   type="text"
                   required
                   placeholder="Ví dụ: Hoàng Minh Nhật"
                   value={newUserForm.name}
                   onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Địa chỉ Email *</label>
+                <label className="text-neutral-300 font-bold block mb-1">Địa chỉ Email *</label>
                 <input
                   type="email"
                   required
                   placeholder="nhat.hoang@voyager.vn"
                   value={newUserForm.email}
                   onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Số điện thoại</label>
+                <label className="text-neutral-300 font-bold block mb-1">Số điện thoại</label>
                 <input
                   type="tel"
                   placeholder="0912 345 678"
                   value={newUserForm.phone}
                   onChange={(e) => setNewUserForm({ ...newUserForm, phone: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Vai trò phân quyền (RBAC)</label>
+                <label className="text-neutral-300 font-bold block mb-1">Vai trò phân quyền (RBAC)</label>
                 <select
                   value={newUserForm.role}
                   onChange={(e: any) => setNewUserForm({ ...newUserForm, role: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="Khách du lịch">Khách du lịch (User)</option>
                   <option value="Admin">Admin (Quản trị viên)</option>
@@ -586,13 +586,13 @@ export const AdminUsersManagementView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition"
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold transition"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold shadow-lg shadow-teal-900/40 transition active:scale-95"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-lg shadow-blue-950/40 transition active:scale-95"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Tạo Tài Khoản</span>
@@ -606,10 +606,10 @@ export const AdminUsersManagementView: React.FC = () => {
       {/* Modal: Hiển thị Liên kết đặt mật khẩu an toàn */}
       {resetLinkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in">
-          <div className="relative w-full max-w-lg rounded-3xl border border-teal-500/30 bg-slate-900 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="relative w-full max-w-lg rounded-3xl border border-blue-500/30 bg-neutral-950 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-teal-400" />
+                <CheckCircle2 className="w-5 h-5 text-blue-400" />
                 <h3 className="font-black text-white text-base">Tạo Tài Khoản Thành Công</h3>
               </div>
               <button
@@ -617,28 +617,28 @@ export const AdminUsersManagementView: React.FC = () => {
                   setResetLinkModal(null);
                   setIsCopied(false);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <p className="text-slate-300">
-                Tài khoản cho <strong className="text-teal-300">{resetLinkModal.name}</strong> ({resetLinkModal.email}) đã được khởi tạo thành công không cần mật khẩu mặc định.
+              <p className="text-neutral-300">
+                Tài khoản cho <strong className="text-blue-300">{resetLinkModal.name}</strong> ({resetLinkModal.email}) đã được khởi tạo thành công không cần mật khẩu mặc định.
               </p>
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 leading-relaxed">
+              <div className="rounded-xl border border-red-500/30 bg-red-600/10 p-3 text-red-200 leading-relaxed">
                 Vui lòng sao chép liên kết thiết lập mật khẩu bên dưới và gửi an toàn cho người dùng:
               </div>
 
               <div>
-                <label className="text-slate-400 font-bold block mb-1">Liên kết đặt mật khẩu:</label>
+                <label className="text-neutral-400 font-bold block mb-1">Liên kết đặt mật khẩu:</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
                     value={resetLinkModal.link}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 text-xs font-mono select-all focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-neutral-200 text-xs font-mono select-all focus:outline-none"
                   />
                   <button
                     type="button"
@@ -647,9 +647,9 @@ export const AdminUsersManagementView: React.FC = () => {
                       setIsCopied(true);
                       setTimeout(() => setIsCopied(false), 2500);
                     }}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold transition cursor-pointer"
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition cursor-pointer"
                   >
-                    {isCopied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                    {isCopied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
                     <span>{isCopied ? 'Đã chép' : 'Sao chép'}</span>
                   </button>
                 </div>
@@ -663,7 +663,7 @@ export const AdminUsersManagementView: React.FC = () => {
                   setResetLinkModal(null);
                   setIsCopied(false);
                 }}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition"
+                className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold transition"
               >
                 Đóng
               </button>

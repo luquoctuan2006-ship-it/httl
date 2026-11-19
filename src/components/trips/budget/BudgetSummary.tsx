@@ -26,6 +26,7 @@ interface BudgetSummaryProps {
   onOpenEditAllocations: () => void;
   onOpenEditBudget: () => void;
   openCreateInvoiceModal: () => void;
+  isAdmin?: boolean;
 }
 
 export function BudgetSummary(props: BudgetSummaryProps) {
@@ -52,6 +53,7 @@ export function BudgetSummary(props: BudgetSummaryProps) {
     onOpenEditAllocations,
     onOpenEditBudget,
     openCreateInvoiceModal,
+    isAdmin = false,
   } = props;
 
   const overCategories = categories.filter((c) => c.level === 'over');
@@ -65,8 +67,8 @@ export function BudgetSummary(props: BudgetSummaryProps) {
       {/* Top Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Quản lý Ngân sách Chuyến đi</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className={`text-xl font-bold ${isAdmin ? 'text-white' : 'text-neutral-950'}`}>Quản lý Ngân sách Chuyến đi</h2>
+          <p className={`text-xs mt-0.5 ${isAdmin ? 'text-neutral-400' : 'text-neutral-500'}`}>
             Theo dõi chi phí dự kiến từ lịch trình đã duyệt &amp; hóa đơn chứng từ thực tế (tự khử trùng khi liên kết)
           </p>
         </div>
@@ -75,40 +77,40 @@ export function BudgetSummary(props: BudgetSummaryProps) {
           <button
             type="button"
             onClick={handleExportCsv}
-            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
             title="Tải xuống báo cáo chi tiêu định dạng CSV/Excel"
           >
-            <Download className="w-3.5 h-3.5 text-teal-600" />
+            <Download className="w-3.5 h-3.5 text-blue-600" />
             <span>Xuất CSV</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsReportPreviewOpen(true)}
-            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
             title="Xem trước & in báo cáo quyết toán chi tiêu"
           >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
+            <Printer className="w-3.5 h-3.5 text-neutral-600" />
             <span>Báo cáo / In</span>
           </button>
 
-          <span aria-hidden="true" className="hidden sm:block w-px h-5 bg-slate-200 mx-0.5" />
+          <span aria-hidden="true" className={`hidden sm:block w-px h-5 mx-0.5 ${isAdmin ? 'bg-neutral-700' : 'bg-neutral-200'}`} />
 
           <button
             type="button"
             onClick={onOpenEditAllocations}
-            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
           >
-            <Sliders className="w-3.5 h-3.5 text-slate-500" />
+            <Sliders className="w-3.5 h-3.5 text-neutral-600" />
             <span>Phân bổ 5 hạng mục</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenEditBudget}
-            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+            className="h-9 flex items-center gap-1.5 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
           >
-            <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+            <Edit3 className="w-3.5 h-3.5 text-neutral-600" />
             <span>Sửa hạn mức</span>
           </button>
 
@@ -118,8 +120,8 @@ export function BudgetSummary(props: BudgetSummaryProps) {
             title={invoiceLimitReached ? 'Chuyến đi đã đạt giới hạn 100 hóa đơn' : 'Ghi nhận hóa đơn mới'}
             className={`h-9 flex items-center gap-1.5 px-4 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
               invoiceLimitReached
-                ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                : 'bg-teal-600 hover:bg-teal-700 text-white'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -133,14 +135,14 @@ export function BudgetSummary(props: BudgetSummaryProps) {
         <div
           className={`rounded-xl border p-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
             hasAnyOver
-              ? 'bg-rose-50 border-rose-200 text-rose-900'
-              : 'bg-amber-50 border-amber-200 text-amber-900'
+              ? 'bg-red-50 border-red-300 text-red-950'
+              : 'bg-neutral-950 border-red-600/50 text-neutral-100'
           }`}
         >
           <div className="flex items-start gap-3">
             <div
               className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                hasAnyOver ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'
+                hasAnyOver ? 'bg-red-100 text-red-600' : 'bg-red-600/20 text-red-400 border border-red-500/30'
               }`}
             >
               {hasAnyOver ? <AlertCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
@@ -156,7 +158,7 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
               {isOverTotalBudget && (
                 <p className="font-medium">
-                  • Tổng chi (thực chi + dự kiến đã duyệt) đã vượt tổng hạn mức{' '}
+                  · Tổng chi (thực chi + dự kiến đã duyệt) đã vượt tổng hạn mức{' '}
                   <span className="font-mono font-bold underline tabular-nums">
                     +{overBudgetAmount.toLocaleString('vi-VN')} ₫
                   </span>{' '}
@@ -166,7 +168,7 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
               {!isOverTotalBudget && isNearTotalBudget && (
                 <p className="font-medium">
-                  • Tổng chi (thực chi + dự kiến đã duyệt) đã đạt{' '}
+                  · Tổng chi (thực chi + dự kiến đã duyệt) đã đạt{' '}
                   <span className="font-mono font-bold tabular-nums">{rawPercentUsed}%</span> hạn mức (còn lại{' '}
                   <span className="font-mono font-bold tabular-nums">{remainingBudget.toLocaleString('vi-VN')} ₫</span>).
                 </p>
@@ -174,7 +176,7 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
               {overCategories.length > 0 && (
                 <p className="font-medium">
-                  • Hạng mục vượt mức:{' '}
+                  · Hạng mục vượt mức:{' '}
                   {overCategories.map((c, idx) => (
                     <span key={c.id} className="font-semibold tabular-nums">
                       {idx > 0 ? ', ' : ''}
@@ -187,7 +189,7 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
               {nearCategories.length > 0 && (
                 <p className="font-medium">
-                  • Hạng mục sắp chạm mức:{' '}
+                  · Hạng mục sắp chạm mức:{' '}
                   {nearCategories.map((c, idx) => (
                     <span key={c.id} className="font-semibold tabular-nums">
                       {idx > 0 ? ', ' : ''}
@@ -200,7 +202,7 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
               {allocationExceedsTotal && (
                 <p className="font-medium opacity-90 tabular-nums">
-                  • Tổng hạn mức 5 hạng mục ({totalAllocatedSum.toLocaleString('vi-VN')} ₫) đang cao hơn tổng ngân sách tour (
+                  · Tổng hạn mức 5 hạng mục ({totalAllocatedSum.toLocaleString('vi-VN')} ₫) đang cao hơn tổng ngân sách tour (
                   {totalBudget.toLocaleString('vi-VN')} ₫) là{' '}
                   <span className="font-mono font-bold">
                     +{(totalAllocatedSum - totalBudget).toLocaleString('vi-VN')} ₫
@@ -217,8 +219,8 @@ export function BudgetSummary(props: BudgetSummaryProps) {
               onClick={onOpenEditBudget}
               className={`h-8 px-3 rounded-lg text-xs font-semibold border transition cursor-pointer whitespace-nowrap ${
                 hasAnyOver
-                  ? 'bg-white border-rose-300 text-rose-700 hover:bg-rose-100'
-                  : 'bg-white border-amber-300 text-amber-800 hover:bg-amber-100'
+                  ? 'bg-white border-red-300 text-red-700 hover:bg-red-100'
+                  : 'bg-red-600 border-red-600 text-white hover:bg-red-700'
               }`}
             >
               Điều chỉnh hạn mức
@@ -229,52 +231,52 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
       {/* Top 3 KPI stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-xl bg-white border border-slate-200">
+        <div className="p-5 rounded-xl bg-white text-neutral-900 border border-neutral-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-slate-500">Tổng hạn mức ngân sách</span>
+            <span className="text-xs font-medium text-neutral-500">Tổng hạn mức ngân sách</span>
             <button
               type="button"
               onClick={onOpenEditBudget}
-              className="text-xs text-teal-600 hover:underline font-semibold cursor-pointer"
+              className="text-xs text-blue-600 hover:underline font-semibold cursor-pointer"
             >
               Chỉnh sửa
             </button>
           </div>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight font-mono tabular-nums">
+          <div className="text-2xl font-bold text-neutral-950 tracking-tight font-mono tabular-nums">
             {totalBudget.toLocaleString('vi-VN')} ₫
           </div>
-          <span className="text-xs text-slate-500 mt-1.5 inline-block">
+          <span className="text-xs text-neutral-500 mt-1.5 inline-block">
             {totalBudget > 0 ? `100% dự toán tour ${trip.code}` : `Chưa thiết lập dự toán cho tour ${trip.code}`}
           </span>
         </div>
 
-        <div className="p-5 rounded-xl bg-white border border-slate-200">
-          <span className="text-xs font-medium text-slate-500 block mb-1">Tổng chi dự kiến &amp; thực tế</span>
+        <div className="p-5 rounded-xl bg-white text-neutral-900 border border-neutral-200">
+          <span className="text-xs font-medium text-neutral-500 block mb-1">Tổng chi dự kiến &amp; thực tế</span>
           <div
             className={`text-2xl font-bold tracking-tight font-mono tabular-nums ${
               isOverTotalBudget
-                ? 'text-rose-600'
+                ? 'text-red-600'
                 : isNearTotalBudget
-                  ? 'text-amber-600'
-                  : 'text-emerald-600'
+                  ? 'text-neutral-950'
+                  : 'text-blue-700'
             }`}
           >
             {spentBudget.toLocaleString('vi-VN')} ₫
           </div>
-          <div className="text-xs text-slate-500 mt-1.5 space-y-0.5 tabular-nums">
+          <div className="text-xs text-neutral-500 mt-1.5 space-y-0.5 tabular-nums">
             <div>
               Chiếm{' '}
-              <strong className={isOverTotalBudget ? 'text-rose-600' : isNearTotalBudget ? 'text-amber-700' : 'text-slate-700'}>
+              <strong className={isOverTotalBudget ? 'text-red-600' : isNearTotalBudget ? 'text-red-700' : 'text-neutral-900'}>
                 {rawPercentUsed}%
               </strong>{' '}
               tổng dự toán ({activityCount} hoạt động, {invoiceCount} hóa đơn)
             </div>
-            <div className="text-[11px] text-slate-500 font-mono">
-              Thực chi: <strong className="text-slate-700">{actualSpentBudget.toLocaleString('vi-VN')} ₫</strong> · Dự kiến:{' '}
-              <strong className="text-slate-700">{plannedCommittedBudget.toLocaleString('vi-VN')} ₫</strong>
+            <div className="text-[11px] text-neutral-500 font-mono">
+              Thực chi: <strong className="text-neutral-800">{actualSpentBudget.toLocaleString('vi-VN')} ₫</strong> · Dự kiến:{' '}
+              <strong className="text-neutral-800">{plannedCommittedBudget.toLocaleString('vi-VN')} ₫</strong>
             </div>
             {pendingApprovalCount > 0 && (
-              <div className="text-[11px] text-amber-700">
+              <div className="text-[11px] text-red-600 font-medium">
                 {pendingApprovalCount} mục Chờ duyệt ({pendingApprovalBudget.toLocaleString('vi-VN')} ₫) chưa tính vào tổng chi
               </div>
             )}
@@ -284,22 +286,22 @@ export function BudgetSummary(props: BudgetSummaryProps) {
         <div
           className={`p-5 rounded-xl border ${
             isOverTotalBudget
-              ? 'bg-rose-50/70 border-rose-200'
+              ? 'bg-red-50/70 border-red-300'
               : isNearTotalBudget
-                ? 'bg-amber-50/60 border-amber-200'
-                : 'bg-white border-slate-200'
+                ? 'bg-neutral-950 border-neutral-900 text-white'
+                : 'bg-white text-neutral-900 border-neutral-200'
           }`}
         >
-          <span className="text-xs font-medium text-slate-500 block mb-1">
+          <span className={`text-xs font-medium block mb-1 ${isNearTotalBudget && !isOverTotalBudget ? 'text-neutral-400' : 'text-neutral-500'}`}>
             {isOverTotalBudget ? 'Vượt hạn mức ngân sách' : 'Dự toán còn lại'}
           </span>
           <div
             className={`text-2xl font-bold tracking-tight font-mono tabular-nums ${
               isOverTotalBudget
-                ? 'text-rose-600'
+                ? 'text-red-600'
                 : isNearTotalBudget
-                  ? 'text-amber-600'
-                  : 'text-slate-900'
+                  ? 'text-white'
+                  : 'text-neutral-950'
             }`}
           >
             {isOverTotalBudget
@@ -309,10 +311,10 @@ export function BudgetSummary(props: BudgetSummaryProps) {
           <span
             className={`text-xs font-medium mt-1.5 inline-block tabular-nums ${
               isOverTotalBudget
-                ? 'text-rose-600'
+                ? 'text-red-600'
                 : isNearTotalBudget
-                  ? 'text-amber-700'
-                  : 'text-emerald-600'
+                  ? 'text-red-400'
+                  : 'text-blue-700'
             }`}
           >
             {isOverTotalBudget
@@ -327,57 +329,57 @@ export function BudgetSummary(props: BudgetSummaryProps) {
       </div>
 
       {/* 5 Categories Breakdown */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+      <div className="bg-white text-neutral-900 rounded-xl border border-neutral-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Chi tiết phân bổ 5 hạng mục dịch vụ</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h3 className="text-sm font-bold text-neutral-950">Chi tiết phân bổ 5 hạng mục dịch vụ</h3>
+            <p className="text-xs text-neutral-500 mt-0.5">
               Tính từ hoạt động đã duyệt (chưa gán hóa đơn) và hóa đơn thực tế · Hoạt động Điều hành không ăn vào Dự phòng 5%
             </p>
           </div>
           <button
             type="button"
             onClick={onOpenEditAllocations}
-            className="text-xs font-semibold text-teal-700 hover:underline flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="text-xs font-semibold text-blue-700 hover:underline flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <Sliders className="w-3.5 h-3.5" />
             <span>Điều chỉnh tỷ lệ phân bổ</span>
           </button>
         </div>
 
-        <div className="divide-y divide-slate-100 text-xs">
+        <div className="divide-y divide-neutral-100 text-xs">
           {categories.map((cat) => (
-            <div key={cat.id} className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition">
+            <div key={cat.id} className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-neutral-50/80 transition">
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <h4 className="font-semibold text-slate-900 text-sm">{cat.name}</h4>
-                  <span className="text-xs text-slate-400 tabular-nums">
+                  <h4 className="font-semibold text-neutral-950 text-sm">{cat.name}</h4>
+                  <span className="text-xs text-neutral-400 tabular-nums">
                     · {cat.count} mục chi
                   </span>
                 </div>
-                <div className="w-full max-w-sm bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
+                <div className="w-full max-w-sm bg-neutral-100 h-1.5 rounded-full overflow-hidden mt-2">
                   <div
                     className={`h-full rounded-full transition-all duration-300 ${
                       cat.level === 'over'
-                        ? 'bg-rose-500'
+                        ? 'bg-red-600'
                         : cat.level === 'near'
-                          ? 'bg-amber-500'
-                          : 'bg-teal-500'
+                          ? 'bg-neutral-950'
+                          : 'bg-blue-600'
                     }`}
                     style={{ width: `${cat.percent}%` }}
                   />
                 </div>
                 {cat.level === 'over' ? (
-                  <p className="text-[11px] font-semibold text-rose-600 mt-1.5 tabular-nums">
+                  <p className="text-[11px] font-semibold text-red-600 mt-1.5 tabular-nums">
                     {cat.allocated > 0 ? `Đã dùng ${cat.rawPercent}% · ` : ''}
                     Vượt hạn mức +{cat.overAmount.toLocaleString('vi-VN')} ₫
                   </p>
                 ) : cat.level === 'near' ? (
-                  <p className="text-[11px] font-medium text-amber-700 mt-1.5 tabular-nums">
+                  <p className="text-[11px] font-semibold text-red-700 mt-1.5 tabular-nums">
                     Đã dùng {cat.rawPercent}% · Còn lại {cat.remaining.toLocaleString('vi-VN')} ₫
                   </p>
                 ) : cat.spent > 0 && cat.allocated > 0 ? (
-                  <p className="text-[11px] text-slate-500 mt-1.5 tabular-nums">
+                  <p className="text-[11px] text-neutral-500 mt-1.5 tabular-nums">
                     Đã dùng {cat.rawPercent}% · Còn {cat.remaining.toLocaleString('vi-VN')} ₫
                   </p>
                 ) : null}
@@ -385,18 +387,18 @@ export function BudgetSummary(props: BudgetSummaryProps) {
 
               <div className="flex items-center gap-6 sm:text-right shrink-0">
                 <div>
-                  <span className="text-slate-400 block text-[11px]">Đã chi</span>
+                  <span className="text-neutral-400 block text-[11px]">Đã chi</span>
                   <span
                     className={`font-bold font-mono text-xs tabular-nums ${
-                      cat.level === 'over' ? 'text-rose-600' : 'text-slate-900'
+                      cat.level === 'over' ? 'text-red-600' : 'text-neutral-950'
                     }`}
                   >
                     {cat.spent.toLocaleString('vi-VN')} ₫
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[11px]">Hạn mức</span>
-                  <span className="font-semibold text-slate-500 font-mono text-xs tabular-nums">
+                  <span className="text-neutral-400 block text-[11px]">Hạn mức</span>
+                  <span className="font-semibold text-neutral-500 font-mono text-xs tabular-nums">
                     {cat.allocated.toLocaleString('vi-VN')} ₫
                   </span>
                 </div>
@@ -404,12 +406,12 @@ export function BudgetSummary(props: BudgetSummaryProps) {
                   <span
                     className={`text-xs font-semibold ${
                       cat.level === 'over'
-                        ? 'text-rose-600'
+                        ? 'text-red-600'
                         : cat.level === 'near'
-                          ? 'text-amber-700'
+                          ? 'text-neutral-950'
                           : cat.level === 'normal'
-                            ? 'text-teal-700'
-                            : 'text-slate-400'
+                            ? 'text-blue-700'
+                            : 'text-neutral-400'
                     }`}
                   >
                     {cat.status === 'Sắp chạm mức' ? 'Sắp chạm (≥85%)' : cat.status}

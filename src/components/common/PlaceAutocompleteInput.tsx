@@ -252,7 +252,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
   return (
     <div ref={containerRef} className="relative space-y-1.5">
       <div className="relative">
-        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           id={id}
           type="text"
@@ -271,11 +271,11 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
           autoComplete="off"
           className={
             inputClassName ||
-            'w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none'
+            'w-full pl-8 pr-8 py-2 rounded-xl border border-neutral-200 bg-white text-xs text-neutral-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none'
           }
         />
         <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-          {isSearching && <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin" />}
+          {isSearching && <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />}
           {!isSearching && value && !disabled && (
             <button
               type="button"
@@ -285,7 +285,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
                 setSuggestions([]);
                 setIsDropdownOpen(false);
               }}
-              className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+              className="p-0.5 text-neutral-400 hover:text-neutral-700 rounded"
               title="Xóa địa điểm"
             >
               <X className="w-3.5 h-3.5" />
@@ -294,7 +294,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
         </div>
 
         {isDropdownOpen && (suggestions.length > 0 || isSearching) && (
-          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-neutral-200 rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-neutral-100">
             {suggestions.map((item, idx) => {
               const isHighlighted = idx === highlightedIndex;
               return (
@@ -306,17 +306,17 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
                     handleSelectSuggestion(item);
                   }}
                   className={`w-full text-left px-3 py-2 flex items-start gap-2 transition cursor-pointer ${
-                    isHighlighted ? 'bg-teal-50' : 'hover:bg-slate-50'
+                    isHighlighted ? 'bg-blue-50' : 'hover:bg-neutral-50'
                   }`}
                 >
-                  <MapPin className="w-3.5 h-3.5 text-teal-600 shrink-0 mt-0.5" />
+                  <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-800 truncate">{item.name}</span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 flex items-center gap-1">
+                      <span className="text-xs font-bold text-neutral-900 truncate">{item.name}</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 shrink-0 flex items-center gap-1">
                         {item.source === 'osm' ? (
                           <>
-                            <Globe2 className="w-2.5 h-2.5 text-teal-600" />
+                            <Globe2 className="w-2.5 h-2.5 text-blue-600" />
                             <span>OSM</span>
                           </>
                         ) : (
@@ -324,8 +324,8 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
                         )}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.displayName}</p>
-                    <p className="text-[10px] font-mono text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-neutral-500 truncate mt-0.5">{item.displayName}</p>
+                    <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
                       {item.lat.toFixed(4)}, {item.lng.toFixed(4)}
                     </p>
                   </div>
@@ -333,8 +333,8 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
               );
             })}
             {isSearching && suggestions.length === 0 && (
-              <div className="px-3 py-2.5 text-[11px] text-slate-500 flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
+              <div className="px-3 py-2.5 text-[11px] text-neutral-500 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
                 <span>Đang tìm địa điểm trên bản đồ OpenStreetMap...</span>
               </div>
             )}
@@ -345,15 +345,15 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
       {/* Trạng thái tọa độ & nhập thủ công */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
         {hasValidCoords && coordinates ? (
-          <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+          <div className="flex items-center gap-1.5 text-blue-700 font-semibold">
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
             <span>
               Đã gắn tọa độ: <span className="font-mono">{coordinates.lat.toFixed(4)}, {coordinates.lng.toFixed(4)}</span>
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 text-amber-700 font-medium">
-            <Compass className="w-3.5 h-3.5 shrink-0" />
+          <div className="flex items-center gap-1.5 text-neutral-600 font-medium">
+            <Compass className="w-3.5 h-3.5 text-red-600 shrink-0" />
             <span>
               {value.trim()
                 ? 'Chưa có tọa độ bản đồ — chọn từ gợi ý hoặc nhập tay'
@@ -368,7 +368,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
               <button
                 type="button"
                 onClick={() => onChangeCoordinates(undefined)}
-                className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 cursor-pointer"
+                className="text-[11px] font-semibold text-neutral-500 hover:text-red-600 cursor-pointer"
               >
                 Gỡ tọa độ
               </button>
@@ -376,7 +376,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
             <button
               type="button"
               onClick={handleOpenManualCoords}
-              className="text-[11px] font-bold text-teal-700 hover:text-teal-800 underline underline-offset-2 cursor-pointer"
+              className="text-[11px] font-bold text-blue-700 hover:text-blue-800 underline underline-offset-2 cursor-pointer"
             >
               {showManualCoords ? 'Đóng' : hasValidCoords ? 'Sửa tọa độ' : 'Nhập tọa độ thủ công'}
             </button>
@@ -385,10 +385,10 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
       </div>
 
       {showManualCoords && !disabled && (
-        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+        <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Vĩ độ (Lat)</label>
+              <label className="block text-[10px] font-bold text-neutral-600 mb-0.5">Vĩ độ (Lat)</label>
               <input
                 type="number"
                 step="any"
@@ -398,11 +398,11 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
                   setManualCoordsError(null);
                 }}
                 placeholder="VD: 16.2367"
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-mono outline-none focus:border-teal-600"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 bg-white text-xs font-mono outline-none focus:border-blue-600"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Kinh độ (Lng)</label>
+              <label className="block text-[10px] font-bold text-neutral-600 mb-0.5">Kinh độ (Lng)</label>
               <input
                 type="number"
                 step="any"
@@ -412,25 +412,25 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
                   setManualCoordsError(null);
                 }}
                 placeholder="VD: 108.0885"
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-mono outline-none focus:border-teal-600"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 bg-white text-xs font-mono outline-none focus:border-blue-600"
               />
             </div>
           </div>
           {manualCoordsError && (
-            <p className="text-[11px] font-semibold text-rose-600">{manualCoordsError}</p>
+            <p className="text-[11px] font-semibold text-red-600">{manualCoordsError}</p>
           )}
           <div className="flex justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setShowManualCoords(false)}
-              className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 rounded-lg cursor-pointer"
+              className="px-2.5 py-1 text-[11px] font-semibold text-neutral-600 hover:bg-neutral-200 rounded-lg cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="button"
               onClick={handleApplyManualCoords}
-              className="px-3 py-1 text-[11px] font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-lg cursor-pointer"
+              className="px-3 py-1 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer"
             >
               Áp dụng tọa độ
             </button>

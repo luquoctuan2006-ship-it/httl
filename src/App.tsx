@@ -58,7 +58,7 @@ const SyncConflictModal = lazy(() =>
 );
 
 const FullPageLoadingFallback = ({ message = 'Đang tải giao diện...' }: { message?: string }) => (
-  <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm text-slate-300">
+  <div className="min-h-screen bg-[#05070C] flex items-center justify-center text-sm text-neutral-300">
     {message}
   </div>
 );
@@ -355,7 +355,7 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm text-slate-300">
+      <div className="min-h-screen bg-[#05070C] flex items-center justify-center text-sm text-neutral-300">
         Đang kiểm tra phiên đăng nhập...
       </div>
     );
@@ -467,7 +467,7 @@ export default function App() {
       {persistence.hydratingTripId && (
         <div
           role="status"
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-slate-900 text-teal-300 text-xs font-bold border border-teal-500/40 shadow-lg"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-neutral-950 text-blue-300 text-xs font-bold border border-blue-500/40 shadow-lg"
         >
           Đang tải chi tiết chuyến đi...
         </div>
@@ -557,25 +557,25 @@ export default function App() {
 
       {/* Modal cảnh báo khi đăng xuất còn dữ liệu ngoại tuyến chưa đồng bộ */}
       {persistence.isLogoutConfirmOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full border border-rose-200 shadow-2xl overflow-hidden">
-            <div className="px-5 py-4 bg-rose-600 text-white flex items-center gap-2.5">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-red-200 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 bg-neutral-950 border-b-2 border-red-600 text-white flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
               <div>
                 <h3 className="text-sm font-extrabold">Cảnh báo dữ liệu chưa đồng bộ</h3>
-                <p className="text-[11px] text-rose-100">Đăng xuất sẽ xóa bộ nhớ đệm ngoại tuyến trên máy</p>
+                <p className="text-[11px] text-neutral-300">Đăng xuất sẽ xóa bộ nhớ đệm ngoại tuyến trên máy</p>
               </div>
             </div>
-            <div className="p-5 space-y-4 text-xs text-slate-700 leading-relaxed">
+            <div className="p-5 space-y-4 text-xs text-neutral-700 leading-relaxed">
               <p>
                 Hiện vẫn còn <strong>{Math.max(1, persistence.pendingSyncCount)} thay đổi</strong> đang lưu tạm trên thiết bị chưa được đồng bộ lên máy chủ. Để tránh lộ dữ liệu đoàn khách và ảnh chứng từ, thao tác đăng xuất sẽ xóa sạch cache ngoại tuyến khỏi trình duyệt này.
               </p>
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-neutral-100">
                 <button
                   type="button"
                   onClick={() => persistence.setIsLogoutConfirmOpen(false)}
                   disabled={persistence.isSyncingBeforeLogout}
-                  className="px-3.5 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition"
+                  className="px-3.5 py-2 rounded-xl font-bold text-neutral-600 hover:bg-neutral-100 transition"
                 >
                   Hủy
                 </button>
@@ -584,7 +584,7 @@ export default function App() {
                     type="button"
                     onClick={() => void persistence.handleSyncAndLogout()}
                     disabled={persistence.isSyncingBeforeLogout}
-                    className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold transition disabled:opacity-50"
+                    className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50"
                   >
                     {persistence.isSyncingBeforeLogout ? 'Đang đồng bộ...' : 'Đồng bộ rồi đăng xuất'}
                   </button>
@@ -593,7 +593,7 @@ export default function App() {
                   type="button"
                   onClick={() => void persistence.performSignOutAndClearCache()}
                   disabled={persistence.isSyncingBeforeLogout}
-                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition disabled:opacity-50"
+                  className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition disabled:opacity-50"
                 >
                   Vẫn đăng xuất &amp; Xóa cache
                 </button>
@@ -608,13 +608,13 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold transition-all duration-300 bg-slate-900/95 text-white border-slate-700 animate-in fade-in slide-in-from-bottom-2"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold transition-all duration-300 bg-neutral-950/95 text-white border-neutral-800 animate-in fade-in slide-in-from-bottom-2"
         >
           <span
             className={`w-2.5 h-2.5 rounded-full shrink-0 ${
               toastMessage.type === 'error'
-                ? 'bg-rose-500'
-                : 'bg-emerald-400 animate-pulse'
+                ? 'bg-red-500'
+                : 'bg-blue-500'
             }`}
           />
           <span className="flex-1">{toastMessage.text}</span>
@@ -624,7 +624,7 @@ export default function App() {
                 toastMessage.onAction?.();
                 setToastMessage(null);
               }}
-              className="ml-2 px-3 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              className="ml-2 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
             >
               <RotateCcw className="w-3 h-3" />
               <span>{toastMessage.actionLabel || 'Hoàn tác'}</span>

@@ -45,6 +45,7 @@ interface MembersViewProps {
   onRemoveGuestCompanion?: (memberId: string) => Promise<void>;
   onOpenGuestModeWithCode?: (joinCode: string, guestName?: string) => Promise<void>;
   onLeaveTrip?: () => Promise<void>;
+  isAdmin?: boolean;
 }
 
 export const MembersView: React.FC<MembersViewProps> = ({
@@ -63,6 +64,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
   onRemoveGuestCompanion,
   onOpenGuestModeWithCode,
   onLeaveTrip,
+  isAdmin = false,
 }) => {
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -348,8 +350,8 @@ export const MembersView: React.FC<MembersViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Thành viên &amp; Mời Hành khách</h2>
-          <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+          <h2 className={`text-xl font-bold ${isAdmin ? 'text-white' : 'text-neutral-950'}`}>Thành viên &amp; Mời Hành khách</h2>
+          <p className={`text-xs mt-0.5 tabular-nums ${isAdmin ? 'text-neutral-400' : 'text-neutral-500'}`}>
             {members.length} thành viên · {presentCount} có mặt · {onlineCount} trực tuyến
           </p>
         </div>
@@ -366,11 +368,11 @@ export const MembersView: React.FC<MembersViewProps> = ({
               }
               className={`h-9 flex items-center gap-1.5 px-3.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                 companionLimitReached
-                  ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  ? 'border-red-300 bg-red-50 text-red-800 hover:bg-red-100'
+                  : 'border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800'
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5 text-teal-600" />
+              <UserPlus className={`w-3.5 h-3.5 ${companionLimitReached ? 'text-red-600' : 'text-blue-600'}`} />
               <span>
                 Thêm người thân{!isTripOwner ? ` (${myCompanionCount}/${MAX_GUEST_COMPANIONS_PER_PASSENGER})` : ''}
               </span>
@@ -381,7 +383,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <button
               type="button"
               onClick={handleOpenAddModal}
-              className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+              className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Thêm thành viên</span>
@@ -392,7 +394,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <button
               type="button"
               onClick={() => setIsLeaveConfirmOpen(true)}
-              className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+              className="h-9 flex items-center gap-1.5 px-3.5 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-700 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Rời chuyến</span>
@@ -403,17 +405,17 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Share / Join Code Management & Guest Handoff Card */}
       {(joinCode || (isTripOwner && onManageJoinCode)) && (
-        <div className="rounded-xl bg-white border border-slate-200 p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        <div className="rounded-xl bg-white text-neutral-900 border border-neutral-200 p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           <div className="lg:col-span-7 space-y-2.5">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                <KeyRound className="w-4 h-4 text-teal-600" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-neutral-950">
+                <KeyRound className="w-4 h-4 text-blue-600" />
                 <span>Mã tham gia chuyến đi</span>
               </span>
               {joinCode && (
                 <span
                   className={`text-xs font-semibold ${
-                    joinCodeEnabled ? 'text-emerald-700' : 'text-slate-500'
+                    joinCodeEnabled ? 'text-blue-700' : 'text-red-600'
                   }`}
                 >
                   · {joinCodeEnabled ? 'Đang mở tham gia' : 'Đang tạm khóa'}
@@ -421,7 +423,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
               )}
             </div>
 
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-neutral-500 leading-relaxed">
               {isTripOwner
                 ? 'Chia sẻ mã này để bạn bè tham gia chuyến với tư cách Hành khách có tài khoản, hoặc nhập giúp cho người thân không tài khoản.'
                 : 'Dùng mã này để mời thêm người thân không tài khoản cùng theo dõi lịch trình.'}
@@ -429,25 +431,25 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
             {joinCode ? (
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <div className="px-3.5 py-2 rounded-lg bg-slate-900 text-white font-mono text-base font-bold tracking-[0.2em] select-all">
+                <div className="px-3.5 py-2 rounded-lg bg-neutral-950 text-blue-300 border border-neutral-800 font-mono text-base font-bold tracking-[0.2em] select-all">
                   {joinCode}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => void handleCopy('code')}
-                  className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
+                  className="h-9 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
-                  {copiedType === 'code' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedType === 'code' ? <Check className="w-3.5 h-3.5 text-blue-600" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedType === 'code' ? 'Đã chép mã' : 'Sao chép mã'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => void handleCopy('link')}
-                  className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-teal-700 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
+                  className="h-9 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-blue-700 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
-                  {copiedType === 'link' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Link2 className="w-3.5 h-3.5" />}
+                  {copiedType === 'link' ? <Check className="w-3.5 h-3.5 text-blue-600" /> : <Link2 className="w-3.5 h-3.5" />}
                   <span>{copiedType === 'link' ? 'Đã chép link mời' : 'Sao chép link mời'}</span>
                 </button>
 
@@ -457,7 +459,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                       type="button"
                       disabled={isManagingCode}
                       onClick={() => void handleCodeAction('rotate')}
-                      className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                      className="h-9 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
                       title="Đổi sang mã mời mới (mã cũ sẽ hết hiệu lực)"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isManagingCode ? 'animate-spin' : ''}`} />
@@ -468,9 +470,9 @@ export const MembersView: React.FC<MembersViewProps> = ({
                       type="button"
                       disabled={isManagingCode}
                       onClick={() => void handleCodeAction('toggle')}
-                      className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                      className="h-9 px-3 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
                     >
-                      {joinCodeEnabled ? <Lock className="w-3.5 h-3.5 text-amber-600" /> : <Unlock className="w-3.5 h-3.5 text-emerald-600" />}
+                      {joinCodeEnabled ? <Lock className="w-3.5 h-3.5 text-red-600" /> : <Unlock className="w-3.5 h-3.5 text-blue-600" />}
                       <span>{joinCodeEnabled ? 'Khóa mã' : 'Mở lại mã'}</span>
                     </button>
                   </>
@@ -483,7 +485,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   type="button"
                   disabled={isManagingCode}
                   onClick={() => void handleCodeAction('generate')}
-                  className="mt-1 h-9 px-3.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                  className="mt-1 h-9 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>{isManagingCode ? 'Đang tạo mã...' : 'Tạo mã mời vào chuyến'}</span>
@@ -494,12 +496,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
           {/* Direct Guest Portal Handoff */}
           {joinCode && joinCodeEnabled && onOpenGuestModeWithCode && (
-            <div className="lg:col-span-5 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-5 space-y-2.5 text-xs">
-              <div className="font-bold text-slate-900">
+            <div className="lg:col-span-5 border-t lg:border-t-0 lg:border-l border-neutral-100 pt-4 lg:pt-0 lg:pl-5 space-y-2.5 text-xs">
+              <div className="font-bold text-neutral-950">
                 Mở giao diện Hành khách (Không tài khoản)
               </div>
-              <p className="text-xs text-slate-500">
-                Nhập tên người thân (nếu cần) và mở nhanh bằng mã <strong className="font-mono text-slate-800">{joinCode}</strong>.
+              <p className="text-xs text-neutral-500">
+                Nhập tên người thân (nếu cần) và mở nhanh bằng mã <strong className="font-mono text-blue-700">{joinCode}</strong>.
               </p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
@@ -507,15 +509,15 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   value={guestPreviewName}
                   onChange={(e) => setGuestPreviewName(e.target.value)}
                   placeholder="Tên người thân (tùy chọn)"
-                  className="flex-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-teal-500"
+                  className="flex-1 h-9 rounded-lg border border-neutral-200 bg-white px-3 text-xs text-neutral-900 outline-none focus:border-blue-600"
                 />
                 <button
                   type="button"
                   disabled={isOpeningGuestPreview}
                   onClick={() => void handleOpenGuestForRelative()}
-                  className="h-9 px-3.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold inline-flex items-center justify-center gap-1.5 shrink-0 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                  className="h-9 px-3.5 rounded-lg bg-neutral-950 hover:bg-neutral-800 text-white font-semibold inline-flex items-center justify-center gap-1.5 shrink-0 transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3.5 h-3.5 text-red-400" />
                   <span>{isOpeningGuestPreview ? 'Đang mở...' : 'Mở giao diện'}</span>
                 </button>
               </div>
@@ -525,14 +527,14 @@ export const MembersView: React.FC<MembersViewProps> = ({
       )}
 
       {errorMessage && (
-        <p role="alert" className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">
+        <p role="alert" className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
           {errorMessage}
         </p>
       )}
 
       {/* Quick Filter Tabs */}
       {members.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap border-b border-slate-200 pb-3">
+        <div className={`flex items-center gap-1.5 flex-wrap border-b pb-3 ${isAdmin ? 'border-neutral-800' : 'border-neutral-200'}`}>
           {(
             [
               { id: 'all', label: 'Tất cả', count: members.length },
@@ -549,8 +551,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 onClick={() => setMemberFilter(tab.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer tabular-nums whitespace-nowrap ${
                   active
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? isAdmin
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-950 text-white'
+                    : isAdmin
+                      ? 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                      : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950'
                 }`}
               >
                 {tab.label} ({tab.count})
@@ -562,13 +568,13 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Search active notice */}
       {normalizedQuery && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-950">
           <span>Tìm kiếm thành viên theo: <strong>&quot;{searchQuery}&quot;</strong> ({filteredMembers.length} kết quả)</span>
           {onClearSearch && (
             <button
               type="button"
               onClick={onClearSearch}
-              className="font-bold text-amber-800 hover:underline cursor-pointer"
+              className="font-bold text-blue-700 hover:underline cursor-pointer"
             >
               Xóa bộ lọc
             </button>
@@ -578,7 +584,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Members Grid */}
       {filteredMembers.length === 0 ? (
-        <div className="p-10 text-center bg-white rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
+        <div className="p-10 text-center bg-white rounded-xl border border-dashed border-neutral-200 text-xs text-neutral-500">
           {normalizedQuery ? (
             <>
               Không tìm thấy thành viên nào khớp với từ khóa &quot;{searchQuery}&quot;.
@@ -586,7 +592,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <button
                   type="button"
                   onClick={onClearSearch}
-                  className="block mx-auto mt-2 text-teal-600 font-semibold hover:underline cursor-pointer"
+                  className="block mx-auto mt-2 text-blue-600 font-semibold hover:underline cursor-pointer"
                 >
                   Xem tất cả thành viên
                 </button>
@@ -598,7 +604,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
               <button
                 type="button"
                 onClick={() => setMemberFilter('all')}
-                className="block mx-auto mt-2 text-teal-600 font-semibold hover:underline cursor-pointer"
+                className="block mx-auto mt-2 text-blue-600 font-semibold hover:underline cursor-pointer"
               >
                 Xem tất cả thành viên
               </button>
@@ -610,7 +616,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <button
                   type="button"
                   onClick={handleOpenAddModal}
-                  className="block mx-auto mt-2 text-teal-600 font-semibold hover:underline cursor-pointer"
+                  className="block mx-auto mt-2 text-blue-600 font-semibold hover:underline cursor-pointer"
                 >
                   + Thêm thành viên đầu tiên
                 </button>
@@ -637,38 +643,38 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
             const roleColor =
               member.role === 'Trưởng đoàn'
-                ? 'text-purple-700'
+                ? 'text-neutral-950'
                 : member.role === 'Hướng dẫn viên'
-                  ? 'text-teal-700'
+                  ? 'text-blue-700'
                   : member.role === 'Tài xế'
-                    ? 'text-amber-700'
+                    ? 'text-blue-600'
                     : member.role === 'Khách VIP'
-                      ? 'text-rose-700'
-                      : 'text-slate-600';
+                      ? 'text-red-600'
+                      : 'text-neutral-600';
 
             return (
               <div
                 key={member.id}
-                className="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 transition flex flex-col justify-between group"
+                className="p-4 rounded-xl bg-white border border-neutral-200 hover:border-blue-400 transition flex flex-col justify-between group"
               >
                 <div>
                   {/* Header row with Avatar, Name, Role & Account status */}
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-neutral-950 text-white font-bold text-xs flex items-center justify-center shrink-0">
                         {member.avatar || getMemberInitials(member.name)}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-sm font-bold text-slate-900 leading-snug truncate">
+                        <h4 className="text-sm font-bold text-neutral-950 leading-snug truncate">
                           {member.name}
                           {isOwnMember && (
-                            <span className="ml-1.5 text-xs font-semibold text-teal-700">(Bạn)</span>
+                            <span className="ml-1.5 text-xs font-semibold text-blue-700">(Bạn)</span>
                           )}
                         </h4>
                         <div className="text-xs mt-0.5 truncate">
                           <span className={`font-semibold ${roleColor}`}>{member.role}</span>
-                          <span aria-hidden="true" className="text-slate-300 mx-1.5">·</span>
-                          <span className="text-slate-500">{accountLabel}</span>
+                          <span aria-hidden="true" className="text-neutral-300 mx-1.5">·</span>
+                          <span className="text-neutral-500">{accountLabel}</span>
                         </div>
                       </div>
                     </div>
@@ -677,10 +683,10 @@ export const MembersView: React.FC<MembersViewProps> = ({
                       <span
                         className={`w-2 h-2 rounded-full ${
                           member.status === 'online'
-                            ? 'bg-emerald-500'
+                            ? 'bg-blue-600'
                             : member.status === 'busy'
-                              ? 'bg-amber-500'
-                              : 'bg-slate-300'
+                              ? 'bg-red-600'
+                              : 'bg-neutral-300'
                         }`}
                         title={
                           member.status === 'online'
@@ -694,7 +700,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(member)}
-                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-800 transition cursor-pointer"
+                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-neutral-100 text-neutral-400 hover:text-neutral-900 transition cursor-pointer"
                           title="Chỉnh sửa thông tin"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
@@ -704,7 +710,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setDeletingMemberId(member.id)}
-                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          className="opacity-70 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-50 text-neutral-400 hover:text-red-600 transition cursor-pointer"
                           title="Xóa thành viên"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -714,30 +720,30 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   </div>
 
                   {/* Details */}
-                  <div className="space-y-2 text-xs text-slate-600">
+                  <div className="space-y-2 text-xs text-neutral-600">
                     {member.phone ? (
                       <div className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <Phone className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                         <a
                           href={`tel:${member.phone}`}
-                          className="font-mono text-slate-700 hover:text-teal-700 hover:underline tabular-nums"
+                          className="font-mono text-neutral-800 hover:text-blue-700 hover:underline tabular-nums"
                         >
                           {member.phone}
                         </a>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-400">Chưa có số điện thoại</div>
+                      <div className="text-[11px] text-neutral-400">Chưa có số điện thoại</div>
                     )}
 
                     {member.invitedByName && (
-                      <div className="text-[11px] font-medium text-teal-700">
+                      <div className="text-[11px] font-medium text-blue-700">
                         Đi cùng: <span className="font-semibold">{member.invitedByName}</span>
                       </div>
                     )}
 
                     {member.specialPreference && (
-                      <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-200/70 text-[11px] text-amber-900 flex items-start gap-1.5">
-                        <Heart className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="p-2 rounded-lg bg-red-50/70 border border-red-200/70 text-[11px] text-red-900 flex items-start gap-1.5">
+                        <Heart className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
                         <span><strong>Lưu ý:</strong> {member.specialPreference}</span>
                       </div>
                     )}
@@ -745,15 +751,15 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 </div>
 
                 {/* Attendance segmented control (supports all 3 states) */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-[11px]">
-                  <span className="text-slate-500 font-medium shrink-0">Điểm danh:</span>
+                <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between gap-2 text-[11px]">
+                  <span className="text-neutral-500 font-medium shrink-0">Điểm danh:</span>
                   {canToggleAttendance ? (
-                    <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
+                    <div className="inline-flex items-center rounded-lg border border-neutral-200 bg-neutral-50 p-0.5 gap-0.5">
                       {(
                         [
-                          { value: 'Chưa điểm danh', label: 'Chưa ĐD', activeCls: 'bg-white text-slate-800 shadow-2xs border-slate-200' },
-                          { value: 'Có mặt', label: 'Có mặt', activeCls: 'bg-emerald-600 text-white border-emerald-600' },
-                          { value: 'Vắng mặt', label: 'Vắng mặt', activeCls: 'bg-rose-600 text-white border-rose-600' },
+                          { value: 'Chưa điểm danh', label: 'Chưa ĐD', activeCls: 'bg-neutral-950 text-white shadow-2xs border-neutral-950' },
+                          { value: 'Có mặt', label: 'Có mặt', activeCls: 'bg-blue-600 text-white border-blue-600' },
+                          { value: 'Vắng mặt', label: 'Vắng mặt', activeCls: 'bg-red-600 text-white border-red-600' },
                         ] as const
                       ).map((opt) => {
                         const normalizedStatus =
@@ -772,7 +778,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                             className={`px-2 py-1 rounded-md text-[10px] font-semibold transition disabled:opacity-50 cursor-pointer ${
                               isActive
                                 ? opt.activeCls
-                                : 'text-slate-500 hover:text-slate-800 hover:bg-white/70'
+                                : 'text-neutral-500 hover:text-neutral-900 hover:bg-white/80'
                             }`}
                           >
                             {updatingMemberId === member.id && isActive ? '...' : opt.label}
@@ -784,13 +790,13 @@ export const MembersView: React.FC<MembersViewProps> = ({
                     <span
                       className={`font-semibold flex items-center gap-1 ${
                         member.attendanceStatus === 'Có mặt'
-                          ? 'text-emerald-700'
+                          ? 'text-blue-700'
                           : member.attendanceStatus === 'Vắng mặt'
-                            ? 'text-rose-700'
-                            : 'text-slate-500'
+                            ? 'text-red-700'
+                            : 'text-neutral-500'
                       }`}
                     >
-                      <CheckCircle2 className={`w-3.5 h-3.5 ${member.attendanceStatus === 'Có mặt' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${member.attendanceStatus === 'Có mặt' ? 'text-blue-600' : 'text-neutral-400'}`} />
                       <span>{member.attendanceStatus || 'Chưa điểm danh'}</span>
                     </span>
                   )}
@@ -814,8 +820,8 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <div
               className={`rounded-xl border px-3 py-2 text-[11px] font-semibold ${
                 companionLimitReached
-                  ? 'bg-rose-50 border-rose-200 text-rose-700'
-                  : 'bg-slate-50 border-slate-200 text-slate-600'
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : 'bg-neutral-50 border-neutral-200 text-neutral-600'
               }`}
             >
               {companionLimitReached
@@ -995,15 +1001,15 @@ export const MembersView: React.FC<MembersViewProps> = ({
         hideHeader
       >
         <div className="p-6 text-xs text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+          <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto border border-red-200">
             <Trash2 className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-extrabold text-slate-900">Xóa thành viên khỏi đoàn?</h3>
-            <p className="text-slate-500 mt-1 leading-relaxed">
+            <h3 className="text-sm font-extrabold text-neutral-950">Xóa thành viên khỏi đoàn?</h3>
+            <p className="text-neutral-500 mt-1 leading-relaxed">
               Hành động này sẽ xóa {deletingTarget?.name ? <strong>&quot;{deletingTarget.name}&quot;</strong> : 'thành viên này'} khỏi danh sách đoàn.
               {cascadeCompanionsCount > 0 && (
-                <span className="block mt-1.5 text-rose-700 font-semibold">
+                <span className="block mt-1.5 text-red-700 font-semibold">
                   Đồng thời sẽ xóa {cascadeCompanionsCount} người thân đi cùng do thành viên này đăng ký.
                 </span>
               )}
@@ -1017,7 +1023,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             submitLabel={isDeletingMember ? 'Đang xóa...' : 'Xác nhận xóa'}
             submitType="button"
             onSubmitClick={() => deletingMemberId && void handleDeleteMember(deletingMemberId)}
-            submitVariant="rose"
+            submitVariant="red"
             bordered={false}
             align="center"
           />
@@ -1032,12 +1038,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
         hideHeader
       >
         <div className="p-6 text-xs text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+          <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto border border-red-200">
             <LogOut className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-extrabold text-slate-900">Rời khỏi chuyến đi này?</h3>
-            <p className="text-slate-500 mt-1">
+            <h3 className="text-sm font-extrabold text-neutral-950">Rời khỏi chuyến đi này?</h3>
+            <p className="text-neutral-500 mt-1">
               Chuyến đi sẽ biến mất khỏi danh sách của bạn. Bạn có thể dùng mã mời để tham gia lại bất cứ lúc nào.
             </p>
           </div>
@@ -1055,7 +1061,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 setIsLeaveConfirmOpen(false);
               });
             }}
-            submitVariant="rose"
+            submitVariant="red"
             bordered={false}
             align="center"
           />

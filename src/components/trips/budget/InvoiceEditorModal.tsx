@@ -161,7 +161,7 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
     >
       <form onSubmit={onSubmit} className="p-6 space-y-4 text-xs overflow-y-auto">
         {invoiceError && (
-          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] font-semibold text-rose-800">
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[11px] font-semibold text-red-800">
             {invoiceError}
           </div>
         )}
@@ -229,7 +229,7 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
               </SelectInput>
             </div>
             {selectedLinkedAct && (
-              <p className="text-[11px] text-teal-700 font-medium mt-1 flex items-center gap-1">
+              <p className="text-[11px] text-blue-700 font-medium mt-1 flex items-center gap-1">
                 <Link2 className="w-3.5 h-3.5 shrink-0" />
                 <span>
                   Thay thế dự toán <strong>{(selectedLinkedAct.cost || 0).toLocaleString('vi-VN')} ₫</strong> của hoạt động &quot;{selectedLinkedAct.title}&quot;.
@@ -243,11 +243,11 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
           <div
             className={`rounded-xl border px-3 py-2.5 flex items-start gap-2 text-[11px] font-semibold ${
               isCatOver || isTotalOver
-                ? 'bg-rose-50 border-rose-200 text-rose-800'
-                : 'bg-amber-50 border-amber-200 text-amber-800'
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : 'bg-neutral-950 border-red-500/40 text-neutral-100'
             }`}
           >
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${isCatOver || isTotalOver ? 'text-red-600' : 'text-red-400'}`} />
             <div className="space-y-0.5">
               {isCatOver && targetCat && (
                 <div>
@@ -329,7 +329,7 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
         </div>
 
         {matchedDayForDate === null && date && (
-          <p className="text-[11px] text-slate-500 -mt-2">
+          <p className="text-[11px] text-neutral-500 -mt-2">
             Ngày lập hóa đơn nằm ngoài khoảng ngày tour — hóa đơn vẫn được hạch toán vào <strong>Ngày {dayIndex}</strong>.
           </p>
         )}
@@ -345,9 +345,9 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
 
         {/* Ảnh chứng từ đính kèm */}
         <div className="space-y-2">
-          <label className="block font-bold text-slate-700">Ảnh chứng từ / Hóa đơn giấy</label>
+          <label className="block font-bold text-neutral-700">Ảnh chứng từ / Hóa đơn giấy</label>
           <div className="flex items-center gap-3 flex-wrap">
-            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-teal-400 bg-teal-50/70 hover:bg-teal-100/70 text-teal-800 font-bold cursor-pointer transition">
+            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-blue-400 bg-blue-50/70 hover:bg-blue-100/70 text-blue-800 font-bold cursor-pointer transition">
               <ImagePlus className="w-4 h-4" />
               <span>
                 {isUploadingReceipt
@@ -371,17 +371,17 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
                   setReceiptImage(undefined);
                   setReceiptId(undefined);
                 }}
-                className="text-rose-600 font-bold hover:underline"
+                className="text-red-600 font-bold hover:underline cursor-pointer"
               >
                 Gỡ ảnh
               </button>
             )}
           </div>
           {receiptUploadError && (
-            <p className="text-[11px] text-rose-600 font-semibold">{receiptUploadError}</p>
+            <p className="text-[11px] text-red-600 font-semibold">{receiptUploadError}</p>
           )}
           {(receiptImage || receiptId) && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 p-1.5">
+            <div className="rounded-xl border border-neutral-200 overflow-hidden bg-neutral-50 p-1.5">
               <ReceiptImage
                 tripId={trip.id}
                 receiptId={receiptId}
@@ -390,7 +390,7 @@ export function InvoiceEditorModal(props: InvoiceEditorModalProps) {
                 className="max-h-40 w-full object-contain rounded-lg"
               />
               {receiptId && (
-                <p className="text-[10px] text-teal-700 font-semibold mt-1 text-center">
+                <p className="text-[10px] text-blue-700 font-semibold mt-1 text-center">
                   Ảnh đã lưu tách riêng trên máy chủ (không tốn dung lượng lịch trình)
                 </p>
               )}

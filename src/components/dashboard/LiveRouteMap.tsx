@@ -203,7 +203,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
   );
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col relative">
+    <div className="bg-white text-neutral-900 rounded-2xl border border-neutral-200 shadow-xs overflow-hidden flex flex-col relative">
       <LiveMapHeader
         trip={trip}
         stopCount={progress.totalStops}

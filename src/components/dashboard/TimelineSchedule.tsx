@@ -110,32 +110,33 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'meal':
-        return <Coffee className="w-4 h-4 text-emerald-600" />;
+        return <Coffee className="w-4 h-4 text-red-600" />;
       case 'hotel':
       case 'checkin':
-        return <UtensilsCrossed className="w-4 h-4 text-purple-600" />;
+        return <UtensilsCrossed className="w-4 h-4 text-neutral-900" />;
       case 'transport':
-        return <Bus className="w-4 h-4 text-amber-600" />;
+        return <Bus className="w-4 h-4 text-blue-600" />;
       case 'sightseeing':
-        return <Mountain className="w-4 h-4 text-teal-600" />;
+        return <Mountain className="w-4 h-4 text-blue-700" />;
       default:
-        return <Landmark className="w-4 h-4 text-blue-600" />;
+        return <Landmark className="w-4 h-4 text-neutral-800" />;
     }
   };
 
   const getStatusClass = (status: Activity['status']) => {
     switch (status) {
       case 'Hoàn tất':
-        return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+        return 'text-neutral-900 bg-neutral-100 border-neutral-300';
       case 'Đang diễn ra':
-        return 'text-teal-700 bg-teal-50 border-teal-200';
+        return 'text-red-700 bg-red-50 border-red-200';
       case 'Cần xử lý':
+        return 'text-white bg-red-600 border-red-600';
       case 'Chờ duyệt':
-        return 'text-amber-800 bg-amber-50 border-amber-200';
+        return 'text-neutral-700 bg-neutral-50 border-neutral-200';
       case 'Đã xác nhận':
-        return 'text-indigo-700 bg-indigo-50 border-indigo-200';
+        return 'text-blue-700 bg-blue-50 border-blue-200';
       default:
-        return 'text-slate-700 bg-slate-100 border-slate-200';
+        return 'text-neutral-700 bg-neutral-100 border-neutral-200';
     }
   };
 
@@ -146,37 +147,37 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
         key={activity.id}
         onClick={() => onSelectActivity(activity)}
         className={`p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition ${
-          isOngoing ? 'bg-teal-50/40 hover:bg-teal-50/70' : 'hover:bg-slate-50'
+          isOngoing ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-neutral-50'
         }`}
       >
         <div className="flex items-start gap-3.5 min-w-0 flex-1">
-          <div className="font-mono text-xs font-semibold text-slate-700 tabular-nums shrink-0 pt-0.5 w-24">
+          <div className="font-mono text-xs font-semibold text-neutral-800 tabular-nums shrink-0 pt-0.5 w-24">
             {activity.timeStart}–{activity.timeEnd}
           </div>
 
-          <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+          <div className="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center shrink-0 mt-0.5">
             {getActivityIcon(activity.type)}
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <h4 className="text-sm font-semibold text-slate-900 leading-snug">
+              <h4 className="text-sm font-semibold text-neutral-950 leading-snug">
                 {activity.title}
               </h4>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-neutral-400">
                 {ACTIVITY_TYPE_LABELS[activity.type] || activity.type}
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500 mt-0.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-500 mt-0.5">
               {activity.location && (
                 <span className="inline-flex items-center gap-1 truncate max-w-xs">
-                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                  <MapPin className="w-3 h-3 text-red-500 shrink-0" />
                   <span className="truncate">{activity.location}</span>
                 </span>
               )}
               {activity.details && (
-                <span className="text-slate-400 truncate max-w-md">{activity.details}</span>
+                <span className="text-neutral-400 truncate max-w-md">{activity.details}</span>
               )}
             </div>
           </div>
@@ -187,7 +188,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
           onClick={(e) => (onUpdateStatus ? e.stopPropagation() : undefined)}
         >
           {canAddActivity && activity.cost !== undefined && activity.cost > 0 && (
-            <span className="font-mono text-xs font-semibold text-slate-700 tabular-nums">
+            <span className="font-mono text-xs font-semibold text-neutral-800 tabular-nums">
               {activity.cost.toLocaleString('vi-VN')} ₫
             </span>
           )}
@@ -199,11 +200,11 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
               onChange={(e) => onUpdateStatus(activity.id, e.target.value as Activity['status'])}
               className={`border rounded-lg px-2.5 py-1 font-semibold outline-none cursor-pointer transition text-xs ${getStatusClass(activity.status)}`}
             >
-              <option value="Đã xác nhận">Đã xác nhận</option>
-              <option value="Đang diễn ra">Đang diễn ra</option>
-              <option value="Cần xử lý">Cần xử lý</option>
-              <option value="Hoàn tất">Hoàn tất</option>
-              <option value="Chờ duyệt">Chờ duyệt</option>
+              <option value="Đã xác nhận" className="bg-white text-neutral-900">Đã xác nhận</option>
+              <option value="Đang diễn ra" className="bg-white text-neutral-900">Đang diễn ra</option>
+              <option value="Cần xử lý" className="bg-white text-neutral-900">Cần xử lý</option>
+              <option value="Hoàn tất" className="bg-white text-neutral-900">Hoàn tất</option>
+              <option value="Chờ duyệt" className="bg-white text-neutral-900">Chờ duyệt</option>
             </select>
           ) : (
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${getStatusClass(activity.status)}`}>
@@ -216,16 +217,16 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col w-full max-w-full min-w-0">
+    <div className="bg-white text-neutral-900 rounded-xl border border-neutral-200 overflow-hidden flex flex-col w-full max-w-full min-w-0">
       {/* Unified Header Toolbar */}
-      <div className="p-4 sm:px-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div className="p-4 sm:px-5 border-b border-neutral-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Calendar className="w-5 h-5 text-teal-600 shrink-0" />
+          <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-slate-900 leading-tight truncate">
+            <h2 className="text-base font-bold text-neutral-950 leading-tight truncate">
               Lịch trình chuyến đi
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+            <p className="text-xs text-neutral-500 mt-0.5 tabular-nums">
               {filterMode === 'all'
                 ? `${days.length} ngày · ${totalTripCompleted}/${totalTripActivities} hoàn tất`
                 : `Ngày ${currentDay.dayIndex} (${currentDay.fullDate}) · ${confirmedCount}/${(currentDay.activities || []).length} đã xác nhận`}
@@ -235,12 +236,12 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs">
+          <div className="flex items-center bg-neutral-100 p-0.5 rounded-lg text-xs">
             <button
               type="button"
               onClick={() => filterMode !== 'timeline' && onToggleFilterMode()}
               className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                filterMode === 'timeline' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                filterMode === 'timeline' ? 'bg-neutral-950 text-white shadow-2xs' : 'text-neutral-600 hover:text-neutral-950'
               }`}
             >
               Theo ngày
@@ -249,7 +250,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
               type="button"
               onClick={() => filterMode !== 'all' && onToggleFilterMode()}
               className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                filterMode === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                filterMode === 'all' ? 'bg-neutral-950 text-white shadow-2xs' : 'text-neutral-600 hover:text-neutral-950'
               }`}
             >
               Tất cả ngày
@@ -260,10 +261,10 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             <button
               type="button"
               onClick={onOpenAutoArrange}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold transition cursor-pointer"
               title="Loại bỏ chồng chéo giờ và cân bằng thời gian di chuyển"
             >
-              <Clock className="w-3.5 h-3.5 text-teal-600" />
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
               <span>Xếp lịch</span>
             </button>
           )}
@@ -272,9 +273,9 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             <button
               type="button"
               onClick={onOpenAIOptimize}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold transition cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+              <Sparkles className="w-3.5 h-3.5 text-red-600" />
               <span>Tối ưu</span>
             </button>
           )}
@@ -283,7 +284,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             <button
               type="button"
               onClick={onAddActivity}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Thêm hoạt động</span>
@@ -294,7 +295,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
 
       {/* Day Switcher Strip (in single-day mode) */}
       {filterMode === 'timeline' && (
-        <div className="px-4 sm:px-5 py-2.5 bg-slate-50/80 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto">
+        <div className="px-4 sm:px-5 py-2.5 bg-neutral-50 border-b border-neutral-100 flex items-center gap-1.5 overflow-x-auto">
           {days.map((day) => {
             const isActive = day.dayIndex === currentDayIndex;
             const label = `Ngày ${day.dayIndex}${day.dayName ? ` (${day.dayName})` : ''}`;
@@ -305,13 +306,13 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                 onClick={() => onSelectDay(day.dayIndex)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 cursor-pointer ${
                   isActive
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-white border border-neutral-200 text-neutral-700 hover:text-neutral-950 hover:border-neutral-300'
                 }`}
               >
                 <span>{label}</span>
                 {day.hasWarning && !isActive && (
-                  <span className="ml-1.5 text-amber-600" title="Có cảnh báo">•</span>
+                  <span className="ml-1.5 text-red-600" title="Có cảnh báo">•</span>
                 )}
               </button>
             );
@@ -321,7 +322,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             <button
               type="button"
               onClick={onAddDay}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 hover:bg-teal-50 transition shrink-0 inline-flex items-center gap-1 cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 hover:bg-blue-50 transition shrink-0 inline-flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Thêm ngày</span>
@@ -332,11 +333,11 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
 
       {/* Search Filter Notice */}
       {normalizedQuery && (
-        <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
+        <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-950">
           <div className="flex items-center gap-2">
             <span>Đang lọc theo <strong>&quot;{searchQuery}&quot;</strong> · {filteredActivities.length} kết quả</span>
             {otherDaysWithMatches.length > 0 && (
-              <span className="text-amber-800">
+              <span className="text-blue-800">
                 (Ngày khác:{' '}
                 {otherDaysWithMatches.map((d, i) => (
                   <React.Fragment key={d.dayIndex}>
@@ -344,7 +345,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                     <button
                       type="button"
                       onClick={() => onSelectDay(d.dayIndex)}
-                      className="font-semibold underline hover:text-amber-950"
+                      className="font-semibold underline hover:text-blue-950"
                     >
                       Ngày {d.dayIndex}
                     </button>
@@ -358,7 +359,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
             <button
               type="button"
               onClick={onClearSearch}
-              className="font-semibold text-amber-900 hover:underline cursor-pointer"
+              className="font-semibold text-red-600 hover:underline cursor-pointer"
             >
               Xóa bộ lọc
             </button>
@@ -368,7 +369,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
 
       {/* Content */}
       {filterMode === 'all' ? (
-        <div className="divide-y divide-slate-200 max-h-[720px] overflow-y-auto">
+        <div className="divide-y divide-neutral-200 max-h-[720px] overflow-y-auto">
           {days.map((day) => {
             const dayActs = (day.activities || []).filter((activity) => {
               if (!normalizedQuery) return true;
@@ -384,18 +385,18 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
 
             return (
               <div key={day.dayIndex}>
-                <div className="px-4 sm:px-5 py-3 bg-slate-50 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
+                <div className="px-4 sm:px-5 py-3 bg-neutral-50 flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-teal-700">Ngày {day.dayIndex}</span>
-                    <span className="text-xs font-semibold text-slate-900">{day.fullDate}</span>
+                    <span className="text-xs font-bold text-blue-700">Ngày {day.dayIndex}</span>
+                    <span className="text-xs font-semibold text-neutral-950">{day.fullDate}</span>
                     {day.dispatcherNote && (
-                      <span className="text-xs text-slate-500 hidden md:inline truncate max-w-md">
+                      <span className="text-xs text-neutral-500 hidden md:inline truncate max-w-md">
                         · {day.dispatcherNote}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs">
-                    <span className="text-slate-500 tabular-nums">{dayActs.length} hoạt động</span>
+                    <span className="text-neutral-500 tabular-nums">{dayActs.length} hoạt động</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -403,7 +404,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                         onToggleFilterMode();
                       }}
                       className={`font-semibold cursor-pointer ${
-                        isSelectedDay ? 'text-teal-700' : 'text-slate-600 hover:text-teal-700'
+                        isSelectedDay ? 'text-blue-700' : 'text-neutral-600 hover:text-blue-700'
                       }`}
                     >
                       Mở chi tiết ngày →
@@ -412,9 +413,9 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                 </div>
 
                 {dayActs.length === 0 ? (
-                  <p className="px-5 py-4 text-xs text-slate-400">Chưa có hoạt động nào trong ngày này.</p>
+                  <p className="px-5 py-4 text-xs text-neutral-400">Chưa có hoạt động nào trong ngày này.</p>
                 ) : (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-neutral-100">
                     {dayActs.map(renderActivityRow)}
                   </div>
                 )}
@@ -423,7 +424,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
           })}
         </div>
       ) : filteredActivities.length === 0 ? (
-        <div className="p-8 text-center text-xs text-slate-500 space-y-3">
+        <div className="p-8 text-center text-xs text-neutral-500 space-y-3">
           {normalizedQuery ? (
             <>
               <p>Không tìm thấy hoạt động nào khớp với &quot;{searchQuery}&quot; trong Ngày {currentDay.dayIndex}.</p>
@@ -431,7 +432,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                 <button
                   type="button"
                   onClick={onClearSearch}
-                  className="text-teal-700 font-semibold hover:underline"
+                  className="text-blue-700 font-semibold hover:underline"
                 >
                   Xem tất cả hoạt động
                 </button>
@@ -445,7 +446,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                   <button
                     type="button"
                     onClick={onAddActivity}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Thêm hoạt động đầu tiên</span>
@@ -455,7 +456,7 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                   <button
                     type="button"
                     onClick={() => onDeleteDay(currentDay.dayIndex)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold transition cursor-pointer"
                   >
                     <span>Xóa ngày trống</span>
                   </button>
@@ -465,16 +466,16 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
           )}
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-neutral-100">
           {filteredActivities.map(renderActivityRow)}
         </div>
       )}
 
       {/* Footer Note */}
-      <div className="px-4 sm:px-5 py-3 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 text-slate-700 flex-1 min-w-0">
-          <Pin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-          <span className="font-semibold text-slate-800 shrink-0">
+      <div className="px-4 sm:px-5 py-3 bg-neutral-50 border-t border-neutral-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 text-neutral-700 flex-1 min-w-0">
+          <Pin className="w-3.5 h-3.5 text-red-600 shrink-0" />
+          <span className="font-semibold text-neutral-900 shrink-0">
             Ghi chú Ngày {currentDay.dayIndex}:
           </span>
           {onUpdateDayNote ? (
@@ -493,16 +494,16 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
                 }
               }}
               placeholder="Nhấp để nhập ghi chú cho ngày này..."
-              className="text-slate-700 bg-transparent hover:bg-white focus:bg-white px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-teal-600 outline-none w-full truncate transition text-xs"
+              className="text-neutral-700 bg-transparent hover:bg-white focus:bg-white px-2 py-1 rounded border border-transparent hover:border-neutral-300 focus:border-blue-600 outline-none w-full truncate transition text-xs"
             />
           ) : (
-            <span className="text-slate-600 truncate">
+            <span className="text-neutral-600 truncate">
               {currentDay.dispatcherNote || 'Theo dõi lịch trình và giữ liên lạc với trưởng đoàn.'}
             </span>
           )}
         </div>
 
-        <div className="text-slate-500 shrink-0 tabular-nums">
+        <div className="text-neutral-500 shrink-0 tabular-nums">
           {pendingCount > 0 ? `${pendingCount} mục cần theo dõi · ` : ''}
           Toàn chuyến: {totalTripCompleted}/{totalTripActivities} hoàn tất
         </div>

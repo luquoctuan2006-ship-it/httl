@@ -96,28 +96,28 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
   };
 
   const getActivityBadge = (status: string) => {
-    if (status === 'Hoàn tất') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    if (status === 'Đang diễn ra') return 'bg-teal-50 text-teal-700 border-teal-200';
-    if (status === 'Đã xác nhận') return 'bg-sky-50 text-sky-700 border-sky-200';
-    return 'bg-amber-50 text-amber-800 border-amber-200';
+    if (status === 'Hoàn tất') return 'bg-neutral-100 text-neutral-900 border-neutral-300';
+    if (status === 'Đang diễn ra') return 'bg-red-50 text-red-700 border-red-200';
+    if (status === 'Đã xác nhận') return 'bg-blue-50 text-blue-700 border-blue-200';
+    return 'bg-red-600 text-white border-red-600';
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-24 lg:pb-10">
+    <div className="min-h-screen bg-[#F4F6FA] text-neutral-900 pb-24 lg:pb-10">
       {/* Top Passenger App Bar */}
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
+      <header className="sticky top-0 z-30 bg-white border-b border-neutral-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-red-600 text-white flex items-center justify-center shrink-0 shadow-sm">
               <Compass className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-teal-700">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-blue-700">
                 <span>Hành khách (Không tài khoản)</span>
-                <span className="text-slate-300">•</span>
-                <span className="font-mono text-slate-700">{guestTrip.code}</span>
+                <span className="text-neutral-300">•</span>
+                <span className="font-mono text-red-600">{guestTrip.code}</span>
               </div>
-              <h1 className="text-base sm:text-lg font-extrabold text-slate-900 truncate">
+              <h1 className="text-base sm:text-lg font-extrabold text-neutral-950 truncate">
                 {guestTrip.title}
               </h1>
             </div>
@@ -128,19 +128,19 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
               type="button"
               onClick={() => void handleRefreshClick()}
               disabled={isRefreshing}
-              className="min-h-[44px] px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+              className="min-h-[44px] px-3 py-2 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
               title="Cập nhật lịch trình mới nhất từ trưởng đoàn"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Cập nhật</span>
             </button>
 
             <button
               type="button"
               onClick={onExitGuestMode}
-              className="min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition"
+              className="min-h-[44px] px-3.5 py-2 rounded-xl border border-neutral-950 bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 text-red-400" />
               <span>{enteredFromAccount ? 'Quay lại tài khoản' : 'Thoát chuyến'}</span>
             </button>
           </div>
@@ -148,24 +148,24 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
 
         {/* Desktop Sub-Nav + Trip Quick Meta */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 font-medium">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600 font-medium">
             <span className="inline-flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-teal-600" />
+              <MapPin className="w-3.5 h-3.5 text-red-600" />
               {guestTrip.originFull} → {guestTrip.destinationFull}
             </span>
             {guestTrip.dates && (
               <span className="inline-flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <Calendar className="w-3.5 h-3.5 text-neutral-400" />
                 {guestTrip.dates}
               </span>
             )}
-            <span className="inline-flex items-center gap-1.5 text-slate-700 font-semibold">
-              <UserCheck className="w-3.5 h-3.5 text-teal-600" />
+            <span className="inline-flex items-center gap-1.5 text-neutral-900 font-semibold">
+              <UserCheck className="w-3.5 h-3.5 text-blue-600" />
               {guestName}
             </span>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <nav className="hidden lg:flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl border border-neutral-200">
             {(
               [
                 { id: 'schedule', label: 'Lịch trình & Điểm dừng', icon: Calendar },
@@ -180,13 +180,13 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`min-h-[40px] px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  className={`min-h-[40px] px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     isActive
-                      ? 'bg-white text-teal-700 shadow-xs border border-slate-200/80'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-neutral-950 text-white shadow-xs'
+                      : 'text-neutral-600 hover:text-neutral-950'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : ''}`} />
                   <span>{tab.label}</span>
                 </button>
               );
@@ -201,17 +201,17 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
 
         {/* Operational / Weather Alerts Notice */}
         {guestTrip.alerts.length > 0 && activeTab === 'schedule' && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-            <div className="flex items-center justify-between gap-2 text-xs font-extrabold text-amber-900 uppercase tracking-wider">
+          <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2 text-xs font-extrabold text-red-900 uppercase tracking-wider">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
                 <span>Lưu ý mới nhất từ Ban tổ chức ({guestTrip.alerts.length})</span>
               </div>
               {guestTrip.alerts.length > 4 && (
                 <button
                   type="button"
                   onClick={() => setShowAllAlerts((prev) => !prev)}
-                  className="text-[11px] font-bold normal-case text-amber-800 hover:text-amber-950 underline"
+                  className="text-[11px] font-bold normal-case text-red-700 hover:text-red-950 underline cursor-pointer"
                 >
                   {showAllAlerts ? 'Thu gọn' : `Xem tất cả (${guestTrip.alerts.length})`}
                 </button>
@@ -221,10 +221,10 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
               {(showAllAlerts ? guestTrip.alerts : guestTrip.alerts.slice(0, 4)).map((alert) => (
                 <div
                   key={alert.id}
-                  className="rounded-xl bg-white border border-amber-200/80 px-3 py-2.5 text-xs"
+                  className="rounded-xl bg-white border border-red-200/80 px-3 py-2.5 text-xs"
                 >
-                  <div className="font-bold text-slate-900">{alert.title}</div>
-                  <p className="text-slate-600 mt-0.5">{alert.description}</p>
+                  <div className="font-bold text-neutral-950">{alert.title}</div>
+                  <p className="text-neutral-600 mt-0.5">{alert.description}</p>
                 </div>
               ))}
             </div>
@@ -235,36 +235,36 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
             {/* Left / Top Spotlight + Vehicle Summary */}
             <aside className="lg:col-span-4 space-y-4">
-              <div className="rounded-2xl bg-slate-900 text-white p-5 border border-slate-800 space-y-4">
+              <div className="rounded-2xl bg-[#090B11] text-white p-5 border border-neutral-800 space-y-4">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-teal-400">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-blue-400">
                     Tiến độ hành trình
                   </span>
-                  <span className="font-mono text-xs font-bold text-slate-300 tabular-nums">
+                  <span className="font-mono text-xs font-bold text-neutral-300 tabular-nums">
                     {routeProgress.completedStops}/{routeProgress.totalStops} điểm dừng
                   </span>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <div className="text-[11px] text-slate-400 font-semibold">Điểm hiện tại</div>
+                    <div className="text-[11px] text-neutral-400 font-semibold">Điểm hiện tại</div>
                     <div className="text-lg font-extrabold text-white mt-0.5">
                       {routeProgress.currentStop?.name || guestTrip.telematics.from || guestTrip.originFull}
                     </div>
                   </div>
 
                   {routeProgress.nextStop && (
-                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                    <div className="pt-3 border-t border-neutral-800 flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-[11px] text-slate-400 font-semibold">Điểm kế tiếp</div>
-                        <div className="text-sm font-bold text-teal-300 truncate">
+                        <div className="text-[11px] text-neutral-400 font-semibold">Điểm kế tiếp</div>
+                        <div className="text-sm font-bold text-red-400 truncate">
                           {routeProgress.nextStop.name}
                         </div>
                       </div>
                       {routeProgress.nextLegDistanceKm > 0 && (
-                        <div className="text-right font-mono text-xs text-slate-300 shrink-0 tabular-nums">
+                        <div className="text-right font-mono text-xs text-neutral-300 shrink-0 tabular-nums">
                           <div>{routeProgress.nextLegDistanceKm} km</div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-[11px] text-neutral-400">
                             ~{formatTravelDuration(routeProgress.nextLegMinutes)}
                           </div>
                         </div>
@@ -275,15 +275,15 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
 
                 {/* Weather snapshot */}
                 {(guestTrip.weather.temp !== 0 || guestTrip.weather.description) && (
-                  <div className="rounded-xl bg-slate-800/80 border border-slate-700 p-3 flex items-center justify-between gap-3 text-xs">
+                  <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-3 flex items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <CloudSun className="w-5 h-5 text-amber-400 shrink-0" />
+                      <CloudSun className="w-5 h-5 text-blue-400 shrink-0" />
                       <div className="min-w-0">
                         <div className="font-bold text-white truncate">
                           {guestTrip.weather.description || 'Thời tiết dọc tuyến'}
                         </div>
                         {guestTrip.weather.rainProb && (
-                          <div className="text-[11px] text-slate-300">
+                          <div className="text-[11px] text-neutral-300">
                             Khả năng mưa: {guestTrip.weather.rainProb}
                           </div>
                         )}
@@ -297,32 +297,32 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
               </div>
 
               {/* Vehicle & Driver Card */}
-              <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3 text-xs">
-                <div className="flex items-center gap-2 font-extrabold text-slate-900">
-                  <Bus className="w-4 h-4 text-teal-600" />
+              <div className="rounded-2xl bg-white border border-neutral-200 p-4 space-y-3 text-xs">
+                <div className="flex items-center gap-2 font-extrabold text-neutral-950">
+                  <Bus className="w-4 h-4 text-blue-600" />
                   <span>Phương tiện &amp; Phụ trách xe</span>
                 </div>
-                <div className="space-y-2 text-slate-600">
+                <div className="space-y-2 text-neutral-600">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-slate-500">Loại xe:</span>
-                    <span className="font-bold text-slate-900">{guestTrip.telematics.vehicleType || guestTrip.vehicle}</span>
+                    <span className="text-neutral-500">Loại xe:</span>
+                    <span className="font-bold text-neutral-950">{guestTrip.telematics.vehicleType || guestTrip.vehicle}</span>
                   </div>
                   {guestTrip.telematics.licensePlate && (
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500">Biển số:</span>
-                      <span className="font-mono font-bold text-slate-900">{guestTrip.telematics.licensePlate}</span>
+                      <span className="text-neutral-500">Biển số:</span>
+                      <span className="font-mono font-bold text-neutral-950">{guestTrip.telematics.licensePlate}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-slate-500">Tài xế:</span>
-                    <span className="font-bold text-slate-900">{guestTrip.telematics.driver || 'Chưa phân công'}</span>
+                    <span className="text-neutral-500">Tài xế:</span>
+                    <span className="font-bold text-neutral-950">{guestTrip.telematics.driver || 'Chưa phân công'}</span>
                   </div>
                   {guestTrip.telematics.driverPhone && (
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
-                      <span className="text-slate-500">Liên hệ tài xế:</span>
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-neutral-100">
+                      <span className="text-neutral-500">Liên hệ tài xế:</span>
                       <a
                         href={`tel:${guestTrip.telematics.driverPhone}`}
-                        className="font-mono font-bold text-teal-700 hover:underline inline-flex items-center gap-1"
+                        className="font-mono font-bold text-blue-700 hover:underline inline-flex items-center gap-1"
                       >
                         <Phone className="w-3.5 h-3.5" />
                         {guestTrip.telematics.driverPhone}
@@ -335,12 +335,12 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
 
             {/* Right: Day-by-Day Itinerary */}
             <section className="lg:col-span-8 space-y-4">
-              <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-4">
+              <div className="rounded-2xl bg-white border border-neutral-200 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <h2 className="text-base font-extrabold text-slate-900">
+                  <h2 className="text-base font-extrabold text-neutral-950">
                     Lịch trình tham quan từng ngày
                   </h2>
-                  <span className="text-xs font-mono font-semibold text-slate-500 tabular-nums">
+                  <span className="text-xs font-mono font-semibold text-neutral-500 tabular-nums">
                     {guestTrip.totalDays} ngày • {guestTrip.totalActivities} hoạt động
                   </span>
                 </div>
@@ -354,10 +354,10 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
                         key={day.dayIndex}
                         type="button"
                         onClick={() => setSelectedDayIndex(day.dayIndex)}
-                        className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold shrink-0 border transition ${
+                        className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold shrink-0 border transition cursor-pointer ${
                           isActive
-                            ? 'bg-teal-600 text-white border-teal-600'
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
                         }`}
                       >
                         Ngày {day.dayIndex}
@@ -368,7 +368,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
                 </div>
 
                 {currentDay?.dispatcherNote && (
-                  <div className="rounded-xl bg-teal-50 border border-teal-200 px-3.5 py-2.5 text-xs text-teal-900">
+                  <div className="rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2.5 text-xs text-blue-950">
                     <span className="font-bold">Ghi chú trưởng đoàn: </span>
                     {currentDay.dispatcherNote}
                   </div>
@@ -376,34 +376,34 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
 
                 {/* Activities Timeline */}
                 {!currentDay || currentDay.activities.length === 0 ? (
-                  <div className="py-10 text-center text-xs text-slate-500">
+                  <div className="py-10 text-center text-xs text-neutral-500">
                     Chưa có hoạt động nào được cập nhật cho ngày này.
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-neutral-100">
                     {currentDay.activities.map((act) => (
                       <div key={act.id} className="py-3.5 first:pt-1 last:pb-1 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
-                          <div className="font-mono text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5 shrink-0 tabular-nums text-center min-w-[92px]">
+                          <div className="font-mono text-xs font-bold text-white bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1.5 shrink-0 tabular-nums text-center min-w-[92px]">
                             {act.timeStart} – {act.timeEnd}
                           </div>
                           <div className="min-w-0 space-y-1">
-                            <div className="text-sm font-extrabold text-slate-900 leading-snug">
+                            <div className="text-sm font-extrabold text-neutral-950 leading-snug">
                               {act.title}
                             </div>
                             {act.location && (
-                              <div className="text-xs text-slate-600 flex items-center gap-1.5">
-                                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <div className="text-xs text-neutral-600 flex items-center gap-1.5">
+                                <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
                                 <span>{act.location}</span>
                               </div>
                             )}
                             {act.details && (
-                              <p className="text-xs text-slate-500 leading-relaxed">
+                              <p className="text-xs text-neutral-500 leading-relaxed">
                                 {act.details}
                               </p>
                             )}
                             {act.notes && (
-                              <p className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded-lg px-2.5 py-1 inline-block">
+                              <p className="text-[11px] font-medium text-red-800 bg-red-50 border border-red-200/80 rounded-lg px-2.5 py-1 inline-block">
                                 Lưu ý: {act.notes}
                               </p>
                             )}
@@ -427,7 +427,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
         {activeTab === 'map' && (
           <Suspense
             fallback={
-              <div className="rounded-2xl bg-white border border-slate-200 p-10 text-center text-xs font-semibold text-slate-500">
+              <div className="rounded-2xl bg-white border border-neutral-200 p-10 text-center text-xs font-semibold text-neutral-500">
                 Đang tải bản đồ tuyến đường...
               </div>
             }
@@ -444,36 +444,36 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
             {/* Staff contacts & Share code */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="rounded-2xl bg-white border border-slate-200 p-5 space-y-4">
+              <div className="rounded-2xl bg-white border border-neutral-200 p-5 space-y-4">
                 <div>
-                  <h2 className="text-base font-extrabold text-slate-900">Ban điều hành &amp; Liên hệ đoàn</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h2 className="text-base font-extrabold text-neutral-950">Ban điều hành &amp; Liên hệ đoàn</h2>
+                  <p className="text-xs text-neutral-500 mt-0.5">
                     Thông tin trưởng đoàn, hướng dẫn viên và tài xế phụ trách
                   </p>
                 </div>
 
                 {staffMembers.length === 0 ? (
-                  <p className="text-xs text-slate-500">Chưa có thông tin trưởng đoàn / hướng dẫn viên.</p>
+                  <p className="text-xs text-neutral-500">Chưa có thông tin trưởng đoàn / hướng dẫn viên.</p>
                 ) : (
                   <div className="space-y-2.5">
                     {staffMembers.map((staff) => (
                       <div
                         key={staff.id}
-                        className="rounded-xl border border-slate-200 p-3 flex items-center justify-between gap-3"
+                        className="rounded-xl border border-neutral-200 p-3 flex items-center justify-between gap-3"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-neutral-950 text-white font-bold text-xs flex items-center justify-center shrink-0">
                             {staff.avatar}
                           </div>
                           <div className="min-w-0">
-                            <div className="text-sm font-bold text-slate-900 truncate">{staff.name}</div>
-                            <div className="text-[11px] font-semibold text-teal-700">{staff.role}</div>
+                            <div className="text-sm font-bold text-neutral-950 truncate">{staff.name}</div>
+                            <div className="text-[11px] font-semibold text-blue-700">{staff.role}</div>
                           </div>
                         </div>
                         {staff.phone && (
                           <a
                             href={`tel:${staff.phone}`}
-                            className="min-h-[40px] px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0 hover:bg-teal-100"
+                            className="min-h-[40px] px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0 hover:bg-blue-100"
                           >
                             <Phone className="w-3.5 h-3.5" />
                             <span>{staff.phone}</span>
@@ -486,28 +486,28 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
               </div>
 
               {/* Share code reminder for family */}
-              <div className="rounded-2xl bg-white border border-slate-200 p-5 space-y-3">
-                <div className="text-xs font-extrabold text-slate-900">Mã tham gia chuyến đi</div>
-                <p className="text-xs text-slate-500">
+              <div className="rounded-2xl bg-[#090B11] text-white border border-neutral-800 p-5 space-y-3">
+                <div className="text-xs font-extrabold text-white">Mã tham gia chuyến đi</div>
+                <p className="text-xs text-neutral-400">
                   Dùng mã này để mở lại lịch trình trên thiết bị khác mà không cần đăng ký tài khoản.
                 </p>
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5">
-                  <span className="font-mono text-lg font-black tracking-[0.2em] text-slate-900">
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-neutral-900 border border-neutral-800 px-3.5 py-2.5">
+                  <span className="font-mono text-lg font-black tracking-[0.2em] text-blue-400">
                     {joinCode}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => void handleCopy('code')}
-                      className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 inline-flex items-center gap-1"
+                      className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-xs font-bold text-white hover:bg-neutral-700 inline-flex items-center gap-1 cursor-pointer"
                     >
-                      {copiedType === 'code' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedType === 'code' ? <Check className="w-3.5 h-3.5 text-blue-400" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedType === 'code' ? 'Đã chép' : 'Mã'}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleCopy('link')}
-                      className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-teal-600 text-xs font-bold text-white hover:bg-teal-500 inline-flex items-center gap-1"
+                      className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-red-600 text-xs font-bold text-white hover:bg-red-500 inline-flex items-center gap-1 cursor-pointer"
                     >
                       {copiedType === 'link' ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5" />}
                       <span>{copiedType === 'link' ? 'Đã chép link' : 'Chép link'}</span>
@@ -518,35 +518,35 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
             </div>
 
             {/* Passenger list (no private phone numbers exposed) */}
-            <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200 p-5 space-y-4">
+            <div className="lg:col-span-7 rounded-2xl bg-white border border-neutral-200 p-5 space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <h2 className="text-base font-extrabold text-slate-900">Danh sách Hành khách trong đoàn</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h2 className="text-base font-extrabold text-neutral-950">Danh sách Hành khách trong đoàn</h2>
+                  <p className="text-xs text-neutral-500 mt-0.5">
                     {presentCount}/{guestTrip.membersTotal} thành viên đã điểm danh có mặt
                   </p>
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg tabular-nums">
+                <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-lg tabular-nums">
                   {guestTrip.membersTotal} thành viên
                 </span>
               </div>
 
               {passengerMembers.length === 0 ? (
-                <p className="text-xs text-slate-500 py-4">Chưa có hành khách nào trong danh sách.</p>
+                <p className="text-xs text-neutral-500 py-4">Chưa có hành khách nào trong danh sách.</p>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-neutral-100">
                   {passengerMembers.map((member) => (
                     <div key={member.id} className="py-3 flex items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold flex items-center justify-center shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-neutral-100 border border-neutral-200 text-neutral-800 font-bold flex items-center justify-center shrink-0">
                           {member.avatar}
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-slate-900 truncate">{member.name}</div>
-                          <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5">
+                          <div className="font-bold text-neutral-950 truncate">{member.name}</div>
+                          <div className="text-[11px] text-neutral-500 flex flex-wrap items-center gap-1.5">
                             <span>{member.role}</span>
                             {member.invitedByName && (
-                              <span className="text-teal-700 font-medium">
+                              <span className="text-blue-700 font-medium">
                                 • Người thân của {member.invitedByName}
                               </span>
                             )}
@@ -557,10 +557,10 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
                       <span
                         className={`shrink-0 px-2.5 py-1 rounded-lg border font-bold text-[11px] inline-flex items-center gap-1 ${
                           member.attendanceStatus === 'Có mặt'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
                             : member.attendanceStatus === 'Vắng mặt'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                              ? 'bg-red-50 text-red-700 border-red-200'
+                              : 'bg-neutral-50 text-neutral-600 border-neutral-200'
                         }`}
                       >
                         {member.attendanceStatus === 'Có mặt' ? (
@@ -582,7 +582,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
       {/* Mobile Sticky Bottom Tab Bar (Thumb-Zone Ergonomics) */}
       <nav
         aria-label="Điều hướng hành khách"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 grid grid-cols-3 h-16"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-neutral-950 border-t border-neutral-800 grid grid-cols-3 h-16"
       >
         {(
           [
@@ -599,7 +599,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={`min-h-[48px] flex flex-col items-center justify-center gap-1 text-[11px] font-bold transition ${
-                isActive ? 'text-teal-700 bg-teal-50/60' : 'text-slate-500'
+                isActive ? 'text-blue-400 bg-neutral-900 border-t-2 border-red-600' : 'text-neutral-400'
               }`}
             >
               <Icon className="w-5 h-5" />

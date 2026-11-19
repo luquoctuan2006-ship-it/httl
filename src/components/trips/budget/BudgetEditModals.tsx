@@ -148,7 +148,7 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
               className="font-mono font-bold text-base"
             />
           </Field>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
+          <p className="text-[11px] text-neutral-500 leading-relaxed">
             Nhập số tiền tùy ý bằng VNĐ. Sau khi cập nhật, số dư còn lại, tỷ lệ phần trăm và cảnh báo vượt mức sẽ tự động tính lại.
             {hasCustomAllocations && ' Các hạn mức 5 hạng mục tùy chỉnh sẽ tự động co giãn tương ứng theo tổng mới.'}
           </p>
@@ -169,12 +169,12 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
         icon={<Sliders className="w-4 h-4" />}
       >
         <form onSubmit={onSaveAllocations} className="p-6 space-y-3.5 text-xs">
-          <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <div className="flex items-center justify-between text-[11px] text-neutral-500">
             <span>Đặt hạn mức riêng cho từng hạng mục (tổng ≤ tổng ngân sách tour):</span>
             <button
               type="button"
               onClick={handleResetWithSync}
-              className="font-bold text-teal-700 hover:underline shrink-0 ml-2"
+              className="font-bold text-blue-700 hover:underline shrink-0 ml-2 cursor-pointer"
             >
               Chia lại theo % chuẩn
             </button>
@@ -202,24 +202,24 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
             </Field>
           ))}
 
-          <div className="pt-2 border-t border-slate-100 space-y-1 text-[11px]">
-            <div className="flex items-center justify-between font-bold text-slate-500">
+          <div className="pt-2 border-t border-neutral-100 space-y-1 text-[11px]">
+            <div className="flex items-center justify-between font-bold text-neutral-500">
               <span>Tổng phân bổ 5 hạng mục:</span>
-              <span className={`font-mono ${isAllocOverTotal ? 'text-rose-600' : 'text-slate-900'}`}>
+              <span className={`font-mono ${isAllocOverTotal ? 'text-red-600' : 'text-neutral-950'}`}>
                 {allocationsSum.toLocaleString('vi-VN')} ₫
               </span>
             </div>
             {totalBudget > 0 && (
-              <div className="flex items-center justify-between font-medium text-slate-500">
+              <div className="flex items-center justify-between font-medium text-neutral-500">
                 <span>Tổng ngân sách tour hiện tại:</span>
-                <span className="font-mono text-slate-700">{totalBudget.toLocaleString('vi-VN')} ₫</span>
+                <span className="font-mono text-neutral-800">{totalBudget.toLocaleString('vi-VN')} ₫</span>
               </div>
             )}
             {totalBudget > 0 && allocationDelta !== 0 && (
               <p
                 role={isAllocOverTotal ? 'alert' : undefined}
                 className={`font-semibold pt-1 ${
-                  isAllocOverTotal ? 'text-rose-600' : 'text-slate-500'
+                  isAllocOverTotal ? 'text-red-600' : 'text-neutral-500'
                 }`}
               >
                 {isAllocOverTotal
@@ -228,7 +228,7 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
               </p>
             )}
             {allocValidationError && !isAllocOverTotal && (
-              <p role="alert" className="font-semibold pt-1 text-rose-600">
+              <p role="alert" className="font-semibold pt-1 text-red-600">
                 {allocValidationError}
               </p>
             )}
@@ -252,7 +252,7 @@ export function BudgetEditModals(props: BudgetEditModalsProps) {
       >
         <form onSubmit={onSaveActivityCost} className="p-6 space-y-4 text-xs">
           <Field label="Hoạt động">
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-bold text-slate-800">
+            <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200 font-bold text-neutral-900">
               {editingActivity?.title}
             </div>
           </Field>

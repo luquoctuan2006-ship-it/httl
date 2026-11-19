@@ -64,12 +64,12 @@ export const ReceiptImage: React.FC<{
   if (src) return <img src={src} alt={alt} className={className} />;
   if (failed) {
     return (
-      <div className={`flex items-center justify-center bg-slate-100 text-slate-400 text-[10px] font-bold ${className}`}>
+      <div className={`flex items-center justify-center bg-neutral-100 text-neutral-400 text-[10px] font-bold ${className}`}>
         Không tải được ảnh
       </div>
     );
   }
-  return <div className={`bg-slate-200/80 animate-pulse ${className}`} />;
+  return <div className={`bg-neutral-200 ${className}`} />;
 };
 
 export const ReceiptPreviewModal: React.FC<{
@@ -80,21 +80,21 @@ export const ReceiptPreviewModal: React.FC<{
   if (!invoice || (!invoice.receiptImage && !invoice.receiptId)) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 overflow-hidden shadow-2xl">
-        <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between text-xs">
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+      <div className="bg-white text-neutral-900 rounded-3xl max-w-2xl w-full border border-neutral-200 overflow-hidden shadow-2xl">
+        <div className="px-5 py-3.5 bg-neutral-950 text-white border-b-2 border-blue-600 flex items-center justify-between text-xs">
           <div>
             <h3 className="font-extrabold">{invoice.title}</h3>
-            <p className="text-slate-400">
-              {invoice.invoiceNumber ? `Số HD: ${invoice.invoiceNumber} • ` : ''}
+            <p className="text-neutral-400">
+              {invoice.invoiceNumber ? `Số HD: ${invoice.invoiceNumber} · ` : ''}
               {invoice.amount.toLocaleString('vi-VN')} ₫ ({invoice.date})
             </p>
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10">
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-4 bg-slate-100 flex items-center justify-center max-h-[75vh] overflow-auto">
+        <div className="p-4 bg-neutral-100 flex items-center justify-center max-h-[75vh] overflow-auto">
           <ReceiptImage
             tripId={tripId}
             receiptId={invoice.receiptId}

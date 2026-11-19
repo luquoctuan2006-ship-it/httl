@@ -224,29 +224,29 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
     <div className="space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-xs font-bold text-white shadow-2xl animate-fade-in">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-2xl animate-fade-in">
           <CheckCircle2 className="w-4 h-4" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Header */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl">
+      <div className="rounded-2xl border border-neutral-800 bg-[#090B11] p-6 shadow-xl">
         <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+          <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-600/20 text-blue-300 border border-blue-500/40">
             Giám sát Lịch trình Thực địa
           </span>
-          <span className="text-xs text-slate-400 font-semibold">{activeTripsList.length} chuyến đang hoạt động</span>
+          <span className="text-xs text-neutral-400 font-semibold">{activeTripsList.length} chuyến đang hoạt động</span>
         </div>
         <h2 className="mt-2 text-2xl font-black text-white">Quản lý & Kiểm tra Lịch trình Hoạt động</h2>
-        <p className="mt-1 text-xs text-slate-400 max-w-2xl">
+        <p className="mt-1 text-xs text-neutral-400 max-w-2xl">
           Phát hiện lịch trình có lỗi dữ liệu, xung đột giờ mở cửa địa điểm hoặc thời gian di chuyển bất khả thi, hỗ trợ người dùng khi có sự cố.
         </p>
       </div>
 
       {/* Danh sách các chuyến đang hoạt động */}
-      <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
-        <div className="hidden md:grid grid-cols-12 gap-3 bg-slate-800/80 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700">
+      <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-[#090B11] shadow-xl">
+        <div className="hidden md:grid grid-cols-12 gap-3 bg-neutral-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
           <span className="col-span-3">Mã & Tên Chuyến đi</span>
           <span className="col-span-2">Chặng & Tiến độ</span>
           <span className="col-span-3">Phương tiện & Nhân sự</span>
@@ -254,34 +254,34 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
           <span className="col-span-2 text-right">Chi tiết</span>
         </div>
 
-        <div className="divide-y divide-slate-800/60">
+        <div className="divide-y divide-neutral-800/70">
           {activeTripsList.map((t) => (
             <div
               key={t.id}
-              className="flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center px-6 py-4 hover:bg-slate-800/40 transition text-xs"
+              className="flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center px-6 py-4 hover:bg-neutral-900/60 transition text-xs"
             >
               <div className="md:col-span-3">
-                <span className="font-mono text-teal-400 font-bold">{t.code}</span>
+                <span className="font-mono text-blue-400 font-bold">{t.code}</span>
                 <strong className="text-white block text-sm mt-0.5">{t.name}</strong>
               </div>
 
               <div className="md:col-span-2">
-                <span className="text-slate-300 font-bold block">{t.route}</span>
-                <span className="text-emerald-400 text-[11px]">{t.day}</span>
+                <span className="text-neutral-300 font-bold block">{t.route}</span>
+                <span className="text-red-400 text-[11px]">{t.day}</span>
               </div>
 
-              <div className="md:col-span-3 text-slate-300 space-y-0.5">
+              <div className="md:col-span-3 text-neutral-300 space-y-0.5">
                 <div>Xe: <strong className="text-white">{t.vehicle}</strong></div>
-                <div>Tài xế: <strong className="text-teal-300">{t.driver}</strong> | HDV: {t.guide}</div>
+                <div>Tài xế: <strong className="text-blue-300">{t.driver}</strong> | HDV: {t.guide}</div>
               </div>
 
               <div className="md:col-span-2 text-center">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-teal-950 text-teal-300 border border-teal-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-neutral-900 text-blue-300 border border-blue-500/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                   {t.status}
                 </span>
                 {t.issuesCount > 0 && (
-                  <span className="block text-[10px] text-amber-400 font-bold mt-1">
+                  <span className="block text-[10px] text-red-400 font-bold mt-1">
                     ⚠️ {t.issuesCount} cảnh báo cần xem
                   </span>
                 )}
@@ -291,14 +291,14 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
                 <button
                   onClick={() => void handleOpenTripDetails(t.fullTrip)}
                   disabled={loadingTripId === t.id}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold text-xs border border-slate-700 transition disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-blue-300 font-bold text-xs border border-neutral-700 transition disabled:opacity-50"
                 >
                   {loadingTripId === t.id ? 'Đang tải...' : 'Xem Lịch Trình'}
                 </button>
                 <button
                   onClick={() => void handleFlagSchedule(t.fullTrip, t.code)}
                   title="Gửi cảnh báo vào chuyến đi"
-                  className="p-1.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 transition"
+                  className="p-1.5 rounded-xl bg-red-600/20 text-red-300 hover:bg-red-600/30 border border-red-500/40 transition"
                 >
                   <Flag className="w-3.5 h-3.5" />
                 </button>
@@ -309,19 +309,19 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
       </div>
 
       {/* Phát hiện Lịch trình Có Xung đột / Bất khả thi */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+      <div className="rounded-2xl border border-neutral-800 bg-[#090B11] p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
           <h3 className="font-black text-white text-base flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <AlertTriangle className="w-4 h-4 text-red-500" />
             Phát hiện Sự cố Lịch trình & Xung đột Thời gian
           </h3>
-          <span className="text-xs text-slate-400">Động cơ Auto-Audit kích hoạt</span>
+          <span className="text-xs text-neutral-400">Động cơ Auto-Audit kích hoạt</span>
         </div>
 
         <div className="space-y-3">
           {scheduleIssues.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs rounded-xl bg-slate-800/40 border border-slate-700/50 flex flex-col items-center justify-center gap-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+            <div className="p-8 text-center text-neutral-400 text-xs rounded-xl bg-neutral-900/60 border border-neutral-800 flex flex-col items-center justify-center gap-2">
+              <CheckCircle2 className="w-8 h-8 text-blue-400" />
               <strong className="text-white text-sm">Không phát hiện sự cố hay xung đột lịch trình</strong>
               <span>
                 {(() => {
@@ -337,20 +337,20 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
             scheduleIssues.map((iss) => (
               <div
                 key={iss.id}
-                className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3"
+                className="p-4 rounded-xl bg-neutral-900/70 border border-neutral-800 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3"
               >
                 <div className="space-y-1 max-w-2xl">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-300 border border-red-800">
                       {iss.type}
                     </span>
-                    <span className="font-mono text-teal-400 font-bold">{iss.tripCode}</span>
+                    <span className="font-mono text-blue-400 font-bold">{iss.tripCode}</span>
                   </div>
-                  <p className="text-slate-300 leading-relaxed">{iss.description}</p>
+                  <p className="text-neutral-300 leading-relaxed">{iss.description}</p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-800 text-teal-300 border border-slate-700">
+                  <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-neutral-900 text-blue-300 border border-neutral-700">
                     {iss.status}
                   </span>
                   <button
@@ -360,7 +360,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
                         void handleOpenTripDetails(matchedTrip);
                       }
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition"
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition"
                   >
                     Xem & Xử Lý
                   </button>
@@ -374,15 +374,15 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
       {/* Modal: Xem Chi tiết Lịch Trình */}
       {selectedTripDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in">
-          <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
+          <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-3xl border border-neutral-700 bg-neutral-950 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 sticky top-0 bg-neutral-950 z-10">
               <div>
-                <span className="font-mono text-xs font-bold text-teal-400">{selectedTripDetails.code}</span>
+                <span className="font-mono text-xs font-bold text-blue-400">{selectedTripDetails.code}</span>
                 <h3 className="font-black text-white text-lg">{selectedTripDetails.title || (selectedTripDetails as any).name || 'Lịch trình tour'}</h3>
               </div>
               <button
                 onClick={() => setSelectedTripDetails(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -390,34 +390,34 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
 
             <div className="space-y-4 text-xs">
               {selectedTripDetails.days.map((day) => (
-                <div key={day.dayIndex} className="rounded-2xl border border-slate-800 bg-slate-800/40 p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-700/60 pb-2">
+                <div key={day.dayIndex} className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
                     <strong className="text-white text-sm">
                       {day.fullDate || `Ngày ${day.dayIndex}`} ({day.activities.length} hoạt động)
                     </strong>
-                    <span className="text-slate-400 font-mono">{day.dispatcherNote || 'Lịch trình chuẩn'}</span>
+                    <span className="text-neutral-400 font-mono">{day.dispatcherNote || 'Lịch trình chuẩn'}</span>
                   </div>
 
                   <div className="space-y-2">
                     {day.activities.map((act) => (
                       <div
                         key={act.id}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/80 text-slate-300"
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-900 text-neutral-300 border border-neutral-800"
                       >
                         <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-teal-400 font-bold">{act.timeStart} — {act.timeEnd}</span>
+                          <span className="font-mono text-blue-400 font-bold tabular-nums">{act.timeStart} — {act.timeEnd}</span>
                           <strong className="text-white">{act.title}</strong>
-                          <span className="text-slate-400">({act.location})</span>
+                          <span className="text-neutral-400">({act.location})</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-mono text-amber-300">
+                          <span className="font-mono text-red-300 tabular-nums">
                             {act.cost ? `${act.cost.toLocaleString('vi-VN')} ₫` : 'Miễn phí'}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               act.status === 'Đã xác nhận' || act.status === 'Hoàn tất'
-                                ? 'bg-emerald-950 text-emerald-300'
-                                : 'bg-amber-950 text-amber-300'
+                                ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                                : 'bg-red-950 text-red-300 border border-red-800'
                             }`}
                           >
                             {act.status}

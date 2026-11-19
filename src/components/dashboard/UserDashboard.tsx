@@ -54,17 +54,17 @@ const ActivityDetailModal = lazy(() =>
 );
 
 const TabLoadingFallback = ({ label = "Đang tải giao diện..." }: { label?: string }) => (
-  <div className="rounded-xl bg-white border border-slate-200 p-10 text-center text-xs font-semibold text-slate-500">
+  <div className="rounded-xl bg-white border border-neutral-200 p-10 text-center text-xs font-semibold text-neutral-500">
     {label}
   </div>
 );
 
 const STATUS_TEXT_CLASS: Record<Activity["status"], string> = {
-  "Hoàn tất": "text-emerald-700",
-  "Đang diễn ra": "text-amber-700",
-  "Đã xác nhận": "text-teal-700",
-  "Cần xử lý": "text-rose-700",
-  "Chờ duyệt": "text-slate-500",
+  "Hoàn tất": "text-neutral-900",
+  "Đang diễn ra": "text-red-600",
+  "Đã xác nhận": "text-blue-700",
+  "Cần xử lý": "text-red-700",
+  "Chờ duyệt": "text-neutral-500",
 };
 
 export function UserDashboard({
@@ -275,15 +275,15 @@ export function UserDashboard({
   }, [activeOverviewDay, searchQuery]);
 
   const renderEmptyState = () => (
-    <div className="rounded-2xl bg-white border border-slate-200 p-8 sm:p-12 text-center space-y-5 max-w-2xl mx-auto my-8">
-      <div className="w-14 h-14 rounded-xl bg-teal-50 border border-teal-200 text-teal-600 flex items-center justify-center mx-auto">
+    <div className="rounded-2xl bg-white border border-neutral-200 p-8 sm:p-12 text-center space-y-5 max-w-2xl mx-auto my-8">
+      <div className="w-14 h-14 rounded-xl bg-neutral-950 border border-blue-500/40 text-blue-400 flex items-center justify-center mx-auto shadow-md">
         <Compass className="w-7 h-7" />
       </div>
       <div className="space-y-2">
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+        <h2 className="text-xl sm:text-2xl font-bold text-neutral-950">
           Chào {authUser.name}, bạn chưa có chuyến đi nào
         </h2>
-        <p className="text-xs sm:text-sm text-slate-500 max-w-lg mx-auto leading-relaxed">
+        <p className="text-xs sm:text-sm text-neutral-500 max-w-lg mx-auto leading-relaxed">
           Hãy tạo chuyến đi đầu tiên bằng trình lập lịch hoặc nhập mã tham gia nếu bạn được mời vào một hành trình khác.
         </p>
       </div>
@@ -291,7 +291,7 @@ export function UserDashboard({
         <button
           type="button"
           onClick={onOpenTraditionalPlanner || onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-          className="px-4 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
+          className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
         >
           <CalendarPlus className="w-4 h-4" />
           <span>Tạo chuyến đi đầu tiên</span>
@@ -299,18 +299,18 @@ export function UserDashboard({
         <button
           type="button"
           onClick={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-          className="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
+          className="px-4 py-2.5 rounded-lg bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
         >
-          <Calendar className="w-4 h-4" />
+          <Calendar className="w-4 h-4 text-red-400" />
           <span>Lập lịch tự động</span>
         </button>
         {onOpenJoinModal && (
           <button
             type="button"
             onClick={onOpenJoinModal}
-            className="px-4 py-2.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs border border-slate-200 transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
+            className="px-4 py-2.5 rounded-lg bg-white hover:bg-neutral-50 text-neutral-800 font-semibold text-xs border border-neutral-200 transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
           >
-            <KeyRound className="w-4 h-4 text-teal-600" />
+            <KeyRound className="w-4 h-4 text-red-600" />
             <span>Tham gia bằng mã</span>
           </button>
         )}
@@ -319,7 +319,7 @@ export function UserDashboard({
   );
 
   return (
-    <div className="relative flex min-h-screen lg:h-screen w-full overflow-x-hidden lg:overflow-hidden bg-slate-50 text-slate-800">
+    <div className="relative flex min-h-screen lg:h-screen w-full overflow-x-hidden lg:overflow-hidden bg-[#F4F6FA] text-neutral-900">
       <div className="relative flex min-h-full lg:h-full w-full min-w-0">
         <Sidebar
           currentTab={currentTab}
@@ -367,21 +367,21 @@ export function UserDashboard({
             {trip && firebaseStatus === "error" && (
               <div
                 role="status"
-                className="text-xs font-medium flex items-center justify-between px-4 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800"
+                className="text-xs font-medium flex items-center justify-between px-4 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-800"
               >
                 <span>Không thể kết nối máy chủ đồng bộ — thay đổi đang được lưu tạm cục bộ.</span>
               </div>
             )}
 
             {searchQuery && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center justify-between text-xs text-amber-900">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 flex items-center justify-between text-xs text-blue-950">
                 <span className="font-medium">
                   Đang lọc theo từ khóa: <strong className="font-semibold">&quot;{searchQuery}&quot;</strong>
                 </span>
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="font-semibold text-amber-800 hover:underline cursor-pointer"
+                  className="font-semibold text-red-600 hover:underline cursor-pointer"
                 >
                   Xóa lọc
                 </button>
@@ -389,7 +389,7 @@ export function UserDashboard({
             )}
 
             {!tripsLoaded ? (
-              <div className="rounded-xl bg-white border border-slate-200 p-12 text-center text-sm text-slate-500 font-medium">
+              <div className="rounded-xl bg-white border border-neutral-200 p-12 text-center text-sm text-neutral-500 font-medium">
                 Đang tải dữ liệu chuyến đi của bạn...
               </div>
             ) : currentTab === "trips" ? (
@@ -416,24 +416,24 @@ export function UserDashboard({
                 {currentTab === "dashboard" && (
                   <div className="space-y-5">
                     {/* Compact Trip Overview Bar */}
-                    <section className="rounded-xl bg-white border border-slate-200 px-5 py-4 sm:px-6 sm:py-5">
+                    <section className="rounded-xl bg-white border border-neutral-200 px-5 py-4 sm:px-6 sm:py-5">
                       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                         <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-                            <span className="font-semibold text-teal-700">
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-neutral-500">
+                            <span className="font-semibold text-blue-700">
                               {isParticipant ? "Hành khách tham gia" : "Chủ chuyến đi"}
                             </span>
-                            <span aria-hidden="true" className="text-slate-300">
+                            <span aria-hidden="true" className="text-neutral-300">
                               ·
                             </span>
                             <span className="tabular-nums">{trip.dates}</span>
-                            <span aria-hidden="true" className="text-slate-300">
+                            <span aria-hidden="true" className="text-neutral-300">
                               ·
                             </span>
                             <span className="tabular-nums">{trip.totalDays} ngày</span>
                             {trip.vehicle && (
                               <>
-                                <span aria-hidden="true" className="text-slate-300">
+                                <span aria-hidden="true" className="text-neutral-300">
                                   ·
                                 </span>
                                 <span>{trip.vehicle}</span>
@@ -441,11 +441,11 @@ export function UserDashboard({
                             )}
                           </div>
 
-                          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 truncate">
+                          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 truncate">
                             {trip.title}
                           </h2>
 
-                          <p className="text-xs sm:text-sm text-slate-500">
+                          <p className="text-xs sm:text-sm text-neutral-500">
                             {trip.originFull} → {trip.destinationFull}
                             {isParticipant
                               ? " · Chế độ xem lịch trình, điểm danh bản thân và đăng ký người thân đi cùng."
@@ -458,7 +458,7 @@ export function UserDashboard({
                             <button
                               type="button"
                               onClick={() => setCurrentTab("members")}
-                              className="h-9 px-3.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                              className="h-9 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                             >
                               <Users className="w-3.5 h-3.5" />
                               <span>
@@ -468,9 +468,9 @@ export function UserDashboard({
                             <button
                               type="button"
                               onClick={() => setCurrentTab("schedule")}
-                              className="h-9 px-3.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs border border-slate-200 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                              className="h-9 px-3.5 rounded-lg bg-white hover:bg-neutral-50 text-neutral-800 font-semibold text-xs border border-neutral-200 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                             >
-                              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                              <Calendar className="w-3.5 h-3.5 text-neutral-500" />
                               <span>Xem lịch trình</span>
                             </button>
                           </div>
@@ -479,7 +479,7 @@ export function UserDashboard({
                             <button
                               type="button"
                               onClick={() => setIsAddActivityOpen(true)}
-                              className="h-9 px-3.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                              className="h-9 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                             >
                               <Plus className="w-3.5 h-3.5" />
                               <span>Thêm hoạt động</span>
@@ -490,30 +490,30 @@ export function UserDashboard({
                                 type="button"
                                 onClick={() => setIsToolsMenuOpen((prev) => !prev)}
                                 aria-expanded={isToolsMenuOpen}
-                                className="h-9 px-3.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs border border-slate-200 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                                className="h-9 px-3.5 rounded-lg bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs border border-neutral-800 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                               >
-                                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+                                <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
                                 <span>Công cụ lịch trình</span>
                                 {canUndo && (
                                   <span
-                                    className="w-1.5 h-1.5 rounded-full bg-amber-500"
+                                    className="w-1.5 h-1.5 rounded-full bg-red-500"
                                     title="Có thay đổi có thể hoàn tác"
                                   />
                                 )}
-                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
                               </button>
 
                               {isToolsMenuOpen && (
-                                <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-white border border-slate-200 shadow-lg py-1.5 z-30 text-xs">
+                                <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-white border border-neutral-200 shadow-lg py-1.5 z-30 text-xs">
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setIsToolsMenuOpen(false);
                                       (onOpenTraditionalPlanner || onOpenAIPlanner || (() => setIsAIPlannerOpen(true)))();
                                     }}
-                                    className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium cursor-pointer"
+                                    className="w-full px-3.5 py-2 text-left text-neutral-800 hover:bg-neutral-50 flex items-center gap-2.5 font-medium cursor-pointer"
                                   >
-                                    <CalendarPlus className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                                    <CalendarPlus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                                     <span>Lập lịch truyền thống</span>
                                   </button>
 
@@ -523,9 +523,9 @@ export function UserDashboard({
                                       setIsToolsMenuOpen(false);
                                       (onOpenAIPlanner || (() => setIsAIPlannerOpen(true)))();
                                     }}
-                                    className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium cursor-pointer"
+                                    className="w-full px-3.5 py-2 text-left text-neutral-800 hover:bg-neutral-50 flex items-center gap-2.5 font-medium cursor-pointer"
                                   >
-                                    <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                                    <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                                     <span>Lập lịch tự động</span>
                                   </button>
 
@@ -536,9 +536,9 @@ export function UserDashboard({
                                         setIsToolsMenuOpen(false);
                                         onOpenAutoArrange();
                                       }}
-                                      className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium cursor-pointer"
+                                      className="w-full px-3.5 py-2 text-left text-neutral-800 hover:bg-neutral-50 flex items-center gap-2.5 font-medium cursor-pointer"
                                     >
-                                      <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                      <Clock className="w-3.5 h-3.5 text-neutral-900 shrink-0" />
                                       <span>Tự động xếp lịch</span>
                                     </button>
                                   )}
@@ -549,22 +549,22 @@ export function UserDashboard({
                                       setIsToolsMenuOpen(false);
                                       (onOpenAIOptimize || (() => setIsAIOptimizeOpen(true)))();
                                     }}
-                                    className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium cursor-pointer"
+                                    className="w-full px-3.5 py-2 text-left text-neutral-800 hover:bg-neutral-50 flex items-center gap-2.5 font-medium cursor-pointer"
                                   >
-                                    <Compass className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                                    <Compass className="w-3.5 h-3.5 text-red-600 shrink-0" />
                                     <span>Tối ưu chuyến đi</span>
                                   </button>
 
                                   {canUndo && onUndo && (
                                     <>
-                                      <div className="my-1 border-t border-slate-100" />
+                                      <div className="my-1 border-t border-neutral-100" />
                                       <button
                                         type="button"
                                         onClick={() => {
                                           setIsToolsMenuOpen(false);
                                           onUndo();
                                         }}
-                                        className="w-full px-3.5 py-2 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 font-semibold cursor-pointer"
+                                        className="w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 font-semibold cursor-pointer"
                                       >
                                         <RotateCcw className="w-3.5 h-3.5 shrink-0" />
                                         <span>Hoàn tác thay đổi lịch</span>
@@ -592,11 +592,11 @@ export function UserDashboard({
                     {/* Focused 2-Column Overview: Agenda Summary + Route/Alerts */}
                     <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start min-w-0">
                       {/* Left Column: Compact Daily Agenda Preview */}
-                      <section className="xl:col-span-7 min-w-0 rounded-xl bg-white border border-slate-200 overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                      <section className="xl:col-span-7 min-w-0 rounded-xl bg-white border border-neutral-200 overflow-hidden">
+                        <div className="px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <h3 className="text-sm font-bold text-slate-900">Lịch trình trong ngày</h3>
-                            <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+                            <h3 className="text-sm font-bold text-neutral-950">Lịch trình trong ngày</h3>
+                            <p className="text-xs text-neutral-500 mt-0.5 tabular-nums">
                               {activeOverviewDay
                                 ? `Ngày ${activeOverviewDay.dayIndex}${activeOverviewDay.fullDate || activeOverviewDay.dateLabel ? ` · ${activeOverviewDay.fullDate || activeOverviewDay.dateLabel}` : ""} (${sortedOverviewActivities.length} hoạt động)`
                                 : "Chưa có ngày lịch trình"}
@@ -606,7 +606,7 @@ export function UserDashboard({
                           <button
                             type="button"
                             onClick={() => setCurrentTab("schedule")}
-                            className="text-xs font-semibold text-teal-700 hover:text-teal-800 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                            className="text-xs font-semibold text-blue-700 hover:text-blue-800 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
                           >
                             <span>Mở toàn bộ lịch trình</span>
                             <ArrowRight className="w-3.5 h-3.5" />
@@ -614,7 +614,7 @@ export function UserDashboard({
                         </div>
 
                         {trip.days && trip.days.length > 0 && (
-                          <div className="px-5 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-1.5 overflow-x-auto">
+                          <div className="px-5 py-2.5 border-b border-neutral-100 bg-neutral-50/80 flex items-center gap-1.5 overflow-x-auto">
                             {trip.days.map((day) => {
                               const isSelected = day.dayIndex === (activeOverviewDay?.dayIndex ?? currentDayIndex);
                               return (
@@ -624,8 +624,8 @@ export function UserDashboard({
                                   onClick={() => setCurrentDayIndex(day.dayIndex)}
                                   className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer shrink-0 tabular-nums ${
                                     isSelected
-                                      ? "bg-slate-900 text-white"
-                                      : "text-slate-600 hover:bg-slate-200/70 hover:text-slate-900"
+                                      ? "bg-neutral-950 text-white"
+                                      : "text-neutral-600 hover:bg-neutral-200/70 hover:text-neutral-950"
                                   }`}
                                 >
                                   Ngày {day.dayIndex}
@@ -637,7 +637,7 @@ export function UserDashboard({
 
                         {sortedOverviewActivities.length === 0 ? (
                           <div className="p-8 text-center space-y-2.5">
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-neutral-500">
                               {searchQuery
                                 ? `Không có hoạt động nào khớp với "${searchQuery}" trong ngày này.`
                                 : "Chưa có hoạt động nào trong ngày này."}
@@ -646,42 +646,42 @@ export function UserDashboard({
                               <button
                                 type="button"
                                 onClick={() => setIsAddActivityOpen(true)}
-                                className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer"
+                                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition cursor-pointer"
                               >
                                 + Thêm hoạt động vào Ngày {activeOverviewDay?.dayIndex ?? currentDayIndex}
                               </button>
                             )}
                           </div>
                         ) : (
-                          <div className="divide-y divide-slate-100">
+                          <div className="divide-y divide-neutral-100">
                             {sortedOverviewActivities.map((act) => (
                               <button
                                 key={act.id}
                                 type="button"
                                 onClick={() => setSelectedActivity(act)}
-                                className="w-full px-5 py-3.5 text-left hover:bg-slate-50 transition flex items-start gap-4 cursor-pointer"
+                                className="w-full px-5 py-3.5 text-left hover:bg-neutral-50 transition flex items-start gap-4 cursor-pointer"
                               >
-                                <div className="w-24 shrink-0 font-mono text-xs font-semibold text-slate-500 tabular-nums pt-0.5">
+                                <div className="w-24 shrink-0 font-mono text-xs font-semibold text-neutral-500 tabular-nums pt-0.5">
                                   {act.timeStart}
                                   {act.timeEnd ? ` – ${act.timeEnd}` : ""}
                                 </div>
 
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-semibold text-slate-900 truncate">
+                                  <div className="text-sm font-semibold text-neutral-950 truncate">
                                     {act.title}
                                   </div>
-                                  <div className="text-xs text-slate-500 truncate mt-0.5 flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <div className="text-xs text-neutral-500 truncate mt-0.5 flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-red-500 shrink-0" />
                                     <span className="truncate">{act.location}</span>
                                   </div>
                                 </div>
 
                                 <div className="shrink-0 text-right space-y-0.5">
-                                  <div className={`text-xs font-semibold ${STATUS_TEXT_CLASS[act.status] || "text-slate-600"}`}>
+                                  <div className={`text-xs font-semibold ${STATUS_TEXT_CLASS[act.status] || "text-neutral-600"}`}>
                                     {act.status}
                                   </div>
                                   {!isParticipant && (act.cost || 0) > 0 && (
-                                    <div className="text-[11px] font-mono text-slate-400 tabular-nums">
+                                    <div className="text-[11px] font-mono text-neutral-400 tabular-nums">
                                       {(act.cost || 0).toLocaleString("vi-VN")} ₫
                                     </div>
                                   )}
@@ -694,44 +694,44 @@ export function UserDashboard({
 
                       {/* Right Column: Compact Route & Weather Summary + Alerts/Optimize */}
                       <div className="xl:col-span-5 min-w-0 space-y-5">
-                        <section className="rounded-xl bg-white border border-slate-200 p-5 space-y-4">
+                        <section className="rounded-xl bg-white border border-neutral-200 p-5 space-y-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <h3 className="text-sm font-bold text-slate-900">Tuyến đường &amp; Thời tiết</h3>
-                              <p className="text-xs text-slate-500 mt-0.5">
+                              <h3 className="text-sm font-bold text-neutral-950">Tuyến đường &amp; Thời tiết</h3>
+                              <p className="text-xs text-neutral-500 mt-0.5">
                                 {trip.originFull} → {trip.destinationFull}
                               </p>
                             </div>
                             <button
                               type="button"
                               onClick={() => setCurrentTab("map")}
-                              className="text-xs font-semibold text-teal-700 hover:text-teal-800 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+                              className="text-xs font-semibold text-blue-700 hover:text-blue-800 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
                             >
                               <span>Mở bản đồ</span>
                               <ArrowRight className="w-3.5 h-3.5" />
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-3 py-3 border-y border-slate-100">
+                          <div className="grid grid-cols-3 gap-3 py-3 border-y border-neutral-100">
                             <div>
-                              <div className="text-[11px] text-slate-500">Chặng hoàn tất</div>
-                              <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
+                              <div className="text-[11px] text-neutral-500">Chặng hoàn tất</div>
+                              <div className="text-sm font-bold text-neutral-950 tabular-nums mt-0.5">
                                 {overviewRouteSummary
                                   ? `${overviewRouteSummary.completedStops}/${overviewRouteSummary.totalStops} điểm`
                                   : `${trip.destinationsCount} điểm`}
                               </div>
                             </div>
                             <div>
-                              <div className="text-[11px] text-slate-500">Tổng cự ly</div>
-                              <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
+                              <div className="text-[11px] text-neutral-500">Tổng cự ly</div>
+                              <div className="text-sm font-bold text-neutral-950 tabular-nums mt-0.5">
                                 {overviewRouteSummary && overviewRouteSummary.totalRouteKm > 0
                                   ? `${overviewRouteSummary.totalRouteKm} km`
                                   : `${trip.totalKm || 0} km`}
                               </div>
                             </div>
                             <div>
-                              <div className="text-[11px] text-slate-500">Thời gian chạy</div>
-                              <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
+                              <div className="text-[11px] text-neutral-500">Thời gian chạy</div>
+                              <div className="text-sm font-bold text-neutral-950 tabular-nums mt-0.5">
                                 {overviewRouteSummary && overviewRouteSummary.totalTravelMinutes > 0
                                   ? formatTravelDuration(overviewRouteSummary.totalTravelMinutes)
                                   : "—"}
@@ -742,18 +742,18 @@ export function UserDashboard({
                           {overviewRouteSummary?.currentStop && (
                             <div className="space-y-1.5 text-xs">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-slate-500 flex items-center gap-1.5">
-                                  <Navigation className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                                <span className="text-neutral-500 flex items-center gap-1.5">
+                                  <Navigation className="w-3.5 h-3.5 text-red-600 shrink-0" />
                                   <span>Điểm hiện tại</span>
                                 </span>
-                                <span className="font-semibold text-slate-900 truncate max-w-[60%] text-right">
+                                <span className="font-semibold text-neutral-950 truncate max-w-[60%] text-right">
                                   {overviewRouteSummary.currentStop.name}
                                 </span>
                               </div>
                               {overviewRouteSummary.nextStop && (
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-slate-500">Điểm kế tiếp</span>
-                                  <span className="font-medium text-slate-700 truncate max-w-[60%] text-right">
+                                  <span className="text-neutral-500">Điểm kế tiếp</span>
+                                  <span className="font-medium text-blue-700 truncate max-w-[60%] text-right">
                                     {overviewRouteSummary.nextStop.name}
                                   </span>
                                 </div>
@@ -762,16 +762,16 @@ export function UserDashboard({
                           )}
 
                           {trip.weather && (trip.weather.description || trip.weather.temp > 0) && (
-                            <div className="pt-3 border-t border-slate-100 flex items-start justify-between gap-3 text-xs">
-                              <div className="flex items-center gap-2 text-slate-600">
-                                <CloudSun className="w-4 h-4 text-amber-500 shrink-0" />
+                            <div className="pt-3 border-t border-neutral-100 flex items-start justify-between gap-3 text-xs">
+                              <div className="flex items-center gap-2 text-neutral-600">
+                                <CloudSun className="w-4 h-4 text-blue-600 shrink-0" />
                                 <span>
                                   {trip.weather.description || "Thời tiết tuyến"}
                                   {trip.weather.rainProb ? ` · Mưa ${trip.weather.rainProb}` : ""}
                                 </span>
                               </div>
                               {typeof trip.weather.temp === "number" && trip.weather.temp > 0 && (
-                                <span className="font-mono font-bold text-slate-900 tabular-nums shrink-0">
+                                <span className="font-mono font-bold text-neutral-950 tabular-nums shrink-0">
                                   {trip.weather.temp}°C
                                 </span>
                               )}
@@ -863,15 +863,15 @@ export function UserDashboard({
 
                 {currentTab === "budget" &&
                   (isParticipant ? (
-                    <div className="rounded-xl bg-white border border-slate-200 p-8 text-center space-y-3">
-                      <h3 className="text-base font-bold text-slate-900">Thông tin ngân sách nội bộ</h3>
-                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    <div className="rounded-xl bg-white border border-neutral-200 p-8 text-center space-y-3">
+                      <h3 className="text-base font-bold text-neutral-950">Thông tin ngân sách nội bộ</h3>
+                      <p className="text-xs text-neutral-500 max-w-md mx-auto">
                         Ngân sách và chứng từ chi phí chỉ hiển thị cho chủ chuyến đi hoặc quản trị viên.
                       </p>
                       <button
                         type="button"
                         onClick={() => setCurrentTab("dashboard")}
-                        className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer"
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition cursor-pointer"
                       >
                         Quay lại Tổng quan
                       </button>

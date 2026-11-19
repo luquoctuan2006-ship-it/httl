@@ -32,7 +32,7 @@ export const AdminTripsManagementView: React.FC<AdminTripsManagementProps> = (pr
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
+      <div className="flex flex-wrap gap-2 border-b border-neutral-800 pb-3">
         {sections.map((section) => (
           <button
             key={section.id}
@@ -40,8 +40,8 @@ export const AdminTripsManagementView: React.FC<AdminTripsManagementProps> = (pr
             onClick={() => setActiveSection(section.id)}
             className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
               activeSection === section.id
-                ? 'bg-teal-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                ? 'bg-blue-600 text-white'
+                : 'text-neutral-400 hover:bg-neutral-800 hover:text-white'
             }`}
           >
             {section.label}
@@ -74,7 +74,7 @@ export const AdminTripsManagementView: React.FC<AdminTripsManagementProps> = (pr
             onEnsureFullTrip={props.onEnsureFullTrip}
           />
         ) : (
-          <p className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">
+          <p className="rounded-xl border border-neutral-800 bg-[#090B11] p-6 text-sm text-neutral-400">
             Chọn một chuyến đi để xem giám sát lịch trình.
           </p>
         ))}
@@ -83,7 +83,7 @@ export const AdminTripsManagementView: React.FC<AdminTripsManagementProps> = (pr
         (props.trip ? (
           <AdminPlanningDataView trip={props.trip} onUpdateTrip={props.onUpdateTrip} />
         ) : (
-          <p className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">
+          <p className="rounded-xl border border-neutral-800 bg-[#090B11] p-6 text-sm text-neutral-400">
             Chọn một chuyến đi để quản lý dữ liệu hoạch định.
           </p>
         ))}

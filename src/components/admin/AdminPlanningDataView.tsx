@@ -45,30 +45,30 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
     <div className="space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-xs font-bold text-white shadow-2xl animate-fade-in">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-2xl animate-fade-in">
           <CheckCircle2 className="w-4 h-4" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-neutral-800 bg-[#090B11] p-6 shadow-xl">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-red-600/20 text-red-300 border border-red-500/40">
               Master Data & Điểm Du Lịch
             </span>
-            <span className="text-xs text-slate-400 font-semibold">{locations.length} điểm trong cơ sở dữ liệu</span>
+            <span className="text-xs text-neutral-400 font-semibold">{locations.length} điểm trong cơ sở dữ liệu</span>
           </div>
           <h2 className="mt-2 text-2xl font-black text-white">Quản lý Dữ liệu Địa điểm Du lịch & Hoạch định</h2>
-          <p className="mt-1 text-xs text-slate-400 max-w-2xl">
+          <p className="mt-1 text-xs text-neutral-400 max-w-2xl">
             Cơ sở dữ liệu địa điểm du lịch ảnh hưởng trực tiếp đến chất lượng tạo lịch trình của AI. Quản lý tọa độ chuẩn, phân loại (thiên nhiên, ăn uống, vui chơi, văn hóa, lưu trú) và phát hiện dữ liệu thiếu sót.
           </p>
         </div>
 
         <button
           onClick={() => locationData.setIsAddModalOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md shadow-teal-900/30 transition active:scale-95 shrink-0"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-950/40 transition active:scale-95 shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>Thêm Địa Điểm Mới</span>
@@ -76,7 +76,7 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
       </div>
 
       {/* Subtabs Bar */}
-      <div className="flex items-center justify-between gap-3 overflow-x-auto pb-1 border-b border-slate-800">
+      <div className="flex items-center justify-between gap-3 overflow-x-auto pb-1 border-b border-neutral-800">
         <div className="flex items-center gap-2">
           {planningSubTabs.map((tab) => {
             const Icon = tab.icon;
@@ -87,8 +87,8 @@ export const AdminPlanningDataView: React.FC<AdminPlanningDataProps> = ({ trip, 
                 onClick={() => setActiveSubTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
                   isActive
-                    ? 'bg-slate-800 text-teal-300 border border-teal-500/40 shadow-xs'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    ? 'bg-neutral-900 text-blue-400 border border-blue-500/40 shadow-xs'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900/60'
                 }`}
               >
                 <Icon className="w-4 h-4" />

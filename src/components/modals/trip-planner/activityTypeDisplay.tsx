@@ -11,19 +11,19 @@ import {
 export function getActivityTypeIcon(type: string) {
   switch (type) {
     case 'meal':
-      return <UtensilsCrossed className="w-3.5 h-3.5 text-amber-600" />;
+      return <UtensilsCrossed className="w-3.5 h-3.5 text-red-600" />;
     case 'hotel':
-      return <Building2 className="w-3.5 h-3.5 text-purple-600" />;
+      return <Building2 className="w-3.5 h-3.5 text-neutral-900" />;
     case 'checkin':
-      return <KeyRound className="w-3.5 h-3.5 text-indigo-600" />;
+      return <KeyRound className="w-3.5 h-3.5 text-blue-600" />;
     case 'briefing':
-      return <ClipboardCheck className="w-3.5 h-3.5 text-emerald-600" />;
+      return <ClipboardCheck className="w-3.5 h-3.5 text-neutral-900" />;
     case 'transport':
       return <Bus className="w-3.5 h-3.5 text-blue-600" />;
     case 'sightseeing':
-      return <Mountain className="w-3.5 h-3.5 text-teal-600" />;
+      return <Mountain className="w-3.5 h-3.5 text-blue-700" />;
     default:
-      return <Landmark className="w-3.5 h-3.5 text-slate-600" />;
+      return <Landmark className="w-3.5 h-3.5 text-neutral-600" />;
   }
 }
 

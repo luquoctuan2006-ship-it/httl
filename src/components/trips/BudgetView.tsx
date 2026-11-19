@@ -15,6 +15,7 @@ interface BudgetViewProps {
   onUpdateTripBudget?: (updatedTrip: TripData) => void | boolean | Promise<void | boolean>;
   searchQuery?: string;
   onClearSearch?: () => void;
+  isAdmin?: boolean;
 }
 
 export const BudgetView: React.FC<BudgetViewProps> = ({
@@ -22,6 +23,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   onUpdateTripBudget,
   searchQuery = '',
   onClearSearch,
+  isAdmin = false,
 }) => {
   const budgetData = useBudgetCalculations(trip, searchQuery);
   const {
@@ -161,6 +163,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         onOpenEditAllocations={openEditAllocationsModal}
         onOpenEditBudget={openEditBudgetModal}
         openCreateInvoiceModal={openCreateInvoiceModal}
+        isAdmin={isAdmin}
       />
 
       <ExpenseLedger

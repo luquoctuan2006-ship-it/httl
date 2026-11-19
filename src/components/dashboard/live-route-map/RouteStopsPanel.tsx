@@ -46,18 +46,18 @@ interface RouteStopsPanelProps {
 const STATUS_BADGE: Record<RouteStopStatus, { label: string; badgeClass: string; dotClass: string }> = {
   completed: {
     label: 'Đã tham quan',
-    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    dotClass: 'bg-emerald-600 text-white',
+    badgeClass: 'bg-neutral-100 text-neutral-900 border-neutral-300',
+    dotClass: 'bg-neutral-950 text-white',
   },
   current: {
     label: 'Đang tham quan',
-    badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
-    dotClass: 'bg-teal-600 text-white',
+    badgeClass: 'bg-red-50 text-red-700 border-red-200',
+    dotClass: 'bg-red-600 text-white',
   },
   pending: {
     label: 'Sắp tới',
-    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    dotClass: 'bg-indigo-600 text-white',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+    dotClass: 'bg-blue-600 text-white',
   },
 };
 
@@ -96,41 +96,41 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
         : 'Hiện chưa kết nối được dữ liệu đường bộ OSRM nên khoảng cách & thời gian chặng đang tạm ước tính theo tọa độ; tiến độ cập nhật theo trạng thái điểm dừng (không sử dụng GPS xe).';
 
   return (
-    <div className="border-t border-slate-100 bg-slate-50/70 p-4 sm:px-5 space-y-3">
+    <div className="border-t border-neutral-100 bg-neutral-50/80 p-4 sm:px-5 space-y-3">
       {/* Section Header & Progress Summary Strip */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-teal-600" />
-          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+          <Compass className="w-4 h-4 text-red-600" />
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-800">
             Thứ tự địa điểm & Chặng di chuyển
           </h3>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-semibold">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-600 font-semibold tabular-nums">
           <span>
-            Hoàn tất: <strong className="text-emerald-700">{completedStops}/{totalStops}</strong> ({stopProgressPercent}%)
+            Hoàn tất: <strong className="text-neutral-950">{completedStops}/{totalStops}</strong> ({stopProgressPercent}%)
           </span>
-          <span className="text-slate-300">•</span>
+          <span className="text-neutral-300">•</span>
           <span>
             Tổng quãng đường {routingSource === 'osrm' ? 'đường bộ' : 'ước tính'}:{' '}
-            <strong className="text-slate-900">{totalRouteKm} km</strong>
+            <strong className="text-neutral-950">{totalRouteKm} km</strong>
           </span>
-          <span className="text-slate-300">•</span>
+          <span className="text-neutral-300">•</span>
           <span>
-            Thời gian dự kiến: <strong className="text-teal-700">~{formatTravelDuration(totalTravelMinutes)}</strong>
+            Thời gian dự kiến: <strong className="text-blue-700">~{formatTravelDuration(totalTravelMinutes)}</strong>
           </span>
         </div>
       </div>
 
       {/* TSP Optimization & OSRM Distance Sync Banners */}
       {tspPreview && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 text-xs text-emerald-950 min-w-0">
-            <Route className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="rounded-xl border border-blue-200 bg-blue-50/80 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-blue-950 min-w-0">
+            <Route className="w-4 h-4 text-blue-600 shrink-0" />
             <span>
               Thuật toán <strong>TSP (Nearest Neighbor + 2-opt)</strong> tìm thấy lộ trình ngắn hơn:{' '}
-              <span className="line-through text-slate-500">{tspPreview.originalKm} km</span>{' '}
-              ➔ <strong className="text-emerald-700">{tspPreview.optimizedKm} km</strong>{' '}
-              <span className="font-extrabold text-emerald-700">
+              <span className="line-through text-neutral-500">{tspPreview.originalKm} km</span>{' '}
+              ➔ <strong className="text-blue-700">{tspPreview.optimizedKm} km</strong>{' '}
+              <span className="font-extrabold text-red-600">
                 (tiết kiệm {tspPreview.savedKm} km · {tspPreview.savedPercent}%)
               </span>
             </span>
@@ -139,7 +139,7 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
             type="button"
             onClick={tspPreview.onApply}
             disabled={tspPreview.isApplying}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60 shrink-0"
+            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60 shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>{tspPreview.isApplying ? 'Đang sắp xếp...' : 'Sắp xếp lộ trình ngắn nhất'}</span>
@@ -148,16 +148,16 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
       )}
 
       {osrmSyncAction && (
-        <div className="rounded-xl border border-teal-200 bg-teal-50/70 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-teal-900">
+        <div className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-800">
           <span>
             Khoảng cách đường bộ thực tế từ <strong>OSRM</strong> là{' '}
-            <strong>{osrmSyncAction.osrmKm} km</strong> (thông số chuyến hiện lưu{' '}
+            <strong className="text-blue-700">{osrmSyncAction.osrmKm} km</strong> (thông số chuyến hiện lưu{' '}
             {osrmSyncAction.currentTripKm} km).
           </span>
           <button
             type="button"
             onClick={osrmSyncAction.onSync}
-            className="px-2.5 py-1 rounded-lg bg-white hover:bg-teal-100 border border-teal-300 text-teal-800 font-bold transition cursor-pointer shrink-0"
+            className="px-2.5 py-1 rounded-lg bg-neutral-950 hover:bg-neutral-800 text-white font-bold transition cursor-pointer shrink-0"
           >
             Cập nhật {osrmSyncAction.osrmKm} km thực tế
           </button>
@@ -181,8 +181,8 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
               key={key}
               className={`rounded-xl border bg-white p-3 transition shadow-2xs ${
                 isSelected
-                  ? 'border-teal-500 ring-2 ring-teal-500/20'
-                  : 'border-slate-200 hover:border-teal-300'
+                  ? 'border-blue-600 ring-2 ring-blue-500/20'
+                  : 'border-neutral-200 hover:border-blue-400'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -203,38 +203,38 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
                   </span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-extrabold text-slate-900 group-hover:text-teal-700 transition truncate">
+                      <span className="text-xs font-extrabold text-neutral-950 group-hover:text-blue-700 transition truncate">
                         {stop.name}
                       </span>
                       {stop.dayIndex && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
                           Ngày {stop.dayIndex}
                         </span>
                       )}
                     </div>
                     {stop.activityTitle && stop.activityTitle !== stop.name && (
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                      <p className="text-[11px] text-neutral-500 truncate mt-0.5">
                         {stop.activityTitle}
                       </p>
                     )}
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-500">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-neutral-500">
                       {stop.timeLabel && (
-                        <span className="flex items-center gap-1 font-medium text-slate-600">
-                          <Clock className="w-3 h-3 text-slate-400" />
+                        <span className="flex items-center gap-1 font-medium text-neutral-600">
+                          <Clock className="w-3 h-3 text-neutral-400" />
                           {stop.timeLabel}
                         </span>
                       )}
                       {!stop.hasCoordinates ? (
-                        <span className="font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/70">
+                        <span className="font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200/70">
                           Chưa có tọa độ (không tính chặng)
                         </span>
                       ) : isFirstLocatedStop ? (
-                        <span className="flex items-center gap-1 font-semibold text-slate-500">
-                          <Navigation2 className="w-3 h-3 text-teal-600" />
+                        <span className="flex items-center gap-1 font-semibold text-neutral-600">
+                          <Navigation2 className="w-3 h-3 text-blue-600" />
                           Xuất phát (0 km)
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 font-semibold text-teal-700 bg-teal-50/70 px-1.5 py-0.5 rounded">
+                        <span className="flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
                           <ArrowDownRight className="w-3 h-3" />
                           {stop.legSource === 'osrm' ? '' : '~'}
                           {stop.distanceFromPrevKm} km • {formatTravelDuration(stop.travelMinutesFromPrev)}
@@ -242,10 +242,10 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
                       )}
                       {stopWeather && (
                         <span
-                          className="flex items-center gap-1 font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200/70"
+                          className="flex items-center gap-1 font-semibold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200"
                           title={`Thời tiết hiện tại (hôm nay) tại điểm: ${stopWeather.description}${stopWeather.rainProbTime ? ` (${stopWeather.rainProbTime})` : ''}`}
                         >
-                          <CloudSun className="w-3 h-3 text-amber-500" />
+                          <CloudSun className="w-3 h-3 text-blue-600" />
                           {stopWeather.temp}°C{stopWeather.rainProb ? ` • ${stopWeather.rainProb}` : ''}
                         </span>
                       )}
@@ -275,13 +275,13 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenStopActivity(stop)}
-                      className="text-[10px] font-bold text-slate-500 hover:text-teal-700 flex items-center gap-1 transition cursor-pointer"
+                      className="text-[10px] font-bold text-neutral-500 hover:text-blue-700 flex items-center gap-1 transition cursor-pointer"
                       title="Xem hoạt động tương ứng trong lịch trình"
                     >
                       {stop.status === 'completed' ? (
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <CheckCircle2 className="w-3 h-3 text-neutral-900" />
                       ) : (
-                        <MapPin className="w-3 h-3" />
+                        <MapPin className="w-3 h-3 text-red-500" />
                       )}
                       <span>Chi tiết</span>
                       <ExternalLink className="w-2.5 h-2.5" />
@@ -294,10 +294,10 @@ export const RouteStopsPanel: React.FC<RouteStopsPanelProps> = ({
         })}
       </div>
 
-      <p className="text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-[11px] text-neutral-500 flex flex-wrap items-center justify-between gap-2">
         <span>{routingFootnote}</span>
         {unlocatedStopsCount > 0 && (
-          <span className="font-semibold text-amber-700">
+          <span className="font-semibold text-red-700">
             {unlocatedStopsCount} địa điểm chưa xác định được tọa độ.
           </span>
         )}

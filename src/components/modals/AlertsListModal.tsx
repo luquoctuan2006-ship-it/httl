@@ -24,42 +24,38 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        <div className="px-6 py-4 bg-rose-600 text-white flex items-center justify-between">
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+      <div className="bg-white text-neutral-900 rounded-3xl max-w-xl w-full border border-neutral-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 bg-neutral-950 border-b-2 border-red-600 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5" />
+            <ShieldAlert className="w-5 h-5 text-red-500" />
             <h3 className="text-sm font-extrabold">Trung tâm Cảnh báo Vận hành Thời gian thực</h3>
           </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 transition">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/15 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-6 space-y-3.5 max-h-[65vh] overflow-y-auto">
           {alerts.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-xs">
-              <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+            <div className="text-center py-8 text-neutral-500 text-xs">
+              <CheckCircle className="w-8 h-8 text-blue-600 mx-auto mb-2" />
               Tất cả các tuyến đường, lịch trình và ngân sách đang trong ngưỡng an toàn! Không có cảnh báo mới.
             </div>
           ) : (
             alerts.map((alert) => (
               <div
                 key={alert.id}
-                className="p-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white transition flex items-start justify-between gap-3"
+                className="p-4 rounded-2xl border border-neutral-200 bg-neutral-50 hover:bg-white transition flex items-start justify-between gap-3"
               >
                 <div className="flex items-start gap-3">
                   <div
                     className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                       alert.category === 'weather'
-                        ? 'bg-amber-100 text-amber-700'
-                        : alert.category === 'budget'
-                          ? alert.severity === 'error'
-                            ? 'bg-rose-100 text-rose-700'
-                            : 'bg-amber-100 text-amber-700'
-                          : alert.category === 'schedule'
-                            ? 'bg-rose-100 text-rose-700'
-                            : 'bg-blue-100 text-blue-700'
+                        ? 'bg-blue-100 text-blue-700'
+                        : alert.category === 'budget' || alert.category === 'schedule'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-neutral-950 text-white'
                     }`}
                   >
                     {alert.category === 'weather' ? (
@@ -74,17 +70,17 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-xs font-bold text-slate-900">{alert.title}</h4>
-                      <span className="text-[10px] text-slate-400 font-medium">{alert.timeAgo}</span>
+                      <h4 className="text-xs font-bold text-neutral-950">{alert.title}</h4>
+                      <span className="text-[10px] text-neutral-400 font-medium">{alert.timeAgo}</span>
                     </div>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">{alert.description}</p>
+                    <p className="text-xs text-neutral-600 mt-1 leading-relaxed">{alert.description}</p>
                   </div>
                 </div>
 
                 {onDismissAlert && (
                   <button
                     onClick={() => onDismissAlert(alert.id)}
-                    className="px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 shrink-0"
+                    className="px-2.5 py-1 text-[11px] font-bold text-neutral-600 hover:text-neutral-950 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-100 shrink-0"
                   >
                     Đã giải quyết
                   </button>
@@ -94,14 +90,14 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <div className="p-4 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             {onScanAlerts && (
               <button
                 type="button"
                 onClick={onScanAlerts}
                 disabled={isScanningAlerts}
-                className="px-3 py-1.5 text-xs font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isScanningAlerts ? 'animate-spin' : ''}`} />
                 <span>Quét lại cảnh báo</span>
@@ -110,7 +106,7 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
             {onTriggerAI && (
               <button
                 onClick={onTriggerAI}
-                className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
+                className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1.5"
               >
                 <span>Tối ưu lại lịch trình</span>
               </button>
@@ -118,7 +114,7 @@ export const AlertsListModal: React.FC<AlertsListModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-bold bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition"
+            className="px-4 py-2 text-xs font-bold bg-neutral-950 text-white rounded-xl hover:bg-neutral-800 transition"
           >
             Đóng
           </button>

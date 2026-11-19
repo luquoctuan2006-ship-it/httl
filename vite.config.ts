@@ -9,6 +9,11 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
     ],
+    server: {
+      host: '0.0.0.0',
+      port: 3000,
+      allowedHosts: true as const,
+    },
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

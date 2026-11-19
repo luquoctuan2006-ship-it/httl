@@ -3,9 +3,9 @@ import React from 'react';
 type FieldVariant = 'light' | 'dark';
 
 const LIGHT_CONTROL_CLASSES =
-  'w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:border-teal-500 outline-none';
+  'w-full px-3 py-2 rounded-xl border border-neutral-200 text-neutral-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/15 outline-none transition';
 const DARK_CONTROL_CLASSES =
-  'w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-teal-500';
+  'w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition';
 
 interface FieldProps {
   label: React.ReactNode;
@@ -26,14 +26,14 @@ export const Field: React.FC<FieldProps> = ({
     <label
       className={
         variant === 'dark'
-          ? 'text-slate-300 block mb-1 font-bold'
-          : 'block font-bold text-slate-700 mb-1'
+          ? 'text-neutral-300 block mb-1 font-bold'
+          : 'block font-bold text-neutral-700 mb-1'
       }
     >
       {label}
     </label>
     {children}
-    {hint && <span className="text-[10px] text-slate-500">{hint}</span>}
+    {hint && <span className="text-[10px] text-neutral-500">{hint}</span>}
   </div>
 );
 

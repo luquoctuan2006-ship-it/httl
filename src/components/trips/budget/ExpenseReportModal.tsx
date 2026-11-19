@@ -38,18 +38,18 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
     <>
       {/* Modal: Báo cáo chi tiêu & In quyết toán */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden shrink-0">
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+          <div className="bg-white text-neutral-900 rounded-3xl max-w-3xl w-full border border-neutral-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-neutral-950 text-white border-b-2 border-blue-600 flex items-center justify-between print:hidden shrink-0">
               <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-teal-400" />
+                <FileText className="w-4 h-4 text-blue-400" />
                 <h3 className="text-sm font-extrabold">Báo cáo Quyết toán Chi tiêu — {trip.code}</h3>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onExportCsv}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Tải CSV</span>
@@ -57,7 +57,7 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
                 <button
                   type="button"
                   onClick={() => onPrint()}
-                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-xs font-bold flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>In báo cáo</span>
@@ -65,27 +65,27 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
                 <button
                   type="button"
                   onClick={() => onClose()}
-                  className="p-1.5 rounded-full hover:bg-white/10"
+                  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-4 text-xs text-slate-800">
-              <div className="border-b border-slate-200 pb-4 flex flex-wrap justify-between gap-4">
+            <div className="p-6 overflow-y-auto space-y-4 text-xs text-neutral-800">
+              <div className="border-b border-neutral-200 pb-4 flex flex-wrap justify-between gap-4">
                 <div>
-                  <h4 className="text-base font-black text-slate-900">{trip.title}</h4>
-                  <p className="text-slate-500 mt-0.5">Mã tour: {trip.code} • Thời gian: {trip.dates}</p>
+                  <h4 className="text-base font-black text-neutral-950">{trip.title}</h4>
+                  <p className="text-neutral-500 mt-0.5">Mã tour: {trip.code} · Thời gian: {trip.dates}</p>
                 </div>
-                <div className="text-right font-mono space-y-0.5">
+                <div className="text-right font-mono space-y-0.5 tabular-nums">
                   <div>Hạn mức: <strong>{totalBudget.toLocaleString('vi-VN')} ₫</strong></div>
-                  <div className="text-emerald-700">Tổng chi hợp lệ: <strong>{spentBudget.toLocaleString('vi-VN')} ₫</strong></div>
-                  <div className="text-[11px] text-slate-500">
-                    (Thực chi: {actualSpentBudget.toLocaleString('vi-VN')} ₫ • Dự kiến: {plannedCommittedBudget.toLocaleString('vi-VN')} ₫)
+                  <div className="text-neutral-950">Tổng chi hợp lệ: <strong>{spentBudget.toLocaleString('vi-VN')} ₫</strong></div>
+                  <div className="text-[11px] text-neutral-500">
+                    (Thực chi: {actualSpentBudget.toLocaleString('vi-VN')} ₫ · Dự kiến: {plannedCommittedBudget.toLocaleString('vi-VN')} ₫)
                   </div>
                   {totalBudget > 0 && spentBudget > totalBudget ? (
-                    <div className="text-rose-700">
+                    <div className="text-red-600">
                       Vượt hạn mức: <strong>+{(spentBudget - totalBudget).toLocaleString('vi-VN')} ₫</strong>
                     </div>
                   ) : (
@@ -96,7 +96,7 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
 
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-slate-300 text-[11px] uppercase text-slate-500">
+                  <tr className="border-b border-neutral-300 text-[11px] uppercase text-neutral-500">
                     <th className="py-2 pr-2">Loại</th>
                     <th className="py-2 pr-2">Nội dung</th>
                     <th className="py-2 pr-2">Ngày / NCC</th>
@@ -104,16 +104,16 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
                     <th className="py-2 text-right">Số tiền</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-neutral-100">
                   {invoices.map((inv) => (
                     <tr key={inv.id}>
-                      <td className="py-2 pr-2 font-semibold text-teal-700">Hóa đơn</td>
+                      <td className="py-2 pr-2 font-semibold text-blue-700">Hóa đơn</td>
                       <td className="py-2 pr-2 font-bold">{inv.title}</td>
-                      <td className="py-2 pr-2 text-slate-500">
-                        {inv.date}{inv.vendor ? ` • ${inv.vendor}` : ''}
+                      <td className="py-2 pr-2 text-neutral-500">
+                        {inv.date}{inv.vendor ? ` · ${inv.vendor}` : ''}
                       </td>
                       <td className="py-2 pr-2 font-mono">{inv.invoiceNumber || (inv.receiptImage || inv.receiptId ? 'Có ảnh' : 'Thực chi')}</td>
-                      <td className="py-2 text-right font-mono font-bold">{inv.amount.toLocaleString('vi-VN')} ₫</td>
+                      <td className="py-2 text-right font-mono font-bold tabular-nums">{inv.amount.toLocaleString('vi-VN')} ₫</td>
                     </tr>
                   ))}
                   {expenseActivities.map((act) => {
@@ -129,12 +129,12 @@ export function ExpenseReportModal(props: ExpenseReportModalProps) {
                           ? 'Điều hành (ngoài 5 mục)'
                           : act.status;
                     return (
-                      <tr key={act.id} className={isExcluded ? 'text-slate-400' : undefined}>
+                      <tr key={act.id} className={isExcluded ? 'text-neutral-400' : undefined}>
                         <td className="py-2 pr-2 font-semibold">Lịch trình</td>
                         <td className="py-2 pr-2 font-bold">{act.title}</td>
                         <td className="py-2 pr-2">{act.location}</td>
                         <td className="py-2 pr-2 text-[11px]">{noteLabel}</td>
-                        <td className={`py-2 text-right font-mono font-bold ${isExcluded ? 'line-through' : ''}`}>
+                        <td className={`py-2 text-right font-mono font-bold tabular-nums ${isExcluded ? 'line-through' : ''}`}>
                           {(act.cost || 0).toLocaleString('vi-VN')} ₫
                         </td>
                       </tr>

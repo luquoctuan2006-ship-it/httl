@@ -235,23 +235,23 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+      <div className="bg-white text-neutral-900 rounded-3xl max-w-xl w-full border border-neutral-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-teal-700 to-slate-900 text-white flex items-center justify-between">
+        <div className="px-6 py-4 bg-neutral-950 border-b-2 border-blue-600 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300">
+            <div className="w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
               <Edit3 className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-base font-extrabold tracking-tight">Cập nhật thông tin Chuyến đi</h3>
-              <p className="text-[11px] text-teal-200/80">Chỉnh sửa tên, mã tour, thời gian và thông số vận hành</p>
+              <p className="text-[11px] text-neutral-300">Chỉnh sửa tên, mã tour, thời gian và thông số vận hành</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/20 transition text-white/80 hover:text-white"
+            className="p-1.5 rounded-lg hover:bg-white/15 transition text-white/80 hover:text-white"
           >
             <X className="w-4 h-4" />
           </button>
@@ -262,7 +262,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           {/* Title & Code */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-neutral-700 mb-1">
                 Tên chuyến đi / Tour du lịch *
               </label>
               <input
@@ -270,12 +270,12 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-bold text-slate-900"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 font-bold text-neutral-950"
                 placeholder="Ví dụ: Khám phá miền Trung 7 ngày"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-neutral-700 mb-1">
                 Mã chuyến đi *
               </label>
               <input
@@ -283,7 +283,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 required
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-mono font-bold text-teal-700 uppercase"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 font-mono font-bold text-blue-700 uppercase"
                 placeholder="VD: VN-101"
               />
             </div>
@@ -292,8 +292,8 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           {/* Dates & Status */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-teal-600" />
+              <label className="block text-xs font-bold text-neutral-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
                 <span>Ngày khởi hành *</span>
               </label>
               <input
@@ -308,12 +308,12 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                   }
                   setDateError(null);
                 }}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 text-neutral-800"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-teal-600" />
+              <label className="block text-xs font-bold text-neutral-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
                 <span>Ngày kết thúc *</span>
               </label>
               <input
@@ -325,17 +325,17 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                   setEndDate(e.target.value);
                   setDateError(null);
                 }}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 text-neutral-800"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-neutral-700 mb-1">
                 Trạng thái vận hành *
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-medium text-slate-800"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 font-medium text-neutral-800"
               >
                 <option value="Chuẩn bị">Chuẩn bị</option>
                 <option value="Đang vận hành">Đang vận hành</option>
@@ -345,7 +345,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           </div>
 
           {dateError && (
-            <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+            <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">
               {dateError}
             </div>
           )}
@@ -353,8 +353,8 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           {/* Origin & Destination */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              <label className="block text-xs font-bold text-neutral-700 mb-1 flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-neutral-500" />
                 <span>Điểm khởi hành</span>
               </label>
               <PlaceAutocompleteInput
@@ -363,12 +363,12 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 coordinates={originCoords}
                 onChangeCoordinates={setOriginCoords}
                 placeholder="Đà Nẵng"
-                inputClassName="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
+                inputClassName="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 text-neutral-800"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-teal-600" />
+              <label className="block text-xs font-bold text-neutral-700 mb-1 flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-red-600" />
                 <span>Điểm đến chính</span>
               </label>
               <PlaceAutocompleteInput
@@ -377,15 +377,15 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                 coordinates={destinationCoords}
                 onChangeCoordinates={setDestinationCoords}
                 placeholder="Huế"
-                inputClassName="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 text-slate-800"
+                inputClassName="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 text-neutral-800"
               />
             </div>
           </div>
 
           {/* Budget */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+            <label className="block text-xs font-bold text-neutral-700 mb-1 flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-blue-600" />
               <span>Tổng ngân sách dự trù (VNĐ) *</span>
             </label>
             <div className="relative">
@@ -399,51 +399,51 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
                   setBudgetTotalInput(e.target.value);
                   setBudgetError(null);
                 }}
-                className="w-full px-3 py-2 pr-14 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 font-mono font-bold text-slate-900"
+                className="w-full px-3 py-2 pr-14 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-600 font-mono font-bold text-neutral-950"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 pointer-events-none">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-500 pointer-events-none">
                 VNĐ
               </span>
             </div>
             {budgetError && (
-              <p className="mt-1 text-[11px] font-semibold text-rose-600">{budgetError}</p>
+              <p className="mt-1 text-[11px] font-semibold text-red-600">{budgetError}</p>
             )}
           </div>
 
           {/* Vehicle & Driver */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-              <Truck className="w-4 h-4 text-teal-600" />
+          <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-800">
+              <Truck className="w-4 h-4 text-blue-600" />
               <span>Phương tiện & Tài xế phụ trách</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
               <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">Loại xe</label>
+                <label className="block text-[11px] font-medium text-neutral-600 mb-1">Loại xe</label>
                 <input
                   type="text"
                   value={vehicle}
                   onChange={(e) => setVehicle(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-300 bg-white focus:outline-none focus:border-blue-600"
                   placeholder="VD: Xe 29 chỗ"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">Tên tài xế</label>
+                <label className="block text-[11px] font-medium text-neutral-600 mb-1">Tên tài xế</label>
                 <input
                   type="text"
                   value={driver}
                   onChange={(e) => setDriver(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-300 bg-white focus:outline-none focus:border-blue-600"
                   placeholder="Chưa phân công"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">SĐT tài xế</label>
+                <label className="block text-[11px] font-medium text-neutral-600 mb-1">SĐT tài xế</label>
                 <input
                   type="text"
                   value={driverPhone}
                   onChange={(e) => setDriverPhone(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-300 bg-white focus:outline-none focus:border-blue-600"
                   placeholder="VD: 09xx xxx xxx"
                 />
               </div>
@@ -451,25 +451,25 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           </div>
 
           {truncateWarning && (
-            <div role="alert" className="rounded-xl bg-amber-50 border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800">
+            <div role="alert" className="rounded-xl bg-red-50 border border-red-300 px-3 py-2 text-xs font-semibold text-red-800">
               {truncateWarning}
             </div>
           )}
 
           {/* Buttons */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          <div className="pt-3 border-t border-neutral-100 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+              className="px-4 py-2 text-xs font-bold text-neutral-600 hover:text-neutral-950 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition"
             >
               Hủy bỏ
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-500 rounded-xl shadow-md shadow-teal-900/20 transition flex items-center gap-1.5 disabled:opacity-50"
+              className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-900/20 transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>{isSaving ? 'Đang lưu...' : truncateWarning ? 'Xác nhận lưu thay đổi' : 'Lưu thay đổi'}</span>
