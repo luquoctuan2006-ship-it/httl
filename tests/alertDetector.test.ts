@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectScheduleAndWeatherAlerts } from '../src/utils/alertDetector';
-import { initialTripData } from '../src/data/mockData';
+import { detectScheduleAndWeatherAlerts } from '../src/utils/schedule/alertDetector';
+import { initialTripData } from './fixtures/mockData';
 import { TripData } from '../src/types/travel';
 
 test('detectScheduleAndWeatherAlerts detects rain alert when weather rain probability >= 40%', () => {
@@ -212,7 +212,7 @@ test('alert scan sorts activities by time and removes stale generated schedule w
 });
 
 test('detectScheduleAndWeatherAlerts detects category and total budget overruns & near-limit warnings', async () => {
-  const { computeBudgetMetrics, syncBudgetAlertsIntoTrip } = await import('../src/utils/budgetAlerts');
+  const { computeBudgetMetrics, syncBudgetAlertsIntoTrip } = await import('../src/utils/trip/budgetAlerts');
   const trip: TripData = {
     ...initialTripData,
     id: 'trip-budget-test',
@@ -310,7 +310,7 @@ test('detectScheduleAndWeatherAlerts detects category and total budget overruns 
 });
 
 test('sanitizeTripForGuest strips internal budget alerts while keeping weather and schedule alerts', async () => {
-  const { sanitizeTripForGuest } = await import('../src/utils/tripJoinHelpers');
+  const { sanitizeTripForGuest } = await import('../src/utils/trip/tripJoinHelpers');
   const trip: TripData = {
     ...initialTripData,
     joinCode: 'ABC123',
@@ -339,3 +339,31 @@ test('sanitizeTripForGuest strips internal budget alerts while keeping weather a
   assert.equal(guestTrip.alerts[0].id, 'alert-weather-1');
 });
 
+test('detectScheduleAndWeatherAlerts and syncBudgetAlertsIntoTrip preserve AI risk alerts with budget category', async () => {
+  const { createAiRiskAlerts } = await import('../src/utils/schedule/alertDetector');
+  const { syncBudgetAlertsIntoTrip } = await import('../src/utils/trip/budgetAlerts');
+
+  const aiRisks = createAiRiskAlerts('trip-ai-1', [
+    {
+      title: 'Chi phí cáp treo có thể phát sinh thêm vào cuối tuần',
+      level: 'warning',
+      advice: 'Dự trù thêm ngân sách cho vé tham quan.',
+    },
+  ]);
+  assert.equal(aiRisks.length, 1);
+  assert.equal(aiRisks[0].category, 'budget');
+
+  const trip: TripData = {
+    ...initialTripData,
+    id: 'trip-ai-1',
+    budgetTotal: 50_000_000,
+    days: [],
+    alerts: aiRisks,
+  };
+
+  const scanned = detectScheduleAndWeatherAlerts(trip);
+  assert.ok(scanned.some((a) => a.id === aiRisks[0].id));
+
+  const synced = syncBudgetAlertsIntoTrip({ ...trip, alerts: scanned });
+  assert.ok(synced.trip.alerts.some((a) => a.id === aiRisks[0].id));
+});

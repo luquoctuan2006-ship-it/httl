@@ -1,5 +1,5 @@
-import { normalizeTripData } from '../data/normalizeTripData';
-import type { Activity, TripData, Waypoint } from '../types/travel';
+import { normalizeTripData } from './normalizeTripData';
+import type { Activity, DaySchedule, TripData, Waypoint } from '../../types/travel';
 import { computeBudgetMetrics } from './budgetAlerts';
 
 /**
@@ -17,6 +17,20 @@ export function cloneTripForTemplate(source: TripData, ownerUid?: string): TripD
       status: act.status === 'Hoàn tất' || act.status === 'Đang diễn ra' ? ('Đã xác nhận' as const) : act.status,
     })),
   }));
+
+  const clonedMembers = (source.members || []).map((m, idx) => ({
+    ...m,
+    id: `member-${stamp}-${idx + 1}`,
+    attendanceStatus: 'Chưa điểm danh' as const,
+    uid: undefined,
+    memberType: 'manual' as const,
+    invitedByUid: undefined,
+    invitedByName: undefined,
+  }));
+  const prevDriverIdx = source.telematics?.driverMemberId
+    ? (source.members || []).findIndex((m) => m.id === source.telematics.driverMemberId)
+    : -1;
+  const remappedDriverId = prevDriverIdx >= 0 ? clonedMembers[prevDriverIdx]?.id : undefined;
 
   const cloned: TripData = {
     ...structuredClone(source),
@@ -40,17 +54,10 @@ export function cloneTripForTemplate(source: TripData, ownerUid?: string): TripD
       id: `wp-${stamp}-${idx + 1}`,
       status: idx === 0 ? 'current' : 'pending',
     })),
-    members: (source.members || []).map((m, idx) => ({
-      ...m,
-      id: `member-${stamp}-${idx + 1}`,
-      attendanceStatus: 'Chưa điểm danh',
-      uid: undefined,
-      memberType: 'manual',
-      invitedByUid: undefined,
-      invitedByName: undefined,
-    })),
+    members: clonedMembers,
     telematics: {
       ...source.telematics,
+      driverMemberId: remappedDriverId,
       currentLat: undefined,
       currentLng: undefined,
       gpsUpdatedAt: undefined,
@@ -232,4 +239,29 @@ export function buildExpenseReportCsv(trip: TripData): string {
   ]);
 
   return '\uFEFF' + rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n');
+}
+
+export function countDayActivities(activities: readonly Activity[]) {
+  let confirmedCount = 0;
+  let pendingCount = 0;
+  for (const a of activities) {
+    if (a.status === 'Hoàn tất' || a.status === 'Đã xác nhận') confirmedCount += 1;
+    else if (a.status === 'Cần xử lý' || a.status === 'Đang diễn ra' || a.status === 'Chờ duyệt') pendingCount += 1;
+  }
+  return { confirmedCount, pendingCount };
+}
+
+export function recomputeTripActivityStats(days: readonly DaySchedule[]) {
+  let totalActivities = 0;
+  let confirmedActivities = 0;
+  let pendingActivities = 0;
+  const syncedDays = days.map((day) => {
+    const acts = day.activities || [];
+    const { confirmedCount, pendingCount } = countDayActivities(acts);
+    totalActivities += acts.length;
+    confirmedActivities += confirmedCount;
+    pendingActivities += pendingCount;
+    return { ...day, confirmedCount, pendingCount };
+  });
+  return { days: syncedDays, totalActivities, confirmedActivities, pendingActivities };
 }

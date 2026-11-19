@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAiRiskAlerts } from '../src/utils/alertDetector';
-import { buildAIPlanWaypoints, lookupCoordinates } from '../src/utils/vietnamGeo';
+import { createAiRiskAlerts } from '../src/utils/schedule/alertDetector';
+import { buildAIPlanWaypoints, lookupCoordinates } from '../src/utils/route/vietnamGeo';
 
 test('AI waypoints use valid generated coordinates, skip unknown locations, and retain route endpoints', () => {
   assert.equal(lookupCoordinates('Điểm không có tọa độ'), null);

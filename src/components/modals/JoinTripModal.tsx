@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { Modal, ModalFooter } from '../common/Modal';
 import { Field, TextInput } from '../common/Field';
-import { isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/tripJoinHelpers';
+import { isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/trip/tripJoinHelpers';
 
 interface JoinTripModalProps {
   isOpen: boolean;

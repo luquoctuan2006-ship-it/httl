@@ -1,8 +1,9 @@
 import React, { useState, type Dispatch, type SetStateAction } from 'react';
 import type { Activity, DaySchedule, TripData } from '../../../types/travel';
-import { autoArrangeDayActivities } from '../../../utils/scheduleAutoArranger';
-import { syncDaysWithStartDate } from '../../../utils/tripRouteSync';
-import { lookupCoordinates } from '../../../utils/vietnamGeo';
+import { autoArrangeDayActivities } from '../../../utils/schedule/scheduleAutoArranger';
+import { countDayActivities } from '../../../utils/trip/tripHelpers';
+import { syncDaysWithStartDate } from '../../../utils/route/tripRouteSync';
+import { lookupCoordinates } from '../../../utils/route/vietnamGeo';
 import type { PlaceCoordinates } from '../../common/PlaceAutocompleteInput';
 import { buildDayCalendarMetadata, getTodayISODate, resolveActivityCoordinatesWithFallback, type TripCreatorOwner } from './helpers';
 import { buildManualTrip } from './buildManualTrip';
@@ -118,8 +119,8 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
       const lastAct = acts[acts.length - 1];
       setActTimeStart(lastAct.timeEnd || '10:00');
       const [h, m] = (lastAct.timeEnd || '10:00').split(':').map(Number);
-      const endMins = (h || 0) * 60 + (m || 0) + 90;
-      const endH = Math.min(23, Math.floor(endMins / 60));
+      const endMins = Math.min(23 * 60 + 59, (h || 0) * 60 + (m || 0) + 90);
+      const endH = Math.floor(endMins / 60);
       const endM = endMins % 60;
       setActTimeEnd(`${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`);
     } else {
@@ -228,10 +229,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
         return {
           ...day,
           activities: updatedActivities,
-          confirmedCount: updatedActivities.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất')
-            .length,
-          pendingCount: updatedActivities.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra')
-            .length,
+          ...countDayActivities(updatedActivities),
         };
       })
     );
@@ -248,8 +246,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
         return {
           ...day,
           activities: filtered,
-          confirmedCount: filtered.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
-          pendingCount: filtered.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
+          ...countDayActivities(filtered),
         };
       })
     );
@@ -270,6 +267,7 @@ export function useManualTripPlanner({ owner, onApplyPlan, onClose, setErrorMsg,
         return {
           ...day,
           activities: arrangeRes.reorderedActivities,
+          ...countDayActivities(arrangeRes.reorderedActivities),
         };
       })
     );

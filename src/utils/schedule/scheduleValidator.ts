@@ -11,7 +11,7 @@
  * lịch trình gốc không làm đề xuất bị loại.
  */
 
-import type { Activity, DaySchedule, Waypoint } from '../types/travel';
+import type { Activity, DaySchedule, Waypoint } from '../../types/travel';
 
 // ───────────────────────────── Kiểu dữ liệu ─────────────────────────────
 

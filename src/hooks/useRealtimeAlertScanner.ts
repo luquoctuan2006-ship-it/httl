@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { authenticatedFetch, safeJsonResponse } from '../api';
-import { normalizeTripData } from '../data/normalizeTripData';
+import { normalizeTripData } from '../utils/trip/normalizeTripData';
 import type { TripData } from '../types/travel';
-import { detectScheduleAndWeatherAlerts } from '../utils/alertDetector';
-import { getTripComparableJson } from '../utils/tripRepository';
-import { mergeAlertScanIntoTrip, type SingleFlightQueue } from '../utils/tripSyncHelpers';
+import { detectScheduleAndWeatherAlerts } from '../utils/schedule/alertDetector';
+import { getTripComparableJson } from '../utils/trip/tripRepository';
+import { mergeAlertScanIntoTrip, type SingleFlightQueue } from '../utils/trip/tripSyncHelpers';
 
 const ALERT_NOTIFY_PREF_KEY = 'voyager_alerts_notify';
 const PERIODIC_ALERT_SCAN_MS = 3 * 60 * 1000;
@@ -22,7 +22,7 @@ interface UseRealtimeAlertScannerOptions {
   saveQueueRef: MutableRefObject<SingleFlightQueue>;
   setTrip: Dispatch<SetStateAction<TripData | null>>;
   setFirebaseStatus: (status: 'loading' | 'connected' | 'error') => void;
-  saveTripToFirestore: (updatedTrip: TripData, successMessage?: string) => Promise<void>;
+  saveTripToFirestore: (updatedTrip: TripData, successMessage?: string) => Promise<void | boolean>;
   showToast: (text: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -147,7 +147,7 @@ export function useRealtimeAlertScanner({
             newlyDetected.length === 1
               ? `${firstAlert.title} — ${firstAlert.description}`
               : `Phát hiện ${newlyDetected.length} cảnh báo vận hành/thời tiết mới (${firstAlert.title}...).`,
-          icon: '/pwa-192x192.png',
+          icon: '/favicon.png',
         });
       }
 

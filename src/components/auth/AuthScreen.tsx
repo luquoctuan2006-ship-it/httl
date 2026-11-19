@@ -14,8 +14,8 @@ import { KeyRound } from 'lucide-react';
 import { safeJsonResponse } from '../../api';
 import { firebaseAuth } from '../../firebase';
 import type { GuestTripData } from '../../types/travel';
-import { isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/tripJoinHelpers';
-import { mapFirebaseAuthError, setPendingRegisteredDisplayName } from '../../utils/tripSyncHelpers';
+import { isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/trip/tripJoinHelpers';
+import { mapFirebaseAuthError, setPendingRegisteredDisplayName } from '../../utils/trip/tripSyncHelpers';
 
 interface AuthScreenProps {
   initialGuestCode?: string;

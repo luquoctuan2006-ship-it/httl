@@ -3,14 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Waypoint } from '../types/travel';
-
-export interface LocationGeo {
-  name: string;
-  lat: number;
-  lng: number;
-  region?: string;
-}
+import { Waypoint } from '../../types/travel';
 
 export interface LocalPlaceSuggestion {
   id: string;

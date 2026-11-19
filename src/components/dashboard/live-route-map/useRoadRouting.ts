@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authenticatedFetch, safeJsonResponse } from '../../../api';
-import { makeRoadLegKey, type RoadLegData, type RouteStopItem } from '../../../utils/routeProgress';
+import { makeRoadLegKey, type RoadLegData, type RouteStopItem } from '../../../utils/route/routeProgress';
 
 interface RoutingApiResponse {
   success?: boolean;

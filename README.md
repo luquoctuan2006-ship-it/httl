@@ -1,6 +1,6 @@
 # Voyager — Bảng điều phối du lịch thông minh
 
-Voyager là ứng dụng web hỗ trợ lập kế hoạch và điều phối chuyến du lịch. Người dùng có thể tạo chuyến bằng AI hoặc thủ công, quản lý lịch trình, thành viên, ngân sách và hóa đơn; theo dõi tuyến đường, thời tiết và cảnh báo. Ứng dụng dùng Firebase/Firestore, có giao diện cài đặt dạng PWA và hỗ trợ một số dữ liệu ngoại tuyến.
+Voyager là ứng dụng web hỗ trợ lập kế hoạch và điều phối chuyến du lịch. Người dùng có thể tạo chuyến bằng AI hoặc thủ công, quản lý lịch trình, thành viên, ngân sách và hóa đơn; theo dõi tuyến đường, thời tiết và cảnh báo. Ứng dụng dùng Firebase/Firestore và hỗ trợ lưu tạm một số dữ liệu ngoại tuyến trên trình duyệt.
 
 ## Chức năng chính
 
@@ -21,7 +21,6 @@ Menu quản trị có bốn mục chính: **Tổng quan**, **Quản lý người
 - Express cho API; Firebase Authentication, Cloud Firestore và Firebase Admin cho xác thực/dữ liệu.
 - Gemini cho lập kế hoạch và tối ưu lịch trình.
 - Open-Meteo cho thời tiết; OSRM để lấy tuyến đường bộ; CARTO/OpenStreetMap cho bản đồ đường phố.
-- `vite-plugin-pwa` tạo manifest và service worker.
 
 ## Yêu cầu
 
@@ -108,7 +107,7 @@ Lệnh này thay đổi dữ liệu Firestore; hãy xác minh UID và sao lưu d
 
 ```text
 .
-├── public/                         # Biểu tượng PWA và tài nguyên tĩnh
+├── public/                         # Biểu tượng và tài nguyên tĩnh
 ├── scripts/                        # Lệnh cấp role và migration dữ liệu
 ├── src/
 │   ├── components/
@@ -146,7 +145,7 @@ Lệnh này thay đổi dữ liệu Firestore; hãy xác minh UID và sao lưu d
 ├── firestore.rules                 # Quy tắc truy cập Firestore
 ├── firebase-applet-config.json     # Cấu hình Firebase client
 ├── package.json                    # Dependencies và scripts
-├── vite.config.ts                  # Vite, Tailwind và PWA
+├── vite.config.ts                  # Cấu hình Vite và Tailwind
 └── README.md
 ```
 
@@ -168,7 +167,7 @@ Lệnh này thay đổi dữ liệu Firestore; hãy xác minh UID và sao lưu d
 | Lệnh | Mục đích |
 | --- | --- |
 | `npm run dev` | Chạy Express và Vite ở chế độ phát triển |
-| `npm run build` | Build client production và tạo tài nguyên PWA |
+| `npm run build` | Build client production |
 | `npm start` | Chạy server production, phục vụ `dist/` |
 | `npm run preview` | Xem trước build bằng Vite |
 | `npm run lint` | Kiểm tra TypeScript bằng `tsc --noEmit` |
@@ -208,7 +207,3 @@ Tên thành viên được giữ theo danh sách hiện có; phạm vi và file 
 5. **Theo dõi độ tin cậy của dịch vụ ngoài**: có trạng thái lỗi/rate limit và phương án dự phòng cho Gemini, OSRM, Open-Meteo và CARTO; tránh hiển thị dữ liệu lỗi như dữ liệu mới.
 6. **Chia nhỏ các route server lớn**: tách `tripManagement.ts` theo miền chức năng (thành viên, mã mời, lịch trình) khi tiếp tục phát triển để dễ kiểm thử và bảo trì.
 7. **Rà soát bảo mật trước khi triển khai**: kiểm tra Firestore rules, phân quyền admin, rate limit, log chứa dữ liệu cá nhân và đảm bảo `.env`/`secrets/` không được commit.
-
-## PWA và file sinh tự động
-
-`vite.config.ts` cấu hình manifest, cache tài nguyên và service worker. Ứng dụng cache một số tài nguyên tĩnh và tile bản đồ đường phố; bản đồ và dữ liệu thời tiết/định tuyến từ dịch vụ ngoài vẫn cần kết nối mạng để cập nhật. Sửa mã nguồn hoặc cấu hình rồi chạy build thay vì sửa thủ công các file trong `dist/` hoặc `dev-dist/`.

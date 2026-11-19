@@ -13,7 +13,6 @@ import {
   X,
   KeyRound,
 } from 'lucide-react';
-import { PWAInstallButton } from './PWAInstallButton';
 
 type AppRole = 'user' | 'admin';
 
@@ -163,8 +162,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Tham gia bằng mã</span>
           </button>
         )}
-
-        <PWAInstallButton />
       </div>
 
       {/* Account Footer */}

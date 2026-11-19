@@ -17,7 +17,7 @@ interface AdminTripsManagementProps {
   currentUserUid: string;
   searchQuery: string;
   onClearSearch: () => void;
-  onUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
+  onUpdateTrip: (trip: TripData, message?: string) => Promise<void | boolean>;
   onEnsureFullTrip?: (tripId: string) => Promise<TripData | null>;
 }
 

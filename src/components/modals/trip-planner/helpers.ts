@@ -6,10 +6,10 @@ import type {
   TripMember,
   Waypoint,
 } from '../../../types/travel';
-import { estimateRoadDistanceKm } from '../../../utils/routeProgress';
-import { getMemberInitials } from '../../../utils/tripJoinHelpers';
-import { formatTripDatesRange } from '../../../utils/tripSyncHelpers';
-import { isLegacyHashedCoordinate, lookupCoordinates } from '../../../utils/vietnamGeo';
+import { estimateRoadDistanceKm } from '../../../utils/route/routeProgress';
+import { getMemberInitials } from '../../../utils/trip/tripJoinHelpers';
+import { formatTripDatesRange } from '../../../utils/trip/tripSyncHelpers';
+import { isLegacyHashedCoordinate, lookupCoordinates } from '../../../utils/route/vietnamGeo';
 
 export interface TripCreatorOwner {
   uid?: string;

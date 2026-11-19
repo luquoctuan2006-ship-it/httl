@@ -1,4 +1,4 @@
-import type { TripData } from '../types/travel';
+import type { TripData } from '../../types/travel';
 
 /**
  * Lỗi chuyên biệt khi payload vượt giới hạn document 900 KiB của Firestore (HTTP 413).

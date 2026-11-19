@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeTripData } from '../src/data/normalizeTripData';
+import { normalizeTripData } from '../src/utils/trip/normalizeTripData';
 import {
   buildTripWeatherFromOpenMeteo,
   getWeatherDescription,
   parseOpenMeteoPoint,
-} from '../src/utils/weatherParser';
+} from '../src/utils/route/weatherParser';
 
 test('getWeatherDescription never hardcodes unrelated mountain passes for thunderstorm codes', () => {
   const desc = getWeatherDescription(95);

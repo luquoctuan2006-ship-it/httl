@@ -1,5 +1,5 @@
-import type { BudgetCategory } from '../components/trips/budget/types';
-import type { Activity, ExpenseInvoice, OperationalAlert, TripData } from '../types/travel';
+import type { BudgetCategory } from '../../components/trips/budget/types';
+import type { Activity, ExpenseInvoice, OperationalAlert, TripData } from '../../types/travel';
 import { parseTripDatesRange } from './tripSyncHelpers';
 
 export const BUDGET_NEAR_LIMIT_RATIO = 0.85;
@@ -462,6 +462,10 @@ export function isBudgetAlert(alert: OperationalAlert): boolean {
   return alert.category === 'budget' || alert.id.startsWith(BUDGET_ALERT_ID_PREFIX);
 }
 
+export function isAutoBudgetThresholdAlert(alert: OperationalAlert): boolean {
+  return isBudgetAlert(alert) && !alert.id.startsWith('alert-ai-risk-');
+}
+
 /**
  * Đồng bộ các cảnh báo ngân sách (thêm mới, cập nhật số tiền, gỡ cảnh báo đã được khắc phục)
  * mà vẫn giữ nguyên các cảnh báo vận hành/thời tiết khác của chuyến đi.
@@ -473,9 +477,9 @@ export function syncBudgetAlertsIntoTrip(trip: TripData): {
 } {
   const existingAlerts = Array.isArray(trip.alerts) ? trip.alerts : [];
   const previousBudgetMap = new Map(
-    existingAlerts.filter(isBudgetAlert).map((a) => [a.id, a]),
+    existingAlerts.filter(isAutoBudgetThresholdAlert).map((a) => [a.id, a]),
   );
-  const nonBudgetAlerts = existingAlerts.filter((a) => !isBudgetAlert(a));
+  const nonBudgetAlerts = existingAlerts.filter((a) => !isAutoBudgetThresholdAlert(a));
   const budgetAlerts = detectBudgetAlerts(trip);
 
   const newlyTriggeredAlerts = budgetAlerts.filter((nextAlert) => {

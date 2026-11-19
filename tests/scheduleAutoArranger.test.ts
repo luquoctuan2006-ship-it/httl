@@ -9,7 +9,7 @@ import {
   detectDayScheduleConflicts,
   autoArrangeDayActivities,
   autoArrangeEntireTrip,
-} from '../src/utils/scheduleAutoArranger';
+} from '../src/utils/schedule/scheduleAutoArranger';
 import { Activity, TripData } from '../src/types/travel';
 
 describe('scheduleAutoArranger - Lập lịch tự động & Tối ưu thời gian', () => {

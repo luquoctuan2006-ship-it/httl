@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TripData } from '../../../types/travel';
-import type { RouteStopItem } from '../../../utils/routeProgress';
+import type { RouteStopItem } from '../../../utils/route/routeProgress';
 import {
   buildBatchOpenMeteoUrl,
   buildTripWeatherFromOpenMeteo,
-} from '../../../utils/weatherParser';
+} from '../../../utils/route/weatherParser';
 import {
   buildWeatherCoordsSignature,
   collectRouteWeatherTargets,

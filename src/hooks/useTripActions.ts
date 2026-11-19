@@ -1,21 +1,21 @@
 import { useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { authenticatedFetch, safeJsonResponse } from '../api';
-import { normalizeTripData } from '../data/normalizeTripData';
+import { normalizeTripData } from '../utils/trip/normalizeTripData';
 import type { Activity, DaySchedule, TripData, TripMember, Waypoint } from '../types/travel';
-import { applyScheduleChangesStrict, filterAlertsByRecommendation } from '../utils/applyOptimization';
-import { clearTripPendingOfflineSync } from '../utils/offlineStorage';
-import { cloneTripForTemplate, findMatchingActivityForWaypoint } from '../utils/tripHelpers';
-import { getTripComparableJson } from '../utils/tripRepository';
-import { countPassengerMembers, isUserTripOwnerOrAdmin } from '../utils/tripJoinHelpers';
-import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../utils/tripRouteSync';
+import { applyScheduleChangesStrict, filterAlertsByRecommendation } from '../utils/schedule/applyOptimization';
+import { clearTripPendingOfflineSync } from '../utils/client/offlineStorage';
+import { cloneTripForTemplate, findMatchingActivityForWaypoint, recomputeTripActivityStats } from '../utils/trip/tripHelpers';
+import { getTripComparableJson } from '../utils/trip/tripRepository';
+import { countPassengerMembers, isUserTripOwnerOrAdmin } from '../utils/trip/tripJoinHelpers';
+import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../utils/route/tripRouteSync';
 import {
   AuthSessionError,
   formatTripDatesRange,
   parseTripDatesRange,
   PayloadTooLargeError,
   type SingleFlightQueue,
-} from '../utils/tripSyncHelpers';
-import { computeTripBudgetSummaryFields, syncBudgetAlertsIntoTrip } from '../utils/budgetAlerts';
+} from '../utils/trip/tripSyncHelpers';
+import { computeTripBudgetSummaryFields, syncBudgetAlertsIntoTrip } from '../utils/trip/budgetAlerts';
 
 const HAS_EXPLICIT_DATE_REGEX =
   /(\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s*[–—-]\s*\d{1,2}\s*THG\s*\d{1,2})/i;
@@ -57,7 +57,7 @@ interface UseTripActionsOptions {
   setPlannerInitialTab: (tab: 'traditional' | 'ai') => void;
   setIsAutoArrangeOpen: (open: boolean) => void;
   setIsAIOptimizeOpen: (open: boolean) => void;
-  saveTripToFirestore: (updatedTrip: TripData, successMessage?: string) => Promise<void>;
+  saveTripToFirestore: (updatedTrip: TripData, successMessage?: string) => Promise<void | boolean>;
   executeTripPut: (
     candidateTrip: TripData,
     options?: {
@@ -134,7 +134,9 @@ export function useTripActions({
 
   const handleUndoOptimization = async () => {
     if (!ensureTripOwner(trip)) return;
-    if (!lastOptimizedTripSnapshot) {
+    if (!lastOptimizedTripSnapshot || lastOptimizedTripSnapshot.id !== trip.id) {
+      setLastOptimizedTripSnapshot(null);
+      setIsAIApplied(false);
       showToast('Không có phương án nào để hoàn tác', 'info');
       return;
     }
@@ -170,6 +172,9 @@ export function useTripActions({
     };
     const { trip: merged, newlyTriggeredAlerts } = syncBudgetAlertsIntoTrip(mergedBase);
     if (trip && target.id === trip.id) {
+      if (merged.days?.length) {
+        setCurrentDayIndex((prev) => Math.min(prev, merged.days.length));
+      }
       await saveTripToFirestore(merged, 'Đã cập nhật thông tin chuyến đi thành công!');
       const overAlert = newlyTriggeredAlerts.find((a) => a.severity === 'error');
       if (overAlert) {
@@ -218,6 +223,8 @@ export function useTripActions({
 
       if (trip?.id === tripId) {
         setSelectedActivity(null);
+        setIsAIApplied(false);
+        setLastOptimizedTripSnapshot(null);
         if (nextTrips.length > 0) {
           const candidate = nextTrips[0];
           const resolvedFallback = candidate.isSummary ? await ensureFullTrip(candidate) : candidate;
@@ -278,6 +285,7 @@ export function useTripActions({
       setTrip(savedClone);
       setCurrentDayIndex(1);
       setIsAIApplied(false);
+      setLastOptimizedTripSnapshot(null);
       showToast(`Đã nhân bản thành tour "${savedClone.title}"!`, 'success');
     } catch (error: any) {
       console.error('Clone trip error:', error);
@@ -319,16 +327,10 @@ export function useTripActions({
 
   const handleApplyAutoArrangeDay = async (updatedDay: DaySchedule, message: string) => {
     if (!ensureTripOwner(trip)) return;
-    const updatedDays = trip.days.map((d) => (d.dayIndex === updatedDay.dayIndex ? updatedDay : d));
-    const allActs = updatedDays.flatMap((d) => d.activities);
-    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
-    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
-    const updatedTrip = syncTripRouteMetadata({
-      ...trip,
-      days: updatedDays,
-      confirmedActivities: confirmed,
-      pendingActivities: pending,
-    });
+    const stats = recomputeTripActivityStats(
+      trip.days.map((d) => (d.dayIndex === updatedDay.dayIndex ? updatedDay : d)),
+    );
+    const updatedTrip = syncTripRouteMetadata({ ...trip, ...stats });
     await saveTripToFirestore(updatedTrip, message);
   };
 
@@ -340,6 +342,31 @@ export function useTripActions({
   const handleOpenAIOptimize = () => {
     if (!ensureTripOwner(trip)) return;
     setIsAIOptimizeOpen(true);
+  };
+
+  const commitScheduleTripMutation = async (
+    draftTrip: TripData,
+    options?: {
+      successMessage?: string;
+      warnBudgetExceeded?: boolean;
+      beforeSave?: () => void;
+    },
+  ) => {
+    const routeSynced = syncTripRouteMetadata(draftTrip);
+    const withBudget: TripData = {
+      ...routeSynced,
+      ...computeTripBudgetSummaryFields(routeSynced),
+    };
+    const { trip: updatedTrip, newlyTriggeredAlerts } = syncBudgetAlertsIntoTrip(withBudget);
+    options?.beforeSave?.();
+    await saveTripToFirestore(updatedTrip, options?.successMessage);
+    if (options?.warnBudgetExceeded) {
+      const overAlert = newlyTriggeredAlerts.find((a) => a.severity === 'error');
+      if (overAlert) {
+        showToast(`Cảnh báo: ${overAlert.title}`, 'error');
+      }
+    }
+    return updatedTrip;
   };
 
   const handleApplyAIOptimization = async (
@@ -376,9 +403,7 @@ export function useTripActions({
       return day;
     });
 
-    const allActs = updatedDays.flatMap((d) => d.activities);
-    const confirmed = allActs.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length;
-    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
+    const stats = recomputeTripActivityStats(updatedDays);
 
     const { remainingAlerts, resolvedAlerts } = filterAlertsByRecommendation(
       trip.alerts,
@@ -387,22 +412,15 @@ export function useTripActions({
       targetDayIndex,
     );
 
-    const updatedBase = syncTripRouteMetadata({
-      ...trip,
-      alerts: remainingAlerts,
-      days: updatedDays,
-      aiSavingsEstimate: costSaved || trip.aiSavingsEstimate || '',
-      confirmedActivities: confirmed,
-      pendingActivities: pending,
-    });
-    const updatedWithBudget: TripData = {
-      ...updatedBase,
-      ...computeTripBudgetSummaryFields(updatedBase),
-    };
-    const { trip: updatedTrip } = syncBudgetAlertsIntoTrip(updatedWithBudget);
-
-    setIsAIApplied(true);
-    await saveTripToFirestore(updatedTrip);
+    await commitScheduleTripMutation(
+      {
+        ...trip,
+        ...stats,
+        alerts: remainingAlerts,
+        aiSavingsEstimate: costSaved || trip.aiSavingsEstimate || '',
+      },
+      { beforeSave: () => setIsAIApplied(true) },
+    );
 
     showToast(
       `Đã áp dụng tối ưu lịch Ngày ${targetDayIndex} (đã xử lý ${resolvedAlerts.length} cảnh báo)!`,
@@ -419,49 +437,25 @@ export function useTripActions({
     const updatedDays = trip.days.map((d) => {
       if (d.dayIndex === dayTarget) {
         dayMatched = true;
-        const newActivities = [...d.activities, newAct];
-        return {
-          ...d,
-          activities: newActivities,
-          confirmedCount: newActivities.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
-          pendingCount: newActivities.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
-        };
+        return { ...d, activities: [...d.activities, newAct] };
       }
       return d;
     });
 
     if (!dayMatched && updatedDays.length > 0) {
-      const firstDayActs = [...updatedDays[0].activities, newAct];
-      updatedDays[0] = {
-        ...updatedDays[0],
-        activities: firstDayActs,
-        confirmedCount: firstDayActs.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
-        pendingCount: firstDayActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
-      };
+      updatedDays[0] = { ...updatedDays[0], activities: [...updatedDays[0].activities, newAct] };
     }
 
-    const allActs = updatedDays.flatMap((d) => d.activities);
-    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
-    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
-
-    const updatedDraft = syncTripRouteMetadata({
-      ...trip,
-      totalActivities: allActs.length,
-      confirmedActivities: confirmed,
-      pendingActivities: pending,
-      days: updatedDays,
-    });
-    const updatedBase: TripData = {
-      ...updatedDraft,
-      ...computeTripBudgetSummaryFields(updatedDraft),
-    };
-    const { trip: updatedTrip, newlyTriggeredAlerts } = syncBudgetAlertsIntoTrip(updatedBase);
-
-    await saveTripToFirestore(updatedTrip, `Đã thêm hoạt động "${newAct.title}"!`);
-    const overAlert = newlyTriggeredAlerts.find((a) => a.severity === 'error');
-    if (overAlert) {
-      showToast(`Cảnh báo: ${overAlert.title}`, 'error');
-    }
+    await commitScheduleTripMutation(
+      {
+        ...trip,
+        ...recomputeTripActivityStats(updatedDays),
+      },
+      {
+        successMessage: `Đã thêm hoạt động "${newAct.title}"!`,
+        warnBudgetExceeded: true,
+      },
+    );
   };
 
   const handleAddDay = async () => {
@@ -502,8 +496,12 @@ export function useTripActions({
       .map((d, idx) => {
         const nextIdx = idx + 1;
         const oldIdx = d.dayIndex;
-        const nextFullDate =
-          d.fullDate === `Ngày ${oldIdx}` || !d.fullDate ? `Ngày ${nextIdx}` : d.fullDate;
+        const dayPrefixRegex = new RegExp(`^Ngày\\s*${oldIdx}\\b`, 'i');
+        const nextFullDate = !d.fullDate
+          ? `Ngày ${nextIdx}`
+          : dayPrefixRegex.test(d.fullDate)
+            ? d.fullDate.replace(dayPrefixRegex, `Ngày ${nextIdx}`)
+            : d.fullDate;
         const nextDateLabel =
           d.dateLabel === `${d.dayName} ${oldIdx}` || d.dateLabel === `Ngày ${oldIdx}`
             ? `${d.dayName || 'Ngày'} ${nextIdx}`.trim()
@@ -542,26 +540,21 @@ export function useTripActions({
         linkedActivityId: cleanedLink,
       };
     });
-    const allActs = updatedDays.flatMap((d) => d.activities);
 
-    const updatedDraft = syncTripRouteMetadata({
-      ...trip,
-      dates: nextDates,
-      totalDays: updatedDays.length,
-      days: updatedDays,
-      invoices: updatedInvoices,
-      totalActivities: allActs.length,
-      confirmedActivities: allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length,
-      pendingActivities: allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
-      currentDay: Math.min(currentDayIndex, updatedDays.length),
-    });
-    const updatedBase: TripData = {
-      ...updatedDraft,
-      ...computeTripBudgetSummaryFields(updatedDraft),
-    };
-    const { trip: updatedTrip } = syncBudgetAlertsIntoTrip(updatedBase);
-    setCurrentDayIndex((prev) => Math.min(prev, updatedDays.length));
-    await saveTripToFirestore(updatedTrip, `Đã xóa Ngày ${dayIndexToDelete} khỏi lịch trình!`);
+    await commitScheduleTripMutation(
+      {
+        ...trip,
+        ...recomputeTripActivityStats(updatedDays),
+        dates: nextDates,
+        totalDays: updatedDays.length,
+        invoices: updatedInvoices,
+        currentDay: Math.min(currentDayIndex, updatedDays.length),
+      },
+      {
+        beforeSave: () => setCurrentDayIndex((prev) => Math.min(prev, updatedDays.length)),
+        successMessage: `Đã xóa Ngày ${dayIndexToDelete} khỏi lịch trình!`,
+      },
+    );
   };
 
   const handleUpdateDayNote = async (dayIndex: number, note: string) => {
@@ -574,131 +567,76 @@ export function useTripActions({
   const handleUpdateActivityStatus = async (id: string, newStatus: Activity['status']) => {
     if (!ensureTripOwner(trip)) return;
     let activityTitle = '';
-    const updatedDays = trip.days.map((d) => {
-      const nextActivities = d.activities.map((a) => {
+    const updatedDays = trip.days.map((d) => ({
+      ...d,
+      activities: d.activities.map((a) => {
         if (a.id === id) {
           activityTitle = a.title;
           return { ...a, status: newStatus };
         }
         return a;
-      });
-      return {
-        ...d,
-        activities: nextActivities,
-        confirmedCount: nextActivities.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
-        pendingCount: nextActivities.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
-      };
-    });
+      }),
+    }));
 
-    const allActs = updatedDays.flatMap((d) => d.activities);
-    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
-    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
-
-    const statusDraft = syncTripRouteMetadata({
-      ...trip,
-      confirmedActivities: confirmed,
-      pendingActivities: pending,
-      days: updatedDays,
-    });
-    const statusBase: TripData = {
-      ...statusDraft,
-      ...computeTripBudgetSummaryFields(statusDraft),
-    };
-    const { trip: updatedTrip, newlyTriggeredAlerts } = syncBudgetAlertsIntoTrip(statusBase);
-
-    await saveTripToFirestore(
-      updatedTrip,
-      `Đã chuyển "${activityTitle || 'Hoạt động'}" sang "${newStatus}"!`,
+    await commitScheduleTripMutation(
+      {
+        ...trip,
+        ...recomputeTripActivityStats(updatedDays),
+      },
+      {
+        successMessage: `Đã chuyển "${activityTitle || 'Hoạt động'}" sang "${newStatus}"!`,
+        warnBudgetExceeded: true,
+      },
     );
-    const overAlert = newlyTriggeredAlerts.find((a) => a.severity === 'error');
-    if (overAlert) {
-      showToast(`Cảnh báo: ${overAlert.title}`, 'error');
-    }
   };
 
   const handleDeleteActivity = async (id: string) => {
     if (!ensureTripOwner(trip)) return;
     let deletedTitle = '';
-    const updatedDays = trip.days.map((d) => {
-      const remaining = d.activities.filter((a) => {
+    const updatedDays = trip.days.map((d) => ({
+      ...d,
+      activities: d.activities.filter((a) => {
         if (a.id === id) {
           deletedTitle = a.title;
           return false;
         }
         return true;
-      });
-      return {
-        ...d,
-        activities: remaining,
-        confirmedCount: remaining.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
-        pendingCount: remaining.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
-      };
-    });
+      }),
+    }));
 
     const updatedInvoices = (trip.invoices || []).map((inv) =>
       inv.linkedActivityId === id ? { ...inv, linkedActivityId: undefined } : inv,
     );
-    const allActs = updatedDays.flatMap((d) => d.activities);
-    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
-    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
 
-    const deletedDraft = syncTripRouteMetadata({
-      ...trip,
-      totalActivities: allActs.length,
-      confirmedActivities: confirmed,
-      pendingActivities: pending,
-      invoices: updatedInvoices,
-      days: updatedDays,
-    });
-    const deletedBase: TripData = {
-      ...deletedDraft,
-      ...computeTripBudgetSummaryFields(deletedDraft),
-    };
-    const { trip: updatedTrip } = syncBudgetAlertsIntoTrip(deletedBase);
-
-    await saveTripToFirestore(
-      updatedTrip,
-      `Đã xóa hoạt động "${deletedTitle || id}"!`,
+    await commitScheduleTripMutation(
+      {
+        ...trip,
+        ...recomputeTripActivityStats(updatedDays),
+        invoices: updatedInvoices,
+      },
+      {
+        successMessage: `Đã xóa hoạt động "${deletedTitle || id}"!`,
+      },
     );
   };
 
   const handleEditActivity = async (updatedActivity: Activity) => {
     if (!ensureTripOwner(trip)) return;
-    const updatedDays = trip.days.map((d) => {
-      const nextActivities = d.activities.map((a) => (a.id === updatedActivity.id ? updatedActivity : a));
-      return {
-        ...d,
-        activities: nextActivities,
-        confirmedCount: nextActivities.filter((a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất').length,
-        pendingCount: nextActivities.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length,
-      };
-    });
+    const updatedDays = trip.days.map((d) => ({
+      ...d,
+      activities: d.activities.map((a) => (a.id === updatedActivity.id ? updatedActivity : a)),
+    }));
 
-    const allActs = updatedDays.flatMap((d) => d.activities);
-    const confirmed = allActs.filter((a) => a.status === 'Hoàn tất' || a.status === 'Đã xác nhận').length;
-    const pending = allActs.filter((a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra').length;
-
-    const editedDraft = syncTripRouteMetadata({
-      ...trip,
-      totalActivities: allActs.length,
-      confirmedActivities: confirmed,
-      pendingActivities: pending,
-      days: updatedDays,
-    });
-    const editedBase: TripData = {
-      ...editedDraft,
-      ...computeTripBudgetSummaryFields(editedDraft),
-    };
-    const { trip: updatedTrip, newlyTriggeredAlerts } = syncBudgetAlertsIntoTrip(editedBase);
-
-    await saveTripToFirestore(
-      updatedTrip,
-      `Đã cập nhật hoạt động "${updatedActivity.title}"!`,
+    await commitScheduleTripMutation(
+      {
+        ...trip,
+        ...recomputeTripActivityStats(updatedDays),
+      },
+      {
+        successMessage: `Đã cập nhật hoạt động "${updatedActivity.title}"!`,
+        warnBudgetExceeded: true,
+      },
     );
-    const overAlert = newlyTriggeredAlerts.find((a) => a.severity === 'error');
-    if (overAlert) {
-      showToast(`Cảnh báo: ${overAlert.title}`, 'error');
-    }
   };
 
   const handleToggleMemberAttendance = async (
@@ -816,14 +754,14 @@ export function useTripActions({
     }
   };
 
-  const handleUpdateTripBudget = async (updatedTrip: TripData) => {
-    if (!ensureTripOwner(updatedTrip)) return;
+  const handleUpdateTripBudget = async (updatedTrip: TripData): Promise<boolean> => {
+    if (!ensureTripOwner(updatedTrip)) return false;
     const normalizedBudgetTrip: TripData = {
       ...updatedTrip,
       ...computeTripBudgetSummaryFields(updatedTrip),
     };
     const { trip: syncedTrip, newlyTriggeredAlerts } = syncBudgetAlertsIntoTrip(normalizedBudgetTrip);
-    await saveTripToFirestore(syncedTrip, 'Đã cập nhật ngân sách và chứng từ chuyến đi!');
+    const didSync = await saveTripToFirestore(syncedTrip, 'Đã cập nhật ngân sách và chứng từ chuyến đi!');
     const overAlert = newlyTriggeredAlerts.find((a) => a.severity === 'error');
     const nearAlert = !overAlert ? newlyTriggeredAlerts.find((a) => a.severity === 'warning') : undefined;
     if (overAlert) {
@@ -831,6 +769,7 @@ export function useTripActions({
     } else if (nearAlert) {
       showToast(`Lưu ý ngân sách: ${nearAlert.title}`, 'info');
     }
+    return didSync !== false;
   };
 
   const handleUpdateMembers = async (updatedMembers: TripMember[]) => {
@@ -917,6 +856,10 @@ export function useTripActions({
     }
     setTrip(resolvedTrip);
     setCurrentDayIndex(resolvedTrip.currentDay || 1);
+    if (resolvedTrip.id !== trip?.id) {
+      setIsAIApplied(false);
+      setLastOptimizedTripSnapshot(null);
+    }
     setCurrentTab('dashboard');
   };
 
@@ -943,6 +886,7 @@ export function useTripActions({
     setTrip(savedTrip);
     setCurrentDayIndex(1);
     setIsAIApplied(false);
+    setLastOptimizedTripSnapshot(null);
     setCurrentTab('dashboard');
     showToast(`Đã tạo chuyến đi ${savedTrip.title} thành công!`, 'success');
   };
@@ -968,6 +912,7 @@ export function useTripActions({
       prependIfNew: true,
     });
     setIsAIApplied(false);
+    setLastOptimizedTripSnapshot(null);
     setCurrentTab('dashboard');
     showToast(result.message || `Đã tham gia chuyến đi "${joinedTrip.title}" với tư cách Hành khách!`, 'success');
   };
@@ -1062,6 +1007,7 @@ export function useTripActions({
 
       const nextActive = await removeTripFromLocalState(leavingTripId);
       setIsAIApplied(false);
+      setLastOptimizedTripSnapshot(null);
       setCurrentTab(nextActive ? 'dashboard' : 'trips');
       showToast(result.message || 'Đã rời khỏi chuyến đi.', 'info');
     } catch (error) {

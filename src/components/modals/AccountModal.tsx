@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -40,6 +40,18 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setDisplayName(authUser.name);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowDeleteConfirm(false);
+    setDeletePassword('');
+    setDeleteConfirmText('');
+    setFeedback(null);
+  }, [isOpen, authUser.name]);
 
   if (!isOpen) return null;
 

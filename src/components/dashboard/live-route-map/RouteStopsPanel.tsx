@@ -17,7 +17,7 @@ import {
   type RouteProgressSummary,
   type RouteStopItem,
   type RouteStopStatus,
-} from '../../../utils/routeProgress';
+} from '../../../utils/route/routeProgress';
 import { findStopWeather } from './mapHelpers';
 import { getStopKey } from './useLiveRouteMap';
 

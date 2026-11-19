@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Edit3, Eye, Link2, Plus, Receipt, Tag, Trash2 } from 'lucide-react';
-import { MAX_INVOICES_PER_TRIP } from '../../../data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP } from '../../../utils/trip/normalizeTripData';
 import type { Activity, ExpenseInvoice, TripData } from '../../../types/travel';
 import { Modal, ModalFooter } from '../../common/Modal';
 import { ReceiptImage } from './ReceiptImage';

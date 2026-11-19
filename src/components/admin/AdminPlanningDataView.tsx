@@ -15,7 +15,7 @@ import { usePlanningRoute } from './planning-data/usePlanningRoute';
 
 interface AdminPlanningDataProps {
   trip: TripData;
-  onUpdateTrip?: (updatedTrip: TripData, message?: string) => Promise<void>;
+  onUpdateTrip?: (updatedTrip: TripData, message?: string) => Promise<void | boolean>;
 }
 
 type PlanningSubTab = 'locations' | 'hours' | 'distance' | 'costs';

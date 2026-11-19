@@ -4,7 +4,7 @@ import {
   isValidJoinCodeFormat,
   normalizeJoinCode,
   sanitizeTripForGuest,
-} from '../../utils/tripJoinHelpers';
+} from '../../utils/trip/tripJoinHelpers';
 import { computeRoadRouteLegs } from './routing';
 
 interface GuestRouteDependencies {

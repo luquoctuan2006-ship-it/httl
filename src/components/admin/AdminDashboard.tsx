@@ -1,20 +1,14 @@
-import React, { Suspense, lazy, useEffect, useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { Sidebar } from "../dashboard/Sidebar";
 import { Header } from "../dashboard/Header";
-import { MetricCards } from "../dashboard/MetricCards";
-import { OperationsPanel } from "../dashboard/OperationsPanel";
 import { TimelineSchedule } from "../dashboard/TimelineSchedule";
 import { OfflineIndicator } from "../dashboard/OfflineIndicator";
 import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
-import { countUnreadAlerts, getSeenAlertIds, markAlertsAsSeen } from "../../utils/seenAlerts";
 import { Compass } from "lucide-react";
 
 const LiveRouteMap = lazy(() =>
   import("../dashboard/LiveRouteMap").then((m) => ({ default: m.LiveRouteMap })),
-);
-const TripsListView = lazy(() =>
-  import("../trips/TripsListView").then((m) => ({ default: m.TripsListView })),
 );
 const MembersView = lazy(() =>
   import("../trips/MembersView").then((m) => ({ default: m.MembersView })),
@@ -71,8 +65,6 @@ export function AdminDashboard({
   authUser,
   onLogout,
   onOpenAccount,
-  isAdminMode,
-  isAIPlannerOpen: _isAIPlannerOpen,
   setIsAIPlannerOpen,
   isAIOptimizeOpen,
   setIsAIOptimizeOpen,
@@ -83,7 +75,6 @@ export function AdminDashboard({
   selectedActivity,
   setSelectedActivity,
   handleSelectTab,
-  handleApplyGeneratedTrip: _handleApplyGeneratedTrip,
   handleApplyAIOptimization,
   handleAddActivity,
   handleUpdateActivityStatus,
@@ -105,15 +96,12 @@ export function AdminDashboard({
   onSelectWaypoint,
   onScanAlerts,
   isScanningAlerts,
-  notificationsEnabled,
-  onToggleNotifications,
   pendingSyncCount = 0,
   cachedAt = null,
   onRetryOfflineSync,
   onOpenAIPlanner,
   onOpenAIOptimize,
   onOpenAutoArrange,
-  onOpenTraditionalPlanner: _onOpenTraditionalPlanner,
   onEnsureFullTrip,
   onManageJoinCode,
   onAddGuestCompanion,
@@ -137,8 +125,6 @@ export function AdminDashboard({
   authUser: AuthUser;
   onLogout: () => void;
   onOpenAccount?: () => void;
-  isAdminMode: boolean;
-  isAIPlannerOpen: boolean;
   setIsAIPlannerOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isAIOptimizeOpen: boolean;
   setIsAIOptimizeOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -149,7 +135,6 @@ export function AdminDashboard({
   selectedActivity: Activity | null;
   setSelectedActivity: React.Dispatch<React.SetStateAction<Activity | null>>;
   handleSelectTab: (tab: string) => void;
-  handleApplyGeneratedTrip: (newTrip: TripData) => Promise<void>;
   handleApplyAIOptimization: (actionTitle?: string, actionReason?: string, costSaved?: string, recommendationData?: any) => void;
   handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
   handleUpdateActivityStatus: (id: string, newStatus: Activity['status']) => void;
@@ -160,9 +145,9 @@ export function AdminDashboard({
   handleUpdateDayNote: (dayIndex: number, note: string) => Promise<void>;
   handleToggleMemberAttendance: (id: string) => Promise<void>;
   handleUpdateMembers: (members: TripMember[]) => Promise<void>;
-  handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
+  handleUpdateTrip: (trip: TripData, message?: string) => Promise<void | boolean>;
   handleDismissAlert: (id: string) => void;
-  handleUpdateTripBudget: (updated: TripData) => Promise<void>;
+  handleUpdateTripBudget: (updated: TripData) => Promise<void | boolean>;
   canUndo?: boolean;
   onUndo?: () => void;
   onOpenEditTripModal?: (tripTarget?: TripData) => void;
@@ -171,15 +156,12 @@ export function AdminDashboard({
   onSelectWaypoint?: (wp: Waypoint) => void;
   onScanAlerts?: () => Promise<void>;
   isScanningAlerts?: boolean;
-  notificationsEnabled?: boolean;
-  onToggleNotifications?: () => void;
   pendingSyncCount?: number;
   cachedAt?: string | null;
   onRetryOfflineSync?: () => void;
   onOpenAIPlanner?: () => void;
   onOpenAIOptimize?: () => void;
   onOpenAutoArrange?: () => void;
-  onOpenTraditionalPlanner?: () => void;
   onEnsureFullTrip?: (tripId: string) => Promise<TripData | null>;
   onManageJoinCode?: (action: 'generate' | 'rotate' | 'toggle') => Promise<void>;
   onAddGuestCompanion?: (payload: { name: string; phone?: string; specialPreference?: string }) => Promise<void>;
@@ -187,25 +169,6 @@ export function AdminDashboard({
   onOpenGuestModeWithCode?: (joinCode: string, guestName?: string) => Promise<void>;
 }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [seenAlertIds, setSeenAlertIds] = useState<Set<string>>(() => getSeenAlertIds(trip?.id));
-
-  useEffect(() => {
-    setSeenAlertIds(getSeenAlertIds(trip?.id));
-  }, [trip?.id]);
-
-  useEffect(() => {
-    if (!trip?.id || !isAlertsModalOpen || !trip.alerts?.length) return;
-    setSeenAlertIds(markAlertsAsSeen(trip.id, trip.alerts.map((a) => a.id)));
-  }, [trip?.id, isAlertsModalOpen, trip?.alerts]);
-
-  const unreadAlertCount = countUnreadAlerts(trip?.alerts || [], seenAlertIds);
-
-  const handleOpenAlertsModal = () => {
-    if (trip?.id && trip.alerts?.length) {
-      setSeenAlertIds(markAlertsAsSeen(trip.id, trip.alerts.map((a) => a.id)));
-    }
-    setIsAlertsModalOpen(true);
-  };
 
   const emptyTripNotice = (
     <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-10 text-center space-y-4">
@@ -257,8 +220,8 @@ export function AdminDashboard({
             setCurrentDayIndex(dayIdx);
             setCurrentTab('schedule');
           }}
-          onSelectLocation={() => setCurrentTab(isAdminMode ? 'trips' : 'map')}
-          onSelectMember={() => setCurrentTab(isAdminMode ? 'trips' : 'members')}
+          onSelectLocation={() => setCurrentTab('map')}
+          onSelectMember={() => setCurrentTab('members')}
           onToggleAttendance={handleToggleMemberAttendance}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
         />
@@ -291,22 +254,21 @@ export function AdminDashboard({
             </div>
           ) : (
             <>
-              {currentTab === 'dashboard' && isAdminMode && (
+              {currentTab === 'dashboard' && (
                 trip ? (
                   <Suspense fallback={<AdminPanelFallback label="Đang tải tổng quan quản trị..." />}>
                     <AdminDashboardView
                       trip={trip}
                       trips={trips}
-                      firebaseStatus={firebaseStatus}
                       onNavigate={handleSelectTab}
-                      onOpenAIPlanner={() => setIsAIPlannerOpen(true)}
-                      onOpenAIOptimize={() => setIsAIOptimizeOpen(true)}
+                      onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
+                      onOpenAIOptimize={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
                     />
                   </Suspense>
                 ) : emptyTripNotice
               )}
 
-              {currentTab === 'trips' && isAdminMode && (
+              {currentTab === 'trips' && (
                 <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý chuyến đi..." />}>
                   <AdminTripsManagementView
                     trip={trip}
@@ -326,80 +288,7 @@ export function AdminDashboard({
               )}
               {currentTab === 'ai' && (
                 <Suspense fallback={<AdminPanelFallback label="Đang tải quản lý AI..." />}>
-                  <AdminAIManagementView onOpenAIPlanner={() => setIsAIPlannerOpen(true)} trip={trip} isAIApplied={isAIApplied} />
-                </Suspense>
-              )}
-
-              {currentTab === 'dashboard' && !isAdminMode && (
-                trip ? (
-                  <>
-                    <MetricCards
-                      trip={trip}
-                      onOpenMembers={() => setCurrentTab('members')}
-                      onOpenBudget={() => setCurrentTab('budget')}
-                      onOpenSchedule={() => setCurrentTab('schedule')}
-                    />
-
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                      <div className="lg:col-span-8">
-                        <Suspense fallback={<AdminPanelFallback label="Đang tải bản đồ tuyến đường..." />}>
-                          <LiveRouteMap
-                            trip={trip}
-                            onSelectWaypoint={onSelectWaypoint}
-                            onUpdateTrip={handleUpdateTrip}
-                            searchQuery={searchQuery}
-                            onClearSearch={() => setSearchQuery('')}
-                          />
-                        </Suspense>
-                      </div>
-
-                      <div className="lg:col-span-4">
-                        <OperationsPanel
-                          trip={trip}
-                          unreadAlertCount={unreadAlertCount}
-                          onOpenAlertsModal={handleOpenAlertsModal}
-                          onOpenApplyAIPlan={onOpenAIOptimize || (() => setIsAIOptimizeOpen(true))}
-                          isAIApplied={isAIApplied}
-                          onScanAlerts={onScanAlerts}
-                          isScanningAlerts={isScanningAlerts}
-                          notificationsEnabled={notificationsEnabled}
-                          onToggleNotifications={onToggleNotifications}
-                        />
-                      </div>
-                    </div>
-
-                    <TimelineSchedule
-                      days={trip.days}
-                      currentDayIndex={currentDayIndex}
-                      onSelectDay={setCurrentDayIndex}
-                      onAddActivity={() => setIsAddActivityOpen(true)}
-                      onSelectActivity={(act) => setSelectedActivity(act)}
-                      filterMode={filterMode}
-                      onToggleFilterMode={() => setFilterMode(filterMode === 'timeline' ? 'all' : 'timeline')}
-                      searchQuery={searchQuery}
-                      onClearSearch={() => setSearchQuery('')}
-                      onUpdateStatus={handleUpdateActivityStatus}
-                      onOpenAutoArrange={onOpenAutoArrange}
-                    />
-                  </>
-                ) : emptyTripNotice
-              )}
-
-              {currentTab === 'trips' && !isAdminMode && (
-                <Suspense fallback={<AdminPanelFallback label="Đang tải danh sách chuyến đi..." />}>
-                  <TripsListView
-                    trips={trips}
-                    currentTrip={trip}
-                    onSelectTrip={onSelectTrip}
-                    onOpenCreateModal={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))}
-                    onEditTrip={onOpenEditTripModal}
-                    onDeleteTrip={onDeleteTrip}
-                    onCloneTrip={onCloneTrip}
-                    isAdmin
-                    currentUserUid={authUser.id}
-                    searchQuery={searchQuery}
-                    onClearSearch={() => setSearchQuery('')}
-                  />
+                  <AdminAIManagementView onOpenAIPlanner={onOpenAIPlanner || (() => setIsAIPlannerOpen(true))} trip={trip} isAIApplied={isAIApplied} />
                 </Suspense>
               )}
 
@@ -443,8 +332,6 @@ export function AdminDashboard({
                       searchQuery={searchQuery}
                       onClearSearch={() => setSearchQuery('')}
                       onUpdateStatus={handleUpdateActivityStatus}
-                      onDeleteActivity={handleDeleteActivity}
-                      onEditActivity={handleEditActivity}
                       onAddDay={handleAddDay}
                       onDeleteDay={handleDeleteDay}
                       onUpdateDayNote={handleUpdateDayNote}

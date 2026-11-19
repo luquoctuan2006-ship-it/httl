@@ -1,4 +1,4 @@
-import type { RouteStopWeather, TripData } from '../types/travel';
+import type { RouteStopWeather, TripData } from '../../types/travel';
 
 export function getWeatherDescription(code: number): string {
   if (code === 0) return 'Trời quang, nắng đẹp';

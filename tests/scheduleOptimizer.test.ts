@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialTripData } from '../src/data/mockData';
-import { buildOptimizePrompt, pickTripForOptimization, runOptimization } from '../src/utils/scheduleOptimizer';
-import { parseRules } from '../src/utils/scheduleValidator';
+import { initialTripData } from './fixtures/mockData';
+import { buildOptimizePrompt, pickTripForOptimization, runOptimization } from '../src/utils/schedule/scheduleOptimizer';
+import { parseRules } from '../src/utils/schedule/scheduleValidator';
 
 const adminRules = {
   bufferMinutes: '20',

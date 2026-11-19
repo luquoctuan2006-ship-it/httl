@@ -1,5 +1,5 @@
 import type { Express, RequestHandler } from 'express';
-import { normalizeVietnameseText, searchLocalPlaces } from '../../utils/vietnamGeo';
+import { normalizeVietnameseText, searchLocalPlaces } from '../../utils/route/vietnamGeo';
 
 export interface GeocodePlaceSuggestion {
   id: string;

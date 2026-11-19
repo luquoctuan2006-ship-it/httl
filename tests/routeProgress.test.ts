@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { initialTripData } from '../src/data/mockData';
+import { initialTripData } from './fixtures/mockData';
 import type { TripData } from '../src/types/travel';
 import {
   applyStopStatusUpdate,
@@ -8,7 +8,7 @@ import {
   estimateRoadDistanceKm,
   estimateSegmentTravelMinutes,
   formatTravelDuration,
-} from '../src/utils/routeProgress';
+} from '../src/utils/route/routeProgress';
 
 function makeSampleTrip(): TripData {
   const base = structuredClone(initialTripData);
@@ -209,7 +209,7 @@ test('applyStopStatusUpdate syncs waypoint status and preserves prior Cần xử
 });
 
 test('buildRouteProgress in all-mode marks legacy hashed/zeroed waypoints as unlocated without breaking route distance', async () => {
-  const { computeLegacyHashedCoordinate } = await import('../src/utils/vietnamGeo');
+  const { computeLegacyHashedCoordinate } = await import('../src/utils/route/vietnamGeo');
   const unknownStop = 'Điểm dừng chưa định danh ABC';
   const legacyHash = computeLegacyHashedCoordinate(unknownStop)!;
   const trip = makeSampleTrip();
@@ -242,7 +242,7 @@ test('buildRouteProgress in all-mode marks legacy hashed/zeroed waypoints as unl
 });
 
 test('findMatchingActivityForWaypoint and findMatchingWaypointForActivity share consistent matching semantics', async () => {
-  const { findMatchingActivityForWaypoint, findMatchingWaypointForActivity } = await import('../src/utils/tripHelpers');
+  const { findMatchingActivityForWaypoint, findMatchingWaypointForActivity } = await import('../src/utils/trip/tripHelpers');
   const trip = makeSampleTrip();
 
   for (const wp of trip.waypoints) {
@@ -254,7 +254,7 @@ test('findMatchingActivityForWaypoint and findMatchingWaypointForActivity share 
 });
 
 test('buildRouteProgress uses OSRM road leg distance, duration, and polyline when provided', async () => {
-  const { makeRoadLegKey } = await import('../src/utils/routeProgress');
+  const { makeRoadLegKey } = await import('../src/utils/route/routeProgress');
   const trip = makeSampleTrip();
 
   const dn = { lat: 16.0544, lng: 108.2022 };

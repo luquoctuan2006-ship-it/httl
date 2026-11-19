@@ -1,13 +1,12 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../../data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../../utils/trip/normalizeTripData';
 import type { TripData } from '../../types/travel';
-import { upsertTripForUser } from '../../utils/tripRepository';
+import { upsertTripForUser } from '../../utils/trip/tripRepository';
+import { TRIP_ID_PATTERN } from '../services/tripStore';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
-
-const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 type TripSyncRouterOptions = {
   requireAuth: RequestHandler;

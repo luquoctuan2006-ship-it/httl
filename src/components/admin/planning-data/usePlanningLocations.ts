@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { TripData, Waypoint } from '../../../types/travel';
 import type { NewLocationForm } from './planningDataTypes';
 
-type UpdateTrip = (updatedTrip: TripData, message?: string) => Promise<void>;
+type UpdateTrip = (updatedTrip: TripData, message?: string) => Promise<void | boolean>;
 
 function mapWaypointsToLocations(waypoints: Waypoint[] | undefined): Waypoint[] {
   return (waypoints || []).map((wp) => ({
@@ -12,6 +12,7 @@ function mapWaypointsToLocations(waypoints: Waypoint[] | undefined): Waypoint[] 
     ticketPrice: wp.ticketPrice || '',
     description: wp.description || '',
     isHidden: wp.isHidden || false,
+    ...(wp.isCustom ? { isCustom: true } : {}),
   }));
 }
 
@@ -30,7 +31,7 @@ export function usePlanningLocations(
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newLocationForm, setNewLocationForm] = useState<NewLocationForm>({
-    code: `0${(trip.waypoints?.length || 0) + 1}`,
+    code: String((trip.waypoints?.length || 0) + 1).padStart(2, '0'),
     name: '',
     lat: '',
     lng: '',
@@ -55,16 +56,19 @@ export function usePlanningLocations(
         destinationsCount: newLocations.length || trip.totalDays,
       };
       await onUpdateTrip(updatedTrip, message || 'Đã đồng bộ danh mục địa điểm du lịch!');
+    } else if (message) {
+      showToast(message);
     }
   };
 
   const checkDataValidation = (waypoint: Waypoint) => {
     const issues: string[] = [];
-    if (!waypoint.lat || Number.isNaN(waypoint.lat) || waypoint.lat < 8 || waypoint.lat > 24) {
-      issues.push('Tọa độ vĩ độ (Lat) không hợp lệ ở Việt Nam (8-24)');
+    const hasNonZero = Math.abs(waypoint.lat) > 0.0001 || Math.abs(waypoint.lng) > 0.0001;
+    if (!Number.isFinite(waypoint.lat) || !hasNonZero || waypoint.lat < -90 || waypoint.lat > 90) {
+      issues.push('Tọa độ vĩ độ (Lat) chưa hợp lệ (-90 đến 90)');
     }
-    if (!waypoint.lng || Number.isNaN(waypoint.lng) || waypoint.lng < 102 || waypoint.lng > 110) {
-      issues.push('Tọa độ kinh độ (Lng) không hợp lệ ở Việt Nam (102-110)');
+    if (!Number.isFinite(waypoint.lng) || !hasNonZero || waypoint.lng < -180 || waypoint.lng > 180) {
+      issues.push('Tọa độ kinh độ (Lng) chưa hợp lệ (-180 đến 180)');
     }
     if (!waypoint.openHours || waypoint.openHours.trim() === '') {
       issues.push('Chưa có giờ mở / đóng cửa');
@@ -98,13 +102,14 @@ export function usePlanningLocations(
       ticketPrice: newLocationForm.ticketPrice,
       description: newLocationForm.description.trim(),
       isHidden: false,
+      isCustom: true,
     };
 
     const updated = [...locations, newWaypoint];
     await syncLocationsToTrip(updated, `Đã thêm địa điểm du lịch mới "${newWaypoint.name}"`);
     setIsAddModalOpen(false);
     setNewLocationForm({
-      code: `0${updated.length + 1}`,
+      code: String(updated.length + 1).padStart(2, '0'),
       name: '',
       lat: '',
       lng: '',
@@ -113,17 +118,16 @@ export function usePlanningLocations(
       ticketPrice: '100.000 ₫',
       description: '',
     });
-    showToast(`Đã thêm địa điểm "${newWaypoint.name}" thành công!`);
   };
 
   const handleSaveEditLocation = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingWaypoint) return;
 
-    const updated = locations.map((wp) => (wp.id === editingWaypoint.id ? editingWaypoint : wp));
-    await syncLocationsToTrip(updated, `Đã cập nhật thông tin địa điểm "${editingWaypoint.name}"`);
+    const savedWaypoint = { ...editingWaypoint, isCustom: true };
+    const updated = locations.map((wp) => (wp.id === savedWaypoint.id ? savedWaypoint : wp));
+    await syncLocationsToTrip(updated, `Đã cập nhật thông tin địa điểm "${savedWaypoint.name}"`);
     setEditingWaypoint(null);
-    showToast(`Đã cập nhật địa điểm "${editingWaypoint.name}"`);
   };
 
   const handleToggleHide = async (id: string) => {
@@ -140,7 +144,6 @@ export function usePlanningLocations(
     setConfirmDeleteId(null);
     const updated = locations.filter((wp) => wp.id !== id);
     await syncLocationsToTrip(updated, `Đã xóa địa điểm "${name}"`);
-    showToast(`Đã xóa địa điểm "${name}"`);
   };
 
   const filteredLocations = useMemo(

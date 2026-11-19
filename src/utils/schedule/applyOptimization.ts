@@ -6,7 +6,7 @@
  *  - Cung cấp dữ liệu so sánh Diff (Trước / Sau) trực quan.
  */
 
-import { Activity, DaySchedule, OperationalAlert, TripData } from '../types/travel';
+import { Activity, DaySchedule, OperationalAlert, TripData } from '../../types/travel';
 import { parseClock } from './scheduleValidator';
 
 export interface ScheduleChangeDetail {
@@ -204,7 +204,7 @@ export function applyScheduleChangesStrict(
     (a) => a.status === 'Đã xác nhận' || a.status === 'Hoàn tất',
   ).length;
   const pendingCount = updatedActivities.filter(
-    (a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra',
+    (a) => a.status === 'Cần xử lý' || a.status === 'Đang diễn ra' || a.status === 'Chờ duyệt',
   ).length;
 
   const noteAddition = `Đã điều phối: ${actionTitle || 'Lộ trình tối ưu'}${actionReason ? ` • ${actionReason}` : ''}`;

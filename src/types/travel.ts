@@ -44,6 +44,7 @@ export interface Waypoint {
   ticketPrice?: string;
   description?: string;
   isHidden?: boolean;
+  isCustom?: boolean;
 }
 
 export interface OperationalAlert {

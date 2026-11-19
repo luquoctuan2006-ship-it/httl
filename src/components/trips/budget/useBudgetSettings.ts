@@ -3,11 +3,11 @@ import type { Activity, TripData } from '../../../types/travel';
 import {
   computeTripBudgetSummaryFields,
   resolveScaledAllocationsForBudget,
-} from '../../../utils/budgetAlerts';
+} from '../../../utils/trip/budgetAlerts';
 
 interface UseBudgetSettingsOptions {
   trip: TripData;
-  onUpdateTripBudget?: (updatedTrip: TripData) => void;
+  onUpdateTripBudget?: (updatedTrip: TripData) => void | boolean | Promise<void | boolean>;
   currentAllocations: NonNullable<TripData['customCategoryAllocations']>;
   totalBudget: number;
 }
@@ -69,7 +69,7 @@ export function useBudgetSettings({
     setAllocValidationError(null);
   };
 
-  const handleEditTotalBudget = (e: React.FormEvent) => {
+  const handleEditTotalBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!Number.isFinite(newTotalBudget) || newTotalBudget <= 0) return;
 
@@ -85,14 +85,17 @@ export function useBudgetSettings({
       ...computeTripBudgetSummaryFields(draftTrip),
     };
 
-    if (onUpdateTripBudget) {
-      onUpdateTripBudget(updatedTrip);
+    try {
+      if (onUpdateTripBudget) {
+        await onUpdateTripBudget(updatedTrip);
+      }
+      setIsEditBudgetOpen(false);
+    } catch (error) {
+      console.error('Lỗi cập nhật hạn mức ngân sách:', error);
     }
-
-    setIsEditBudgetOpen(false);
   };
 
-  const handleSaveCategoryAllocations = (e: React.FormEvent) => {
+  const handleSaveCategoryAllocations = async (e: React.FormEvent) => {
     e.preventDefault();
     const safeVal = (v: number) => (Number.isFinite(v) && v >= 0 ? Math.round(v) : 0);
     const nextAllocations = {
@@ -122,14 +125,17 @@ export function useBudgetSettings({
       customCategoryAllocations: nextAllocations,
     };
 
-    if (onUpdateTripBudget) {
-      onUpdateTripBudget(updatedTrip);
+    try {
+      if (onUpdateTripBudget) {
+        await onUpdateTripBudget(updatedTrip);
+      }
+      setIsEditAllocationsOpen(false);
+    } catch (error) {
+      setAllocValidationError(error instanceof Error ? error.message : 'Không thể lưu phân bổ hạn mức.');
     }
-
-    setIsEditAllocationsOpen(false);
   };
 
-  const handleSaveActivityCost = (e: React.FormEvent) => {
+  const handleSaveActivityCost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingActivity) return;
 
@@ -150,11 +156,14 @@ export function useBudgetSettings({
       ...computeTripBudgetSummaryFields(draftTrip),
     };
 
-    if (onUpdateTripBudget) {
-      onUpdateTripBudget(updatedTrip);
+    try {
+      if (onUpdateTripBudget) {
+        await onUpdateTripBudget(updatedTrip);
+      }
+      setEditingActivity(null);
+    } catch (error) {
+      console.error('Lỗi cập nhật chi phí hoạt động:', error);
     }
-
-    setEditingActivity(null);
   };
 
   return {

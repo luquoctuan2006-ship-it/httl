@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialTripData } from '../src/data/mockData';
+import { initialTripData } from './fixtures/mockData';
 import {
   buildRulesPromptSection,
   estimateTravelMinutes,
@@ -10,7 +10,7 @@ import {
   summarizeRejectionsForRetry,
   validateOptimizationResult,
   validateRecommendation,
-} from '../src/utils/scheduleValidator';
+} from '../src/utils/schedule/scheduleValidator';
 
 // Quy tắc mặc định của Admin (đúng giá trị server đang dùng, kiểu chuỗi).
 const adminRules = {

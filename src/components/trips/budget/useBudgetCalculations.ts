@@ -1,5 +1,5 @@
 import type { TripData } from '../../../types/travel';
-import { computeBudgetMetrics, detectBudgetAlerts } from '../../../utils/budgetAlerts';
+import { computeBudgetMetrics, detectBudgetAlerts } from '../../../utils/trip/budgetAlerts';
 
 const INVOICE_CATEGORY_LABELS: Record<string, string> = {
   transport: 'vận chuyển thuê xe di chuyển',

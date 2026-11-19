@@ -21,10 +21,11 @@ import {
 import { TripMember } from '../../types/travel';
 import {
   buildGuestInviteUrl,
+  getMemberInitials,
   isStaffRole,
   MAX_GUEST_COMPANIONS_PER_PASSENGER,
   MEMBER_ROLES,
-} from '../../utils/tripJoinHelpers';
+} from '../../utils/trip/tripJoinHelpers';
 import { Modal, ModalFooter } from '../common/Modal';
 import { Field, SelectInput, TextInput } from '../common/Field';
 
@@ -160,14 +161,6 @@ export const MembersView: React.FC<MembersViewProps> = ({
       ? members.filter((m) => m.memberType === 'guest' && m.invitedByUid === deletingTarget.uid).length
       : 0;
 
-  const getInitials = (name: string): string => {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return (name.slice(0, 2) || 'TV').toUpperCase();
-  };
-
   const handleCopy = async (type: 'code' | 'link') => {
     if (!joinCode) return;
     const text = type === 'code' ? joinCode : buildGuestInviteUrl(joinCode);
@@ -259,7 +252,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
     const newMember: TripMember = {
       id: `member-${Date.now()}`,
       name: newName.trim(),
-      avatar: getInitials(newName),
+      avatar: getMemberInitials(newName),
       role: newRole.trim() || 'Khách du lịch',
       phone: newPhone.trim(),
       status: 'offline',
@@ -300,7 +293,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
         return {
           ...m,
           name: editName.trim(),
-          avatar: getInitials(editName),
+          avatar: getMemberInitials(editName),
           role: editRole.trim() || m.role,
           phone: editPhone.trim(),
           specialPreference: editPreference.trim() || undefined,
@@ -663,7 +656,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                        {member.avatar || getInitials(member.name)}
+                        {member.avatar || getMemberInitials(member.name)}
                       </div>
                       <div className="min-w-0">
                         <h4 className="text-sm font-bold text-slate-900 leading-snug truncate">

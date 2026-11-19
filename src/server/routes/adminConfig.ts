@@ -1,6 +1,6 @@
 import type { Express, Request, RequestHandler } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import { ALLOWED_CONFLICT_CHECK_KEYS, ALLOWED_PRIORITY_KEYS } from '../../utils/scheduleValidator';
+import { ALLOWED_CONFLICT_CHECK_KEYS, ALLOWED_PRIORITY_KEYS } from '../../utils/schedule/scheduleValidator';
 import type { ReferenceCostRecord, SystemConfig } from '../types/systemConfig';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };

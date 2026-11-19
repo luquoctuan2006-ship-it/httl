@@ -90,3 +90,62 @@ test('admin config update returns and audits the newly saved config', async () =
   assert.match(auditMessage, /Model=gemini-2\.5-flash/);
   assert.match(auditMessage, /Bảo trì=BẬT/);
 });
+
+test('fleet reference costs POST syncs newer system config from Firestore before saving', async () => {
+  const { registerFleetRoutes } = await import('../src/server/routes/fleet');
+  let ramConfig: SystemConfig = { ...initialConfig, aiModel: 'gemini-3.5-flash', referenceCosts: [] };
+  let savedConfig: SystemConfig | undefined;
+  let postHandler: RequestHandler | undefined;
+  let syncForceFlag: boolean | undefined;
+
+  const app = {
+    get: () => app,
+    post: (_path: string, ...handlers: RequestHandler[]) => {
+      postHandler = handlers[handlers.length - 1];
+      return app;
+    },
+    patch: () => app,
+    delete: () => app,
+  } as unknown as Express;
+
+  registerFleetRoutes(app, {
+    requireAuth: (_req, _res, next) => next(),
+    requireAdmin: (_req, _res, next) => next(),
+    getSystemConfig: () => ramConfig,
+    getReferenceCosts: () => ramConfig.referenceCosts,
+    setSystemConfig: (cfg) => {
+      ramConfig = cfg;
+    },
+    syncSystemConfigIfStale: async (force) => {
+      syncForceFlag = force;
+      ramConfig = { ...ramConfig, aiModel: 'gemini-2.5-pro' };
+    },
+    saveSystemConfig: async (cfg) => {
+      savedConfig = cfg;
+    },
+    recordAuditLog: async () => {},
+  });
+
+  assert.ok(postHandler);
+  let responseBody: { success: boolean; costs: SystemConfig['referenceCosts'] } | undefined;
+  const req = {
+    body: { category: 'Ăn uống', item: 'Cơm niêu', price: '150.000 ₫' },
+    authUser: { email: 'admin@example.test' },
+  } as unknown as Request;
+  const res = {
+    json(body: typeof responseBody) {
+      responseBody = body;
+      return this;
+    },
+    status() {
+      return this;
+    },
+  } as unknown as Response;
+
+  await postHandler(req, res, () => {});
+  assert.equal(syncForceFlag, true);
+  assert.equal(responseBody?.success, true);
+  assert.equal(savedConfig?.aiModel, 'gemini-2.5-pro');
+  assert.equal(savedConfig?.referenceCosts.length, 1);
+});
+

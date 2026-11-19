@@ -3,15 +3,17 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
 import { createTripSyncRouter } from './trips';
-import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../../data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../../utils/trip/normalizeTripData';
 import type { TripData, TripMember } from '../../types/travel';
 import {
+  buildMemberDerivedUpdateFields,
   canAccessTrip,
   computeAuthoritativeTripDerivedFields,
   estimateTripByteSize,
   isTripOwnerOrAdmin,
   MAX_TRIP_DOC_BYTES,
-} from '../../utils/tripRepository';
+} from '../../utils/trip/tripRepository';
+import { TRIP_ID_PATTERN } from '../services/tripStore';
 import {
   generateTripJoinCode,
   getMemberInitials,
@@ -19,14 +21,14 @@ import {
   MAX_GUEST_COMPANIONS_PER_PASSENGER,
   normalizeJoinCode,
   sanitizeTripForParticipant,
-} from '../../utils/tripJoinHelpers';
-import { detectScheduleAndWeatherAlerts } from '../../utils/alertDetector';
-import { buildRouteProgress } from '../../utils/routeProgress';
+} from '../../utils/trip/tripJoinHelpers';
+import { detectScheduleAndWeatherAlerts } from '../../utils/schedule/alertDetector';
+import { buildRouteProgress } from '../../utils/route/routeProgress';
 import {
   buildBatchOpenMeteoUrl,
   buildTripWeatherFromOpenMeteo,
   type RouteWeatherTarget,
-} from '../../utils/weatherParser';
+} from '../../utils/route/weatherParser';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 
@@ -47,7 +49,9 @@ interface TripManagementRouteDependencies {
   recordAuditLog: (user: string, action: string) => Promise<void>;
 }
 
-const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+function isValidTripIdParam(tripId: string | undefined): tripId is string {
+  return Boolean(tripId && tripId !== 'active' && TRIP_ID_PATTERN.test(tripId));
+}
 
 function isConflictError(error: unknown) {
   const code = (error as { code?: unknown })?.code;
@@ -164,10 +168,12 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       return res.status(400).json({ success: false, error: 'Dữ liệu chuyến đi không hợp lệ' });
     }
   
-    // Luôn tự tính các trường dẫn xuất phía server, cấp mã mời và ép version = 1 khi tạo mới
-    const joinCode = body.joinCode && isValidJoinCodeFormat(body.joinCode)
-      ? body.joinCode
-      : await allocateJoinCode();
+    // Luôn tự tính các trường dẫn xuất phía server, cấp mã mời duy nhất và ép version = 1 khi tạo mới
+    const candidateCode = body.joinCode && isValidJoinCodeFormat(body.joinCode) ? body.joinCode : '';
+    const joinCode =
+      candidateCode && !(await resolveTripByJoinCode(candidateCode))
+        ? candidateCode
+        : await allocateJoinCode();
     const authoritative = computeAuthoritativeTripDerivedFields({
       ...body,
       joinCode,
@@ -333,12 +339,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
 
         transaction.update(tripRef, {
           participantUids: nextParticipantUids,
-          members: updatedTrip.members,
-          membersTotal: updatedTrip.membersTotal,
-          membersOnline: updatedTrip.membersOnline,
-          membersStatus: updatedTrip.membersStatus,
-          'telematics.passengerCount': updatedTrip.telematics.passengerCount,
-          version: nextVersion,
+          ...buildMemberDerivedUpdateFields(updatedTrip, nextVersion),
           updatedAt: FieldValue.serverTimestamp(),
         });
 
@@ -405,7 +406,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Xóa chuyến đi: Chỉ chủ sở hữu (ownerId) hoặc Admin mới được xóa
   app.delete('/api/trips/:tripId', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    if (!isValidTripIdParam(tripId)) {
       return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
     }
   
@@ -445,7 +446,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Tải lên và đọc ảnh chứng từ hóa đơn tách khỏi document chuyến đi (tránh chạm trần 1 MiB)
   app.post('/api/trips/:tripId/receipts', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    if (!isValidTripIdParam(tripId)) {
       return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
     }
   
@@ -574,7 +575,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Chỉnh sửa thông tin cơ bản của chuyến đi (chạy trong transaction, kiểm soát version và tự tính trường dẫn xuất)
   app.patch('/api/trips/:tripId', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    if (!isValidTripIdParam(tripId)) {
       return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
     }
   
@@ -839,11 +840,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         const nextVersion = (latest.version || 0) + 1;
   
         transaction.update(tripRef, {
-          members: authoritative.members,
-          membersStatus: authoritative.membersStatus,
-          membersTotal: authoritative.membersTotal,
-          membersOnline: authoritative.membersOnline,
-          version: nextVersion,
+          ...buildMemberDerivedUpdateFields(authoritative, nextVersion),
           updatedAt: FieldValue.serverTimestamp(),
         });
   
@@ -887,7 +884,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Quản lý mã mời chuyến đi (Chỉ chủ chuyến / Admin): tạo, đổi mã mới hoặc bật/tắt mã
   app.post('/api/trips/:tripId/join-code', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    if (!isValidTripIdParam(tripId)) {
       return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
     }
 
@@ -910,12 +907,14 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
           return { kind: 'forbidden' as const };
         }
 
+        if (action === 'toggle' && !latest.joinCode) {
+          return { kind: 'missing_code' as const };
+        }
+
         const nextJoinCode =
           action === 'rotate'
             ? freshCode
-            : action === 'generate'
-              ? latest.joinCode || freshCode
-              : latest.joinCode || freshCode;
+            : latest.joinCode || freshCode;
         const nextEnabled =
           action === 'toggle'
             ? (requestedEnabled !== undefined ? requestedEnabled : latest.joinCodeEnabled === false)
@@ -944,6 +943,9 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
       if (txResult.kind === 'forbidden') {
         return res.status(403).json({ success: false, error: 'Chỉ chủ chuyến đi mới có quyền quản lý mã mời' });
       }
+      if (txResult.kind === 'missing_code') {
+        return res.status(400).json({ success: false, error: 'Chuyến đi chưa có mã mời, vui lòng tạo mã mời trước.' });
+      }
 
       return res.json({
         success: true,
@@ -961,7 +963,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Hành khách đã đăng nhập (User B) hoặc chủ chuyến đăng ký người thân KHÔNG CÓ TÀI KHOẢN vào đoàn
   app.post('/api/trips/:tripId/guest-companions', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    if (!isValidTripIdParam(tripId)) {
       return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
     }
 
@@ -1033,12 +1035,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         }
 
         transaction.update(tripRef, {
-          members: updatedTrip.members,
-          membersTotal: updatedTrip.membersTotal,
-          membersOnline: updatedTrip.membersOnline,
-          membersStatus: updatedTrip.membersStatus,
-          'telematics.passengerCount': updatedTrip.telematics.passengerCount,
-          version: nextVersion,
+          ...buildMemberDerivedUpdateFields(updatedTrip, nextVersion),
           updatedAt: FieldValue.serverTimestamp(),
         });
 
@@ -1080,7 +1077,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Xóa người thân không tài khoản do chính user đăng ký (hoặc chủ chuyến / Admin)
   app.delete('/api/trips/:tripId/guest-companions/:memberId', requireAuth, async (req: AuthenticatedRequest, res) => {
     const { tripId, memberId } = req.params;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId) || !memberId) {
+    if (!isValidTripIdParam(tripId) || !memberId) {
       return res.status(400).json({ success: false, error: 'Tham số không hợp lệ' });
     }
 
@@ -1116,12 +1113,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
         };
 
         transaction.update(tripRef, {
-          members: updatedTrip.members,
-          membersTotal: updatedTrip.membersTotal,
-          membersOnline: updatedTrip.membersOnline,
-          membersStatus: updatedTrip.membersStatus,
-          'telematics.passengerCount': updatedTrip.telematics.passengerCount,
-          version: nextVersion,
+          ...buildMemberDerivedUpdateFields(updatedTrip, nextVersion),
           updatedAt: FieldValue.serverTimestamp(),
         });
 
@@ -1148,7 +1140,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
   // Hành khách đã tham gia bằng mã chủ động rời chuyến đi
   app.post('/api/trips/:tripId/leave', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tripId = req.params.tripId;
-    if (!tripId || tripId === 'active' || !TRIP_ID_PATTERN.test(tripId)) {
+    if (!isValidTripIdParam(tripId)) {
       return res.status(400).json({ success: false, error: 'Mã chuyến đi không hợp lệ' });
     }
 
@@ -1177,12 +1169,7 @@ export function registerTripManagementRoutes(app: Express, dependencies: TripMan
 
         transaction.update(tripRef, {
           participantUids: nextParticipantUids.length > 0 ? nextParticipantUids : FieldValue.delete(),
-          members: authoritative.members,
-          membersTotal: authoritative.membersTotal,
-          membersOnline: authoritative.membersOnline,
-          membersStatus: authoritative.membersStatus,
-          'telematics.passengerCount': authoritative.telematics.passengerCount,
-          version: nextVersion,
+          ...buildMemberDerivedUpdateFields(authoritative, nextVersion),
           updatedAt: FieldValue.serverTimestamp(),
         });
 

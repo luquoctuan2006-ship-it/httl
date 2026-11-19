@@ -10,9 +10,6 @@ server.js
 *.tsbuildinfo
 .vite/
 
-# PWA service worker tự sinh khi chạy dev (vite-plugin-pwa)
-dev-dist/
-
 # Local environment and secrets
 .env
 .env.*

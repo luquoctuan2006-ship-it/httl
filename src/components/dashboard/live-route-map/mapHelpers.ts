@@ -1,7 +1,7 @@
 import type { RouteStopWeather } from '../../../types/travel';
-import type { RouteStopItem } from '../../../utils/routeProgress';
+import type { RouteStopItem } from '../../../utils/route/routeProgress';
 
-export { getWeatherDescription } from '../../../utils/weatherParser';
+export { getWeatherDescription } from '../../../utils/route/weatherParser';
 
 export const escapeHtml = (value: unknown): string =>
   String(value ?? '').replace(/[&<>"']/g, (character) =>

@@ -20,8 +20,9 @@ import {
   autoArrangeDay,
   autoArrangeEntireTrip,
   detectDayScheduleConflicts,
-} from '../../utils/scheduleAutoArranger';
-import { buildAIPlanWaypoints, isLegacyHashedCoordinate } from '../../utils/vietnamGeo';
+} from '../../utils/schedule/scheduleAutoArranger';
+import { syncTripRouteMetadata } from '../../utils/route/tripRouteSync';
+import { isLegacyHashedCoordinate } from '../../utils/route/vietnamGeo';
 import { fetchRealOsrmRouteSummary } from '../dashboard/live-route-map/useRoadRouting';
 
 interface AutoArrangeModalProps {
@@ -45,6 +46,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
   const [bufferMinutes, setBufferMinutes] = useState<number>(20);
   const [optimizeRouteOrder, setOptimizeRouteOrder] = useState<boolean>(true);
   const [isApplying, setIsApplying] = useState<boolean>(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const dayResult = useMemo(
     () => autoArrangeDay(currentDay, bufferMinutes, { optimizeRouteOrder }),
@@ -64,6 +66,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
   const activeRouteOpt = scope === 'day' ? dayResult.routeOptimization : tripResult.routeOptimization;
 
   const handleApply = async () => {
+    setApplyError(null);
     setIsApplying(true);
     try {
       if (scope === 'day') {
@@ -71,24 +74,16 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
           const updatedDays = trip.days.map((d) =>
             d.dayIndex === dayResult.updatedDay.dayIndex ? dayResult.updatedDay : d,
           );
-          const allActs = updatedDays.flatMap((d) => d.activities || []);
-          const nextWaypoints = buildAIPlanWaypoints(
-            trip.originFull || trip.origin || 'Điểm khởi hành',
-            trip.destinationFull || trip.destination || 'Điểm đến',
-            allActs,
-          );
-          const locatedCoords = nextWaypoints.filter(
+          let updatedTrip = syncTripRouteMetadata({ ...trip, days: updatedDays });
+          const locatedCoords = (updatedTrip.waypoints || []).filter(
             (wp) =>
               (Math.abs(wp.lat) > 0.0001 || Math.abs(wp.lng) > 0.0001) &&
               !isLegacyHashedCoordinate(wp.name || '', wp.lat, wp.lng),
           );
           const osrmSummary = await fetchRealOsrmRouteSummary(locatedCoords);
-          const updatedTrip: TripData = {
-            ...trip,
-            days: updatedDays,
-            ...(nextWaypoints.length >= 2 ? { waypoints: nextWaypoints, destinationsCount: nextWaypoints.length } : {}),
-            ...(osrmSummary ? { totalKm: osrmSummary.totalKm } : {}),
-          };
+          if (osrmSummary) {
+            updatedTrip = { ...updatedTrip, totalKm: osrmSummary.totalKm };
+          }
           const savedLabel =
             dayResult.routeOptimization.savedKm > 0
               ? ` (tiết kiệm ${dayResult.routeOptimization.savedKm} km)`
@@ -126,6 +121,7 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
       onClose();
     } catch (error) {
       console.error('Lỗi áp dụng sắp xếp tự động:', error);
+      setApplyError(error instanceof Error ? error.message : 'Không thể lưu lịch trình mới. Vui lòng thử lại.');
     } finally {
       setIsApplying(false);
     }
@@ -394,6 +390,12 @@ export const AutoArrangeModal: React.FC<AutoArrangeModalProps> = ({
             )}
           </div>
         </div>
+
+        {applyError && (
+          <div role="alert" className="mx-6 mb-2 rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+            {applyError}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">

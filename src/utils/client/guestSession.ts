@@ -1,5 +1,5 @@
-import type { GuestTripData } from '../types/travel';
-import { isValidJoinCodeFormat, normalizeJoinCode } from './tripJoinHelpers';
+import type { GuestTripData } from '../../types/travel';
+import { isValidJoinCodeFormat, normalizeJoinCode } from '../trip/tripJoinHelpers';
 
 export interface ActiveGuestSession {
   joinCode: string;

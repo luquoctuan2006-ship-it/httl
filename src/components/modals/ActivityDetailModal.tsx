@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { X, Clock, MapPin, Tag, Edit3, Trash2, DollarSign, FileText } from 'lucide-react';
 import { Activity } from '../../types/travel';
-import { validateActivityTimeRange } from '../../utils/tripSyncHelpers';
-import { lookupCoordinates } from '../../utils/vietnamGeo';
+import { validateActivityTimeRange } from '../../utils/trip/tripSyncHelpers';
+import { lookupCoordinates } from '../../utils/route/vietnamGeo';
 import { PlaceAutocompleteInput, type PlaceCoordinates } from '../common/PlaceAutocompleteInput';
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {

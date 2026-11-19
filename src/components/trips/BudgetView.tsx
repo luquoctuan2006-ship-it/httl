@@ -12,7 +12,7 @@ import { BudgetEditModals } from './budget/BudgetEditModals';
 
 interface BudgetViewProps {
   trip: TripData;
-  onUpdateTripBudget?: (updatedTrip: TripData) => void;
+  onUpdateTripBudget?: (updatedTrip: TripData) => void | boolean | Promise<void | boolean>;
   searchQuery?: string;
   onClearSearch?: () => void;
 }

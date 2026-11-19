@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialTripData } from '../src/data/mockData';
-import { normalizeTripData, normalizeTripSummary } from '../src/data/normalizeTripData';
+import { initialTripData } from './fixtures/mockData';
+import { normalizeTripData, normalizeTripSummary } from '../src/utils/trip/normalizeTripData';
 import type { TripData } from '../src/types/travel';
-import { cloneTripForTemplate } from '../src/utils/tripHelpers';
+import { cloneTripForTemplate } from '../src/utils/trip/tripHelpers';
 import {
   buildGuestInviteUrl,
   generateTripJoinCode,
@@ -13,18 +13,18 @@ import {
   normalizeJoinCode,
   sanitizeTripForGuest,
   sanitizeTripForParticipant,
-} from '../src/utils/tripJoinHelpers';
+} from '../src/utils/trip/tripJoinHelpers';
 import {
   clearStoredGuestSession,
   loadStoredGuestSession,
   saveStoredGuestSession,
-} from '../src/utils/guestSession';
+} from '../src/utils/client/guestSession';
 import {
   canAccessTrip,
   isTripOwnerOrAdmin,
   upsertTripForUser,
   type FirestoreDbLike,
-} from '../src/utils/tripRepository';
+} from '../src/utils/trip/tripRepository';
 
 function createMockDb(initialDocs: Record<string, TripData>): FirestoreDbLike {
   const store = new Map<string, Record<string, unknown>>(
@@ -449,7 +449,7 @@ test('sanitizeTripForParticipant strips financials, hidden waypoints, budget ale
   assert.equal(sanitized.members.find((m) => m.id === 'mem-guest-b')?.invitedByUid, 'user-b');
 });
 
-test('guestSession persists and clears sanitized trip data in localStorage for offline PWA resume', () => {
+test('guestSession persists and clears sanitized trip data in localStorage for offline resume', () => {
   const makeStorage = () => {
     const map = new Map<string, string>();
     return {

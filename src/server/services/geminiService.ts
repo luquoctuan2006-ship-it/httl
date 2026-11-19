@@ -7,9 +7,9 @@ import type { SystemConfig } from '../types/systemConfig';
 import { recordAIErrorLog, recordAIRequestLog } from './systemLogs';
 import { TRIP_ID_PATTERN } from './tripStore';
 import type { OperationalAlert, TripData } from '../../types/travel';
-import { parseGeminiJson } from '../../utils/geminiJson';
-import { buildRuleBasedScheduleOptimization, pickTripForOptimization, runOptimization } from '../../utils/scheduleOptimizer';
-import { isTripOwnerOrAdmin } from '../../utils/tripRepository';
+import { parseGeminiJson } from '../../utils/client/geminiJson';
+import { buildRuleBasedScheduleOptimization, pickTripForOptimization, runOptimization } from '../../utils/schedule/scheduleOptimizer';
+import { isTripOwnerOrAdmin } from '../../utils/trip/tripRepository';
 
 type GeminiCacheEntry = {
   expiresAt: number;

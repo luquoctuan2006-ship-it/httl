@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Activity, DaySchedule, TripData } from '../types/travel';
+import { Activity, DaySchedule, TripData } from '../../types/travel';
+import { formatClock, parseClock } from './scheduleValidator';
 import {
   optimizeDayActivitiesByRoute,
   optimizeTripByRouteTSP,
-} from './routeTspOptimizer';
+} from '../route/routeTspOptimizer';
 
 export interface ScheduleConflict {
   type: 'overlap' | 'zero_buffer' | 'inverted' | 'out_of_bounds';
@@ -45,19 +46,7 @@ export interface AutoArrangeResult {
   routeOptimization?: RouteOptimizationMetrics;
 }
 
-function parseMinutes(timeStr?: string): number {
-  if (!timeStr) return 0;
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return 0;
-  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
-}
-
-function formatMinutes(totalMins: number): string {
-  const safeMins = Math.max(0, Math.min(23 * 60 + 59, Math.round(totalMins)));
-  const h = Math.floor(safeMins / 60);
-  const m = safeMins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
+const parseMinutes = (timeStr?: string): number => parseClock(timeStr) ?? 0;
 
 /**
  * Phát hiện các xung đột thời gian trong một ngày lịch trình
@@ -195,8 +184,8 @@ export function autoArrangeDayActivities(
       }
     }
 
-    const newStartStr = formatMinutes(targetStart);
-    const newEndStr = formatMinutes(targetStart + duration);
+    const newStartStr = formatClock(targetStart);
+    const newEndStr = formatClock(targetStart + duration);
 
     // Kiểm tra xem có sự thay đổi giờ so với ban đầu không
     if (newStartStr !== act.timeStart || newEndStr !== act.timeEnd) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseGeminiJson } from '../src/utils/geminiJson';
+import { parseGeminiJson } from '../src/utils/client/geminiJson';
 
 test('parses a valid JSON response wrapped in code fences', () => {
   const result = parseGeminiJson('```json\n{"tripCode":"DAD-HA-HUI-7D","title":"Hành trình"}\n```');

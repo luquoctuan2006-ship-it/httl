@@ -6,12 +6,13 @@ import {
   buildRouteProgress,
   type RouteStopItem,
   type RouteStopStatus,
-} from '../../utils/routeProgress';
+} from '../../utils/route/routeProgress';
 import {
   optimizeDayActivitiesByRoute,
   optimizeTripByRouteTSP,
-} from '../../utils/routeTspOptimizer';
-import { buildAIPlanWaypoints, isLegacyHashedCoordinate } from '../../utils/vietnamGeo';
+} from '../../utils/route/routeTspOptimizer';
+import { syncTripRouteMetadata } from '../../utils/route/tripRouteSync';
+import { isLegacyHashedCoordinate } from '../../utils/route/vietnamGeo';
 import { LiveMapHeader } from './live-route-map/LiveMapHeader';
 import { LiveMapCanvas } from './live-route-map/LiveMapCanvas';
 import { RouteStopsPanel } from './live-route-map/RouteStopsPanel';
@@ -93,19 +94,7 @@ export const LiveRouteMap: React.FC<LiveRouteMapProps> = ({
         const updatedDays = trip.days.map((d) =>
           d.dayIndex === tspPreview.dayIndex ? tspPreview.dayResult.updatedDay : d,
         );
-        const allActs = updatedDays.flatMap((d) => d.activities || []);
-        const nextWaypoints = buildAIPlanWaypoints(
-          trip.originFull || trip.origin || 'Điểm khởi hành',
-          trip.destinationFull || trip.destination || 'Điểm đến',
-          allActs,
-        );
-        nextTrip = {
-          ...trip,
-          days: updatedDays,
-          ...(nextWaypoints.length >= 2
-            ? { waypoints: nextWaypoints, destinationsCount: nextWaypoints.length }
-            : {}),
-        };
+        nextTrip = syncTripRouteMetadata({ ...trip, days: updatedDays });
       } else {
         nextTrip = tspPreview.tripResult.updatedTrip;
       }

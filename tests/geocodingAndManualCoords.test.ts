@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildManualTrip } from '../src/components/modals/trip-planner/buildManualTrip';
 import { resolveActivityCoordinatesWithFallback } from '../src/components/modals/trip-planner/helpers';
-import { normalizeTripData } from '../src/data/normalizeTripData';
+import { normalizeTripData } from '../src/utils/trip/normalizeTripData';
 import { searchPlaces } from '../src/server/routes/routing';
-import { buildDynamicWaypoints, searchLocalPlaces } from '../src/utils/vietnamGeo';
+import { buildDynamicWaypoints, searchLocalPlaces } from '../src/utils/route/vietnamGeo';
 
 test('searchLocalPlaces matches accented and unaccented Vietnamese queries', () => {
   const accented = searchLocalPlaces('Đà Nẵng');

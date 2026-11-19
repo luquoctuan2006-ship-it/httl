@@ -1,4 +1,4 @@
-import type { OperationalAlert } from '../types/travel';
+import type { OperationalAlert } from '../../types/travel';
 
 const SEEN_ALERTS_STORAGE_PREFIX = 'voyager_seen_alerts_';
 

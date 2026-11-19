@@ -16,11 +16,19 @@ type OrderSpec = {
   direction: 'asc' | 'desc';
 };
 
+const DELETE_SENTINEL = Symbol('delete');
+
 function isServerTimestampSentinel(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   if (value === FieldValue.serverTimestamp()) return true;
   const ctorName = (value as { constructor?: { name?: string } }).constructor?.name;
-  return ctorName === 'ServerTimestampTransform' || ctorName === 'FieldValue';
+  return ctorName === 'ServerTimestampTransform';
+}
+
+function isDeleteSentinel(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (value === FieldValue.delete()) return true;
+  return (value as { constructor?: { name?: string } }).constructor?.name === 'DeleteTransform';
 }
 
 function toComparableValue(value: unknown): number | string | boolean | null {
@@ -46,7 +54,9 @@ function resolveFieldValues(input: Record<string, unknown>, nowMs: number): Reco
 
   for (const [key, val] of Object.entries(input)) {
     if (val === undefined) continue;
-    if (isServerTimestampSentinel(val)) {
+    if (isDeleteSentinel(val)) {
+      result[key] = DELETE_SENTINEL;
+    } else if (isServerTimestampSentinel(val)) {
       result[key] = timestampObj;
     } else if (Array.isArray(val)) {
       result[key] = structuredCloneSafe(val);
@@ -134,13 +144,20 @@ export function createInMemoryFirestore(): Firestore {
             }
             cursor = cursor[seg] as Record<string, unknown>;
           }
-          cursor[segments[segments.length - 1]] = val;
+          const leafKey = segments[segments.length - 1];
+          if (val === DELETE_SENTINEL) {
+            delete cursor[leafKey];
+          } else {
+            cursor[leafKey] = val;
+          }
+        } else if (val === DELETE_SENTINEL) {
+          delete nextData[key];
         } else {
           nextData[key] = val;
         }
       }
     } else {
-      nextData = resolved;
+      nextData = Object.fromEntries(Object.entries(resolved).filter(([, val]) => val !== DELETE_SENTINEL));
     }
     col.set(docId, { data: nextData, updateTimeMs: nowMs });
   };

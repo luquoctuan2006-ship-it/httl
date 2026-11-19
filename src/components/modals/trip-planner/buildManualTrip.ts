@@ -1,11 +1,11 @@
 import type { DaySchedule, TripData } from '../../../types/travel';
-import { detectScheduleAndWeatherAlerts } from '../../../utils/alertDetector';
+import { detectScheduleAndWeatherAlerts } from '../../../utils/schedule/alertDetector';
 import {
   computeTripBudgetSummaryFields,
   resolveInitialTripCategoryAllocations,
-} from '../../../utils/budgetAlerts';
-import { countPassengerMembers } from '../../../utils/tripJoinHelpers';
-import { buildDynamicWaypoints } from '../../../utils/vietnamGeo';
+} from '../../../utils/trip/budgetAlerts';
+import { countPassengerMembers } from '../../../utils/trip/tripJoinHelpers';
+import { buildDynamicWaypoints } from '../../../utils/route/vietnamGeo';
 import {
   buildDayCalendarMetadata,
   buildMembers,

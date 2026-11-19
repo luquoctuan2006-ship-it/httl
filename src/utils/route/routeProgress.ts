@@ -1,5 +1,5 @@
-import type { Activity, TripData, Waypoint } from '../types/travel';
-import { findMatchingActivityForWaypoint, findMatchingWaypointForActivity } from './tripHelpers';
+import type { Activity, TripData, Waypoint } from '../../types/travel';
+import { findMatchingActivityForWaypoint, findMatchingWaypointForActivity } from '../trip/tripHelpers';
 import { isLegacyHashedCoordinate, lookupCoordinates } from './vietnamGeo';
 
 export type RouteStopStatus = 'completed' | 'current' | 'pending';

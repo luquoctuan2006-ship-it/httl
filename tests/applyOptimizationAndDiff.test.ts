@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialTripData } from '../src/data/mockData';
+import { initialTripData } from './fixtures/mockData';
 import {
   applyScheduleChangesStrict,
   computeOptimizationDiff,
   filterAlertsByRecommendation,
-} from '../src/utils/applyOptimization';
+} from '../src/utils/schedule/applyOptimization';
 import {
   buildRuleBasedScheduleOptimization,
   pickTripForOptimization,
   runOptimization,
-} from '../src/utils/scheduleOptimizer';
-import { parseRules, validateOptimizationResult } from '../src/utils/scheduleValidator';
+} from '../src/utils/schedule/scheduleOptimizer';
+import { parseRules, validateOptimizationResult } from '../src/utils/schedule/scheduleValidator';
 import { Activity, OperationalAlert, TripData } from '../src/types/travel';
 
 const sampleAdminRules = {

@@ -3,18 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { OperationalAlert, TripData } from '../types/travel';
-import { detectBudgetAlerts, isBudgetAlert } from './budgetAlerts';
-
-function parseClock(timeStr: string): number | null {
-  if (!timeStr || typeof timeStr !== 'string') return null;
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-  return hours * 60 + minutes;
-}
+import { OperationalAlert, TripData } from '../../types/travel';
+import { detectBudgetAlerts, isAutoBudgetThresholdAlert } from '../trip/budgetAlerts';
+import { parseClock } from './scheduleValidator';
 
 function parseRainProbability(value?: string): number {
   const numbers = value?.match(/\d+(?:[.,]\d+)?/g) || [];
@@ -87,7 +78,7 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
 
   if (!trip.days || !Array.isArray(trip.days)) {
     const existingNonBudget = (trip.alerts || []).filter(
-      (a) => !isBudgetAlert(a) && !isGeneratedScheduleAlert(a, trip.id),
+      (a) => !isAutoBudgetThresholdAlert(a) && !isGeneratedScheduleAlert(a, trip.id),
     );
     return [...budgetAlerts, ...existingNonBudget].slice(0, 50);
   }
@@ -228,7 +219,7 @@ export function detectScheduleAndWeatherAlerts(trip: TripData): OperationalAlert
   const mergedAlerts: OperationalAlert[] = [
     ...budgetAlerts,
     ...trip.alerts.filter(
-      (a) => !isBudgetAlert(a) && !isGeneratedScheduleAlert(a, trip.id),
+      (a) => !isAutoBudgetThresholdAlert(a) && !isGeneratedScheduleAlert(a, trip.id),
     ),
   ];
   for (const newAlert of alerts) {

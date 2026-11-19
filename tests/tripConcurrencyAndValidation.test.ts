@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TripData } from '../src/types/travel';
-import { normalizeTripData } from '../src/data/normalizeTripData';
-import { ALLOWED_CONFLICT_CHECK_KEYS, ALLOWED_PRIORITY_KEYS } from '../src/utils/scheduleValidator';
+import { normalizeTripData } from '../src/utils/trip/normalizeTripData';
+import { ALLOWED_CONFLICT_CHECK_KEYS, ALLOWED_PRIORITY_KEYS } from '../src/utils/schedule/scheduleValidator';
 
 import {
   type FirestoreDbLike,
@@ -11,7 +11,7 @@ import {
   computeAuthoritativeTripDerivedFields,
   getTripComparableJson,
   upsertTripForUser,
-} from '../src/utils/tripRepository';
+} from '../src/utils/trip/tripRepository';
 
 // In-memory Firestore adapter to run the real upsertTripForUser transaction logic
 function createInMemoryFirestore(initial?: Record<string, Record<string, unknown>>): {

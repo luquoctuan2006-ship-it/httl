@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -10,7 +10,7 @@ import { TripData } from '../../types/travel';
 interface AdminScheduleMonitoringProps {
   trip: TripData;
   trips?: TripData[];
-  onUpdateTrip?: (updatedTrip: TripData, message?: string) => Promise<void>;
+  onUpdateTrip?: (updatedTrip: TripData, message?: string) => Promise<void | boolean>;
   onEnsureFullTrip?: (tripId: string) => Promise<TripData | null>;
 }
 
@@ -23,6 +23,8 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
   const [selectedTripDetails, setSelectedTripDetails] = useState<TripData | null>(null);
   const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const hydratedAttemptRef = useRef<Set<string>>(new Set());
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -43,17 +45,27 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
     return Array.from(map.values());
   }, [trip, trips]);
 
+  useEffect(() => {
+    if (!onEnsureFullTrip) return;
+    combinedTrips.forEach((t) => {
+      if (t.isSummary && !hydratedAttemptRef.current.has(t.id)) {
+        hydratedAttemptRef.current.add(t.id);
+        void onEnsureFullTrip(t.id);
+      }
+    });
+  }, [combinedTrips, onEnsureFullTrip]);
+
   // Danh sách các chuyến đang hoạt động từ dữ liệu thật
   const activeTripsList = useMemo(() => {
     return combinedTrips.map((t) => {
       const driver =
         t.telematics?.driver ||
         t.members?.find((m) => m.role.toLowerCase().includes('tài xế'))?.name ||
-        'Chưa phân công';
+        (t.isSummary ? 'Chưa tải chi tiết' : 'Chưa phân công');
       const guide =
         t.members?.find(
           (m) => m.role.toLowerCase().includes('hướng dẫn viên') || m.role.toLowerCase().includes('hdv'),
-        )?.name || 'Chưa phân công';
+        )?.name || (t.isSummary ? 'Chưa tải chi tiết' : 'Chưa phân công');
 
       const allActs = t.days?.flatMap((d) => d.activities || []) || [];
       const startLoc = allActs[0]?.location || t.waypoints?.[0]?.name || t.originFull || 'Điểm khởi hành';
@@ -174,6 +186,10 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
       const hydrated = await onEnsureFullTrip(targetTrip.id);
       if (hydrated) resolvedTrip = hydrated;
     }
+    if (resolvedTrip.isSummary) {
+      showToast(`Không thể tải chi tiết chuyến đi ${tripCode} để gắn cảnh báo.`);
+      return;
+    }
     const flagAlert = {
       id: `alert-admin-flag-${Date.now()}`,
       title: `Quản trị viên yêu cầu rà soát lịch trình (${tripCode})`,
@@ -241,7 +257,7 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
         <div className="divide-y divide-slate-800/60">
           {activeTripsList.map((t) => (
             <div
-              key={t.code}
+              key={t.id}
               className="flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center px-6 py-4 hover:bg-slate-800/40 transition text-xs"
             >
               <div className="md:col-span-3">
@@ -307,7 +323,15 @@ export const AdminScheduleMonitoringView: React.FC<AdminScheduleMonitoringProps>
             <div className="p-8 text-center text-slate-400 text-xs rounded-xl bg-slate-800/40 border border-slate-700/50 flex flex-col items-center justify-center gap-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-400" />
               <strong className="text-white text-sm">Không phát hiện sự cố hay xung đột lịch trình</strong>
-              <span>Tất cả {combinedTrips.length} tour đang vận hành an toàn và đúng các mốc thời gian quy định.</span>
+              <span>
+                {(() => {
+                  const summaryCount = combinedTrips.filter((t) => t.isSummary).length;
+                  const scannedCount = combinedTrips.length - summaryCount;
+                  return summaryCount > 0
+                    ? `Đã kiểm tra ${scannedCount}/${combinedTrips.length} tour đã tải chi tiết (${summaryCount} tour đang ở chế độ tóm tắt).`
+                    : `Tất cả ${combinedTrips.length} tour đang vận hành an toàn và đúng các mốc thời gian quy định.`;
+                })()}
+              </span>
             </div>
           ) : (
             scheduleIssues.map((iss) => (

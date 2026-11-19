@@ -1,6 +1,6 @@
-import type { DaySchedule, TripData, Waypoint } from '../types/travel';
+import type { DaySchedule, TripData, Waypoint } from '../../types/travel';
 import { estimateRoadDistanceKm } from './routeProgress';
-import { findMatchingActivityForWaypoint } from './tripHelpers';
+import { findMatchingActivityForWaypoint } from '../trip/tripHelpers';
 import {
   buildAIPlanWaypoints,
   isLegacyHashedCoordinate,
@@ -161,6 +161,7 @@ export function syncTripRouteMetadata(
     return {
       ...wp,
       status: derivedStatus,
+      ...(oldWp?.isCustom ? { lat: oldWp.lat, lng: oldWp.lng, isCustom: true } : {}),
       ...(oldWp?.category ? { category: oldWp.category } : {}),
       ...(oldWp?.categoryLabel ? { categoryLabel: oldWp.categoryLabel } : {}),
       ...(oldWp?.openHours ? { openHours: oldWp.openHours } : {}),
@@ -169,6 +170,15 @@ export function syncTripRouteMetadata(
       ...(oldWp?.isHidden ? { isHidden: oldWp.isHidden } : {}),
     };
   });
+
+  const mergedNames = new Set(mergedWaypoints.map((w) => w.name.trim().toLowerCase()));
+  for (const wp of existingWaypoints) {
+    const key = wp.name.trim().toLowerCase();
+    if (wp.isCustom && key && !mergedNames.has(key)) {
+      mergedNames.add(key);
+      mergedWaypoints.push(wp);
+    }
+  }
 
   const locatedPoints = mergedWaypoints.filter((wp) =>
     hasUsablePointCoords(wp.lat, wp.lng, wp.name),

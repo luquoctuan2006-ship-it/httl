@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 import { TripData } from '../../types/travel';
 import { authenticatedFetch, safeJsonResponse } from '../../api';
-import { computeOptimizationDiff, OptimizationDiff } from '../../utils/applyOptimization';
-import { buildTripScheduleSignature } from '../../utils/tripSyncHelpers';
+import { computeOptimizationDiff, OptimizationDiff } from '../../utils/schedule/applyOptimization';
+import { buildTripScheduleSignature } from '../../utils/trip/tripSyncHelpers';
 
 const MAX_POLL_DURATION_MS = 90_000;
 
@@ -86,6 +86,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
   const [activeViewMode, setActiveViewMode] = useState<'cards' | 'diff'>('cards');
 
   const pollTimeoutRef = useRef<number | null>(null);
+  const applyTimeoutRef = useRef<number | null>(null);
   const pollRunIdRef = useRef(0);
   const tripScheduleSignature = buildTripScheduleSignature(trip);
 
@@ -93,6 +94,11 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
     if (pollTimeoutRef.current !== null) {
       window.clearTimeout(pollTimeoutRef.current);
       pollTimeoutRef.current = null;
+    }
+    if (applyTimeoutRef.current !== null) {
+      window.clearTimeout(applyTimeoutRef.current);
+      applyTimeoutRef.current = null;
+      setIsSimulating(false);
     }
   };
 
@@ -222,7 +228,7 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
     }
   };
 
-  // Xóa kết quả cũ và hủy polling khi đổi chuyến đi hoặc thay đổi lịch trình/cảnh báo
+  // Xóa kết quả cũ, hủy timer/polling và tự động phân tích lại khi mở modal hoặc khi lịch trình thay đổi
   useEffect(() => {
     clearPolling();
     pollRunIdRef.current += 1;
@@ -233,33 +239,22 @@ export const AIOptimizeModal: React.FC<AIOptimizeModalProps> = ({
     setJobStatus(null);
     setActiveViewMode('cards');
     setIsLoading(false);
-  }, [tripScheduleSignature]);
-
-  // Hủy polling khi đóng modal hoặc unmount
-  useEffect(() => {
-    if (!isOpen) {
-      clearPolling();
-      pollRunIdRef.current += 1;
-      setIsLoading(false);
+    if (isOpen) {
+      void handleAnalyze();
     }
     return () => {
       clearPolling();
       pollRunIdRef.current += 1;
     };
-  }, [isOpen]);
-
-  // Tự động phân tích khi mở modal nếu chưa có đề xuất cho lịch trình hiện tại
-  useEffect(() => {
-    if (isOpen && recommendations.length === 0 && !isLoading) {
-      void handleAnalyze();
-    }
   }, [isOpen, tripScheduleSignature]);
 
   const handleApply = () => {
     const recommendation = recommendations[selectedRecIndex] || recommendations[0];
     if (!recommendation) return;
+    clearPolling();
     setIsSimulating(true);
-    setTimeout(() => {
+    applyTimeoutRef.current = window.setTimeout(() => {
+      applyTimeoutRef.current = null;
       setIsSimulating(false);
       onApplyChanges(recommendation.actionTitle, recommendation.reason, recommendation.costSaved, recommendation);
       onClose();

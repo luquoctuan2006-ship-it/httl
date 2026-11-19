@@ -10,7 +10,7 @@ interface FleetRouteDependencies {
   getSystemConfig: () => SystemConfig;
   getReferenceCosts: () => ReferenceCostRecord[];
   setSystemConfig: (config: SystemConfig) => void;
-  syncSystemConfigIfStale: () => Promise<void>;
+  syncSystemConfigIfStale: (force?: boolean) => Promise<void>;
   saveSystemConfig: (config: SystemConfig) => Promise<void>;
   recordAuditLog: (user: string, action: string) => Promise<void>;
 }
@@ -29,7 +29,7 @@ export function registerFleetRoutes(app: Express, dependencies: FleetRouteDepend
 
   // ==================== REFERENCE COSTS MANAGEMENT ====================
   app.get('/api/admin/reference-costs', requireAuth, requireAdmin, async (_req, res) => {
-    await syncSystemConfigIfStale();
+    await syncSystemConfigIfStale(true);
     return res.json({
       success: true,
       costs: getReferenceCosts(),
@@ -41,6 +41,8 @@ export function registerFleetRoutes(app: Express, dependencies: FleetRouteDepend
     if (!item || !price) {
       return res.status(400).json({ success: false, error: 'Thiếu tên hạng mục hoặc đơn giá' });
     }
+
+    await syncSystemConfigIfStale(true);
   
     const newCost: ReferenceCostRecord = {
       id: `cost-${Date.now()}`,
@@ -70,6 +72,7 @@ export function registerFleetRoutes(app: Express, dependencies: FleetRouteDepend
   });
   
   app.patch('/api/admin/reference-costs/:costId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
+    await syncSystemConfigIfStale(true);
     const { costId } = req.params;
     const idx = getReferenceCosts().findIndex((c) => c.id === costId);
     if (idx === -1) {
@@ -105,6 +108,7 @@ export function registerFleetRoutes(app: Express, dependencies: FleetRouteDepend
   });
   
   app.delete('/api/admin/reference-costs/:costId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
+    await syncSystemConfigIfStale(true);
     const { costId } = req.params;
     const target = getReferenceCosts().find((c) => c.id === costId);
     if (!target) {

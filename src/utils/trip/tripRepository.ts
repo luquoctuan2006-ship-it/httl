@@ -1,5 +1,5 @@
-import { normalizeTripData } from '../data/normalizeTripData';
-import type { TripData } from '../types/travel';
+import { normalizeTripData } from './normalizeTripData';
+import type { TripData } from '../../types/travel';
 import { computeTripBudgetSummaryFields } from './budgetAlerts';
 import { countPassengerMembers } from './tripJoinHelpers';
 
@@ -99,6 +99,17 @@ export function computeAuthoritativeTripDerivedFields(trip: TripData): TripData 
       passengerCount,
     },
     ...budgetFields,
+  };
+}
+
+export function buildMemberDerivedUpdateFields(authoritative: TripData, version: number) {
+  return {
+    members: authoritative.members,
+    membersTotal: authoritative.membersTotal,
+    membersOnline: authoritative.membersOnline,
+    membersStatus: authoritative.membersStatus,
+    'telematics.passengerCount': authoritative.telematics.passengerCount,
+    version,
   };
 }
 

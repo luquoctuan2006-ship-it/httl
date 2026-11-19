@@ -1,7 +1,7 @@
 import React from 'react';
 import { Clock, CloudSun, Droplets, Maximize2, Minus, Plus, Route, Wind } from 'lucide-react';
 import type { TripData } from '../../../types/travel';
-import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/routeProgress';
+import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/route/routeProgress';
 import { findStopWeather } from './mapHelpers';
 
 interface LiveMapCanvasProps {
@@ -127,7 +127,7 @@ export const LiveMapCanvas: React.FC<LiveMapCanvasProps> = (props) => {
               )}
               {nextStopWeather && nextStop && nextStopWeather.stopId !== currentStopWeather?.stopId && (
                 <div className="truncate text-teal-700 font-semibold">
-                  Hiện tại ở #{nextStop.order} {nextStop.name}: {nextStopWeather.temp}°C • {nextStopWeather.description}
+                  Kế tiếp ở #{nextStop.order} {nextStop.name}: {nextStopWeather.temp}°C • {nextStopWeather.description}
                   {nextStopWeather.rainProb ? ` (Mưa ${nextStopWeather.rainProb})` : ''}
                 </div>
               )}

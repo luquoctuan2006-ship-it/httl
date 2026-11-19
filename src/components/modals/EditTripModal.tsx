@@ -6,14 +6,16 @@
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, Calendar, DollarSign, MapPin, Truck, CheckCircle2 } from 'lucide-react';
 import { TripData } from '../../types/travel';
-import { syncDaysWithStartDate, syncTripRouteMetadata } from '../../utils/tripRouteSync';
-import { lookupCoordinates } from '../../utils/vietnamGeo';
+import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../../utils/route/tripRouteSync';
+import { recomputeTripActivityStats } from '../../utils/trip/tripHelpers';
+import { resolveScaledAllocationsForBudget } from '../../utils/trip/budgetAlerts';
+import { lookupCoordinates } from '../../utils/route/vietnamGeo';
 import { PlaceAutocompleteInput, type PlaceCoordinates } from '../common/PlaceAutocompleteInput';
 import {
   formatTripDatesRange,
   parseTripDatesRange,
   validateTripDateRange,
-} from '../../utils/tripSyncHelpers';
+} from '../../utils/trip/tripSyncHelpers';
 
 interface EditTripModalProps {
   isOpen: boolean;
@@ -67,6 +69,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
   );
   const [driverPhone, setDriverPhone] = useState(trip.telematics?.driverPhone || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [truncateWarning, setTruncateWarning] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -76,6 +79,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
       setStartDate(range.startDate);
       setEndDate(range.endDate);
       setDateError(null);
+      setTruncateWarning(null);
       setStatus(trip.status);
       setOriginFull(trip.originFull);
       setOriginCoords(resolveInitialPlaceCoords(trip, trip.originFull));
@@ -92,6 +96,10 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
       setDriverPhone(trip.telematics?.driverPhone || '');
     }
   }, [isOpen, trip]);
+
+  useEffect(() => {
+    setTruncateWarning(null);
+  }, [startDate, endDate]);
 
   if (!isOpen) return null;
 
@@ -110,32 +118,84 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
       return;
     }
 
+    const startMs = Date.parse(`${startDate}T00:00:00Z`);
+    const endMs = Date.parse(`${endDate}T00:00:00Z`);
+    const syncedDays = syncDaysWithStartDate(trip.days || [], startDate);
+    const targetDaysCount =
+      Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs
+        ? Math.max(1, Math.min(30, Math.round((endMs - startMs) / 86_400_000) + 1))
+        : Math.max(1, syncedDays.length || trip.totalDays || 1);
+
+    const droppedDays = targetDaysCount < syncedDays.length ? syncedDays.slice(targetDaysCount) : [];
+    const droppedActivitiesCount = droppedDays.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
+    if (droppedDays.length > 0 && !truncateWarning) {
+      setTruncateWarning(
+        `Rút ngắn còn ${targetDaysCount} ngày sẽ xóa ${droppedDays.length} ngày cuối` +
+          (droppedActivitiesCount > 0 ? ` (${droppedActivitiesCount} hoạt động)` : '') +
+          `. Bấm "Xác nhận lưu thay đổi" để tiếp tục.`,
+      );
+      return;
+    }
+
     setDateError(null);
     setBudgetError(null);
+    setTruncateWarning(null);
     setIsSaving(true);
     try {
       const budgetTotal = Math.round(parsedBudget);
       const budgetUsed = trip.budgetUsed || 0;
       const budgetRemaining = Math.max(0, budgetTotal - budgetUsed);
       const budgetUsedPercent = budgetTotal > 0 ? Math.min(100, Math.round((budgetUsed / budgetTotal) * 100)) : 0;
+      const scaledAllocations = resolveScaledAllocationsForBudget(trip, budgetTotal);
       const formattedDates = formatTripDatesRange(startDate, endDate) || trip.dates;
       const cleanVehicle = vehicle.trim() || trip.vehicle || '';
       const cleanDriver = driver.trim() || 'Chưa phân công';
       const cleanOrigin = originFull.trim() || trip.originFull;
       const cleanDestination = destinationFull.trim() || trip.destinationFull;
-      const syncedDays = syncDaysWithStartDate(trip.days || [], startDate);
+
+      let resizedDays = syncedDays.slice(0, targetDaysCount);
+      for (let idx = resizedDays.length + 1; idx <= targetDaysCount; idx += 1) {
+        resizedDays.push({
+          dayIndex: idx,
+          ...buildCalendarDayMeta(startDate, idx),
+          confirmedCount: 0,
+          pendingCount: 0,
+          dispatcherNote: 'Ngày bổ sung theo khoảng thời gian mới',
+          activities: [],
+        });
+      }
+      const droppedActivityIds = new Set(droppedDays.flatMap((d) => (d.activities || []).map((a) => a.id)));
+      const cleanedInvoices =
+        droppedDays.length > 0
+          ? (trip.invoices || []).map((inv) => ({
+              ...inv,
+              dayIndex: inv.dayIndex && inv.dayIndex > resizedDays.length ? resizedDays.length : inv.dayIndex,
+              linkedActivityId:
+                inv.linkedActivityId && droppedActivityIds.has(inv.linkedActivityId)
+                  ? undefined
+                  : inv.linkedActivityId,
+            }))
+          : trip.invoices;
+
+      const stats = recomputeTripActivityStats(resizedDays);
       const draftWithEndpoints: TripData = {
         ...trip,
         origin: cleanOrigin.slice(0, 3).toUpperCase(),
         originFull: cleanOrigin,
         destination: cleanDestination.slice(0, 3).toUpperCase(),
         destinationFull: cleanDestination,
-        days: syncedDays,
+        totalDays: stats.days.length,
+        currentDay: Math.min(trip.currentDay || 1, stats.days.length),
+        ...(cleanedInvoices ? { invoices: cleanedInvoices } : {}),
+        ...stats,
       };
       const routeSynced = syncTripRouteMetadata(draftWithEndpoints, {
         origin: originCoords || null,
         destination: destinationCoords || null,
       });
+      const matchedDriverId = (trip.members || []).find(
+        (m) => m.role === 'Tài xế' && m.name === cleanDriver,
+      )?.id;
 
       await onSave({
         title: title.trim() || trip.title,
@@ -146,13 +206,17 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
         originFull: cleanOrigin,
         destination: draftWithEndpoints.destination,
         destinationFull: cleanDestination,
-        days: syncedDays,
+        totalDays: stats.days.length,
+        currentDay: draftWithEndpoints.currentDay,
+        ...stats,
+        ...(cleanedInvoices ? { invoices: cleanedInvoices } : {}),
         waypoints: routeSynced.waypoints,
         destinationsCount: routeSynced.destinationsCount,
         totalKm: routeSynced.totalKm,
         budgetTotal,
         budgetRemaining,
         budgetUsedPercent,
+        ...(scaledAllocations ? { customCategoryAllocations: scaledAllocations } : {}),
         vehicle: cleanVehicle,
         telematics: {
           ...trip.telematics,
@@ -161,6 +225,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
           vehicleType: cleanVehicle,
           driver: cleanDriver,
           driverPhone: driverPhone.trim(),
+          driverMemberId: matchedDriverId,
         },
       });
       onClose();
@@ -385,6 +450,12 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
             </div>
           </div>
 
+          {truncateWarning && (
+            <div role="alert" className="rounded-xl bg-amber-50 border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800">
+              {truncateWarning}
+            </div>
+          )}
+
           {/* Buttons */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
             <button
@@ -401,7 +472,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({
               className="px-5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-500 rounded-xl shadow-md shadow-teal-900/20 transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}</span>
+              <span>{isSaving ? 'Đang lưu...' : truncateWarning ? 'Xác nhận lưu thay đổi' : 'Lưu thay đổi'}</span>
             </button>
           </div>
         </form>

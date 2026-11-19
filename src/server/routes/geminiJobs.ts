@@ -1,7 +1,7 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
-import { isAdminUser } from '../../utils/tripRepository';
+import { isAdminUser } from '../../utils/trip/tripRepository';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 

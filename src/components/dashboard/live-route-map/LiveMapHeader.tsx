@@ -1,7 +1,7 @@
 import React from 'react';
 import { Map, RefreshCw, Maximize2 } from 'lucide-react';
 import type { TripData } from '../../../types/travel';
-import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/routeProgress';
+import { formatTravelDuration, type RouteProgressSummary } from '../../../utils/route/routeProgress';
 
 interface LiveMapHeaderProps {
   trip: TripData;

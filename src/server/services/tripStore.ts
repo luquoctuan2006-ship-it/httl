@@ -1,9 +1,9 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { FieldValue, type Firestore, type Query, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
-import { normalizeTripData, normalizeTripSummary } from '../../data/normalizeTripData';
+import { normalizeTripData, normalizeTripSummary } from '../../utils/trip/normalizeTripData';
 import type { TripData } from '../../types/travel';
-import { generateTripJoinCode, isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/tripJoinHelpers';
-import { isAdminUser } from '../../utils/tripRepository';
+import { generateTripJoinCode, isValidJoinCodeFormat, normalizeJoinCode } from '../../utils/trip/tripJoinHelpers';
+import { isAdminUser } from '../../utils/trip/tripRepository';
 
 export const TRIP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 

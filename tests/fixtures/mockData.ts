@@ -1,4 +1,4 @@
-import { TripData } from '../types/travel';
+import { TripData } from '../../src/types/travel';
 
 export const initialTripData: TripData = {
   id: 'trip-vn-1024',

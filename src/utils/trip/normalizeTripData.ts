@@ -1,6 +1,6 @@
-import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice, RouteStopWeather } from '../types/travel';
-import { isLegacyHashedCoordinate } from '../utils/vietnamGeo';
-import { countPassengerMembers, getMemberInitials, isValidJoinCodeFormat, normalizeJoinCode } from '../utils/tripJoinHelpers';
+import { Activity, DaySchedule, TripData, Waypoint, TripMember, OperationalAlert, AISuggestion, ExpenseInvoice, RouteStopWeather } from '../../types/travel';
+import { isLegacyHashedCoordinate } from '../route/vietnamGeo';
+import { countPassengerMembers, getMemberInitials, isValidJoinCodeFormat, normalizeJoinCode } from './tripJoinHelpers';
 
 function createEmptyTripTemplate(overrides?: { id?: string; isSummary?: boolean }): TripData {
   return {
@@ -229,6 +229,7 @@ function normalizeWaypoint(raw: unknown, index: number): Waypoint | null {
     if (typeof value === 'string' && value.trim()) waypoint[key] = value.trim().slice(0, 300);
   }
   if (typeof item.isHidden === 'boolean') waypoint.isHidden = item.isHidden;
+  if (typeof item.isCustom === 'boolean') waypoint.isCustom = item.isCustom;
 
   return waypoint;
 }

@@ -1,4 +1,5 @@
-import type { GuestTripData, TripData, TripMember } from '../types/travel';
+import type { GuestTripData, TripData, TripMember } from '../../types/travel';
+import { isBudgetAlert } from './budgetAlerts';
 
 const JOIN_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const STAFF_ROLES: ReadonlySet<string> = new Set(['Trưởng đoàn', 'Hướng dẫn viên', 'Tài xế']);
@@ -141,7 +142,7 @@ export function sanitizeTripForGuest(trip: TripData): GuestTripData {
       passengerCount: computedPassengerCount,
     },
     waypoints: (trip.waypoints || []).filter((wp) => !wp.isHidden),
-    alerts: (trip.alerts || []).filter((a) => a.category !== 'budget' && !a.id.startsWith('alert-budget-')),
+    alerts: (trip.alerts || []).filter((a) => !isBudgetAlert(a)),
     days: safeDays,
   };
 }
@@ -226,9 +227,7 @@ export function sanitizeTripForParticipant(trip: TripData, viewerUid?: string): 
     budgetUsedPercent: 0,
     members: safeMembers,
     waypoints: (trip.waypoints || []).filter((wp) => !wp.isHidden),
-    alerts: (trip.alerts || []).filter(
-      (a) => a.category !== 'budget' && !a.id.startsWith('alert-budget-'),
-    ),
+    alerts: (trip.alerts || []).filter((a) => !isBudgetAlert(a)),
     aiSuggestions: [],
     aiSavingsEstimate: '',
     aiConfidence: '',

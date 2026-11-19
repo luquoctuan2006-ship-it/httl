@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialTripData } from '../src/data/mockData';
-import { normalizeTripData } from '../src/data/normalizeTripData';
+import { initialTripData } from './fixtures/mockData';
+import { normalizeTripData } from '../src/utils/trip/normalizeTripData';
 
 test('mock trip has a valid day schedule schema', () => {
   assert.equal(initialTripData.days.length, 7);
@@ -193,7 +193,7 @@ test('normalizeTripData does not invent default version, fake weather or fake ai
 });
 
 test('normalizeTripData scrubs legacy hashed coordinates on unknown places while keeping valid coordinates', async () => {
-  const { computeLegacyHashedCoordinate, isLegacyHashedCoordinate } = await import('../src/utils/vietnamGeo');
+  const { computeLegacyHashedCoordinate, isLegacyHashedCoordinate } = await import('../src/utils/route/vietnamGeo');
   const unknownPlace = 'Quán ẩn danh XYZ cũ';
   const legacyHash = computeLegacyHashedCoordinate(unknownPlace)!;
   assert.ok(legacyHash);
@@ -227,7 +227,7 @@ test('normalizeTripData scrubs legacy hashed coordinates on unknown places while
 });
 
 test('normalizeTripSummary retains summary metrics while omitting heavy nested arrays', async () => {
-  const { normalizeTripSummary } = await import('../src/data/normalizeTripData');
+  const { normalizeTripSummary } = await import('../src/utils/trip/normalizeTripData');
 
   const summary = normalizeTripSummary({
     ...initialTripData,
@@ -248,12 +248,12 @@ test('normalizeTripSummary retains summary metrics while omitting heavy nested a
 });
 
 test('offlineStorage preserves full cached trip against matching-version summary and ignores summary pending syncs', async () => {
-  const { normalizeTripSummary } = await import('../src/data/normalizeTripData');
+  const { normalizeTripSummary } = await import('../src/utils/trip/normalizeTripData');
   const {
     loadOfflineTripsCache,
     markTripPendingOfflineSyncDetailed,
     saveOfflineTripsCacheDetailed,
-  } = await import('../src/utils/offlineStorage');
+  } = await import('../src/utils/client/offlineStorage');
 
   const store = new Map<string, string>();
   const memoryStorage = {
@@ -279,7 +279,7 @@ test('offlineStorage preserves full cached trip against matching-version summary
 });
 
 test('normalizeTripData and normalizeTripSummary never fall back to mockData VN-1024 on null or invalid input', async () => {
-  const { normalizeTripSummary } = await import('../src/data/normalizeTripData');
+  const { normalizeTripSummary } = await import('../src/utils/trip/normalizeTripData');
 
   const fallbackTrip = normalizeTripData(null);
   assert.notEqual(fallbackTrip.code, 'VN-1024');

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Compass, Globe2, Loader2, MapPin, Search, X } from 'lucide-react';
 import { authenticatedFetch, safeJsonResponse } from '../../api';
-import { lookupCoordinates, normalizeVietnameseText, searchLocalPlaces } from '../../utils/vietnamGeo';
+import { lookupCoordinates, normalizeVietnameseText, searchLocalPlaces } from '../../utils/route/vietnamGeo';
 
 export interface PlaceCoordinates {
   lat: number;

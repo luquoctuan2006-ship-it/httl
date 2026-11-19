@@ -47,26 +47,36 @@ export function usePlanningResources(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCostForm),
       });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.costs) setReferenceCosts(data.costs);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Không thể lưu định mức chi phí lên máy chủ');
       }
+      if (data?.costs) setReferenceCosts(data.costs);
       showToast(`Đã thêm định mức chi phí "${newCostForm.item}"`);
       setIsAddCostOpen(false);
       setNewCostForm({ category: 'Vé tham quan', item: '', price: '', note: '' });
-    } catch {
-      showToast('Lỗi khi thêm định mức chi phí');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Lỗi khi thêm định mức chi phí');
     }
   };
 
   const handleDeleteCost = async (id: string, name: string) => {
     setConfirmDeleteCostId(null);
+    const previousCosts = referenceCosts;
     setReferenceCosts((previous) => previous.filter((cost) => cost.id !== id));
     try {
-      await authenticatedFetch(`/api/admin/reference-costs/${id}`, { method: 'DELETE' });
+      const response = await authenticatedFetch(`/api/admin/reference-costs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Không thể xóa định mức chi phí');
+      }
+      if (Array.isArray(data?.costs)) {
+        setReferenceCosts(data.costs);
+      }
       showToast(`Đã xóa định mức "${name}"`);
-    } catch {
-      showToast('Đã xóa định mức (cục bộ)');
+    } catch (err) {
+      setReferenceCosts(previousCosts);
+      showToast(err instanceof Error ? err.message : `Lỗi khi xóa định mức "${name}"`);
     }
   };
 

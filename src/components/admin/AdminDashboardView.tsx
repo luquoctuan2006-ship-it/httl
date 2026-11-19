@@ -15,7 +15,6 @@ import { authenticatedFetch } from '../../api';
 interface AdminDashboardProps {
   trip: TripData;
   trips?: TripData[];
-  firebaseStatus: 'loading' | 'connected' | 'error';
   onNavigate: (tab: string) => void;
   onOpenAIPlanner: () => void;
   onOpenAIOptimize: () => void;
@@ -24,7 +23,6 @@ interface AdminDashboardProps {
 export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
   trip,
   trips = [],
-  firebaseStatus: _firebaseStatus,
   onNavigate,
   onOpenAIPlanner,
   onOpenAIOptimize,
@@ -33,6 +31,22 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
   const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash');
   const [userCount, setUserCount] = useState({ total: 0, active: 0, locked: 0 });
   const [aiMetrics, setAiMetrics] = useState({ totalCalls: 0, successRate: 100, failedCalls: 0 });
+
+  const [userDates, setUserDates] = useState<Date[]>([]);
+  const [aiRequestDates, setAiRequestDates] = useState<Date[]>([]);
+
+  const parseDateValue = (rawCreatedAt: any, fallbackText?: string): Date | null => {
+    const sec = rawCreatedAt?._seconds ?? rawCreatedAt?.seconds;
+    if (typeof sec === 'number' && Number.isFinite(sec)) return new Date(sec * 1000);
+    if (typeof fallbackText === 'string') {
+      const m = fallbackText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) {
+        const tm = fallbackText.match(/(\d{1,2}):(\d{2})/);
+        return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), tm ? Number(tm[1]) : 12, tm ? Number(tm[2]) : 0);
+      }
+    }
+    return null;
+  };
 
   // Load stats from server if available
   useEffect(() => {
@@ -46,16 +60,28 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
       })
       .catch(() => {});
 
-    authenticatedFetch('/api/admin/users')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.users && isMounted) {
-          const total = data.users.length;
-          const locked = data.users.filter((u: any) => u.isLocked).length;
-          setUserCount({ total, active: total - locked, locked });
+    (async () => {
+      try {
+        const allUsers: any[] = [];
+        let pageToken: string | undefined;
+        do {
+          const qs = pageToken ? `?limit=1000&pageToken=${encodeURIComponent(pageToken)}` : '?limit=1000';
+          const res = await authenticatedFetch(`/api/admin/users${qs}`);
+          const data = res.ok ? await res.json() : null;
+          if (!data?.users || !isMounted) break;
+          allUsers.push(...data.users);
+          pageToken = data.nextPageToken;
+        } while (pageToken);
+
+        if (isMounted && allUsers.length > 0) {
+          const locked = allUsers.filter((u) => u.isLocked).length;
+          setUserCount({ total: allUsers.length, active: allUsers.length - locked, locked });
+          setUserDates(allUsers.map((u) => parseDateValue(null, u.createdAt)).filter((d): d is Date => Boolean(d)));
         }
-      })
-      .catch(() => {});
+      } catch {
+        // ignored
+      }
+    })();
 
     authenticatedFetch('/api/admin/ai-logs')
       .then((res) => (res.ok ? res.json() : null))
@@ -67,6 +93,9 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
           const failedCalls = errors.length;
           const successRate = totalCalls > 0 ? Number((((totalCalls - failedCalls) / totalCalls) * 100).toFixed(1)) : 100;
           setAiMetrics({ totalCalls, successRate, failedCalls });
+          setAiRequestDates(
+            requests.map((r: any) => parseDateValue(r.createdAt, r.time)).filter((d: Date | null): d is Date => Boolean(d)),
+          );
         }
       })
       .catch(() => {});
@@ -101,42 +130,61 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
     return combinedTrips.reduce((acc, t) => acc + (t.isSummary ? t.totalDays || 0 : t.days?.length || 0), 0);
   }, [combinedTrips]);
 
-  // Chart data computed from real counts without inflating empty values
+  // Biểu đồ tổng hợp từ mốc thời gian thực của nhật ký AI và ngày tạo tài khoản
   const chartBars = useMemo(() => {
-    const totalAi = aiMetrics.totalCalls;
-    const totalUsers = userCount.total;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayLabels = ['00-06h', '06-09h', '09-12h', '12-15h', '15-18h', '18-24h'];
+    const weekdayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
     const labels =
       timeframe === 'day'
-        ? ['06h', '09h', '12h', '15h', '18h', '21h']
+        ? dayLabels
         : timeframe === 'month'
           ? ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4']
-          : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+          : Array.from({ length: 7 }, (_, i) => {
+              const d = new Date(todayStart - (6 - i) * 86_400_000);
+              return weekdayNames[d.getDay()];
+            });
 
-    const distributeCounts = (total: number, count: number): number[] => {
-      if (total <= 0) return Array.from({ length: count }, () => 0);
-      const base = Math.floor(total / count);
-      const remainder = total % count;
-      return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+    const bucketIndex = (d: Date): number => {
+      const ms = d.getTime();
+      if (timeframe === 'day') {
+        if (ms < todayStart || ms >= todayStart + 86_400_000) return -1;
+        const h = d.getHours();
+        return h < 6 ? 0 : h < 9 ? 1 : h < 12 ? 2 : h < 15 ? 3 : h < 18 ? 4 : 5;
+      }
+      if (timeframe === 'week') {
+        const diffDays = Math.floor((ms - (todayStart - 6 * 86_400_000)) / 86_400_000);
+        return diffDays >= 0 && diffDays < 7 ? diffDays : -1;
+      }
+      const diffWeeks = Math.floor((ms - (todayStart - 27 * 86_400_000)) / (7 * 86_400_000));
+      return diffWeeks >= 0 && diffWeeks < 4 ? diffWeeks : -1;
     };
 
-    const aiSeries = distributeCounts(totalAi, labels.length);
-    const userSeries = distributeCounts(totalUsers, labels.length);
+    const aiSeries = Array.from({ length: labels.length }, () => 0);
+    const userSeries = Array.from({ length: labels.length }, () => 0);
+    for (const d of aiRequestDates) {
+      const idx = bucketIndex(d);
+      if (idx >= 0) aiSeries[idx] += 1;
+    }
+    for (const d of userDates) {
+      const idx = bucketIndex(d);
+      if (idx >= 0) userSeries[idx] += 1;
+    }
     const maxVal = Math.max(...aiSeries, ...userSeries, 1);
 
     return labels.map((label, idx) => {
       const aiCount = aiSeries[idx];
       const uCount = userSeries[idx];
-      const aiHeight = aiCount === 0 ? 4 : Math.min(100, Math.max(12, Math.round((aiCount / maxVal) * 85)));
-      const userHeight = uCount === 0 ? 4 : Math.min(100, Math.max(12, Math.round((uCount / maxVal) * 85)));
       return {
         label,
         ai: aiCount,
         users: uCount,
-        height: `${aiHeight}%`,
-        userHeight: `${userHeight}%`,
+        height: `${aiCount === 0 ? 4 : Math.min(100, Math.max(12, Math.round((aiCount / maxVal) * 85)))}%`,
+        userHeight: `${uCount === 0 ? 4 : Math.min(100, Math.max(12, Math.round((uCount / maxVal) * 85)))}%`,
       };
     });
-  }, [timeframe, aiMetrics.totalCalls, userCount.total]);
+  }, [timeframe, aiRequestDates, userDates]);
 
   return (
     <div className="space-y-6">
@@ -344,7 +392,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded bg-sky-500" />
-              <span className="text-slate-300">Lượt truy cập người dùng</span>
+              <span className="text-slate-300">Tài khoản đăng ký mới</span>
             </div>
           </div>
         </div>

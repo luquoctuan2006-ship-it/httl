@@ -19,12 +19,12 @@ import {
   loadStoredGuestSession,
   saveStoredGuestSession,
   type ActiveGuestSession,
-} from './utils/guestSession';
+} from './utils/client/guestSession';
 import {
   isUserTripOwnerOrAdmin,
   isValidJoinCodeFormat,
   normalizeJoinCode,
-} from './utils/tripJoinHelpers';
+} from './utils/trip/tripJoinHelpers';
 
 const AuthScreen = lazy(() =>
   import('./components/auth/AuthScreen').then((m) => ({ default: m.AuthScreen })),
@@ -400,7 +400,6 @@ export default function App() {
     authUser,
     onLogout: persistence.handleLogout,
     onOpenAccount: () => setIsAccountModalOpen(true),
-    isAIPlannerOpen,
     setIsAIPlannerOpen,
     isAIOptimizeOpen,
     setIsAIOptimizeOpen,
@@ -431,22 +430,17 @@ export default function App() {
     onSelectWaypoint: actions.handleSelectWaypoint,
     onScanAlerts: () => handleScanRealtimeAlerts(false),
     isScanningAlerts,
-    notificationsEnabled,
-    onToggleNotifications: () => void handleToggleNotifications(),
     pendingSyncCount: persistence.pendingSyncCount,
     cachedAt: persistence.cachedAt,
-    onRetryOfflineSync: () => void persistence.syncPendingOfflineTrips(),
+    onRetryOfflineSync: () => void persistence.syncPendingOfflineTrips(true),
     onOpenAIPlanner: actions.handleOpenAIPlanner,
     onOpenAIOptimize: actions.handleOpenAIOptimize,
     onOpenAutoArrange: actions.handleOpenAutoArrange,
-    onOpenTraditionalPlanner: actions.handleOpenTraditionalPlanner,
-    onOpenJoinModal: () => setIsJoinTripModalOpen(true),
     onManageJoinCode: actions.handleManageJoinCode,
     onAddGuestCompanion: actions.handleAddGuestCompanion,
     onRemoveGuestCompanion: actions.handleRemoveGuestCompanion,
     onOpenGuestModeWithCode: (code: string, name?: string) =>
       handleOpenGuestModeWithCode(code, name, true),
-    onLeaveTrip: actions.handleLeaveTrip,
   };
 
   return (
@@ -455,13 +449,18 @@ export default function App() {
         {authUser.role === 'admin' ? (
           <AdminDashboard
             {...sharedDashboardProps}
-            isAdminMode={isAdminMode}
             handleSelectTab={handleSelectTab}
-            handleApplyGeneratedTrip={actions.handleApplyGeneratedTrip}
             onEnsureFullTrip={persistence.ensureFullTrip}
           />
         ) : (
-          <UserDashboard {...sharedDashboardProps} />
+          <UserDashboard
+            {...sharedDashboardProps}
+            notificationsEnabled={notificationsEnabled}
+            onToggleNotifications={() => void handleToggleNotifications()}
+            onOpenTraditionalPlanner={actions.handleOpenTraditionalPlanner}
+            onOpenJoinModal={() => setIsJoinTripModalOpen(true)}
+            onLeaveTrip={actions.handleLeaveTrip}
+          />
         )}
       </Suspense>
 
@@ -551,7 +550,7 @@ export default function App() {
             isResolving={persistence.isResolvingConflict}
             onKeepLocal={() => void persistence.handleKeepLocalConflict()}
             onUseServer={persistence.handleUseServerConflict}
-            onDismiss={() => persistence.setConflictState(null)}
+            onDismiss={persistence.dismissConflict}
           />
         </Suspense>
       )}

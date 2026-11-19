@@ -19,10 +19,9 @@ import {
   Users,
 } from 'lucide-react';
 import type { GuestTripData } from '../../types/travel';
-import { buildRouteProgress, formatTravelDuration } from '../../utils/routeProgress';
-import { buildGuestInviteUrl, guestTripToReadOnlyTripData, isStaffRole } from '../../utils/tripJoinHelpers';
+import { buildRouteProgress, formatTravelDuration } from '../../utils/route/routeProgress';
+import { buildGuestInviteUrl, guestTripToReadOnlyTripData, isStaffRole } from '../../utils/trip/tripJoinHelpers';
 import { OfflineIndicator } from '../dashboard/OfflineIndicator';
-import { PWAInstallButton } from '../dashboard/PWAInstallButton';
 
 const LiveRouteMap = lazy(() =>
   import('../dashboard/LiveRouteMap').then((m) => ({ default: m.LiveRouteMap })),
@@ -55,6 +54,7 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedType, setCopiedType] = useState<'code' | 'link' | null>(null);
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
 
   const readOnlyTrip = useMemo(() => guestTripToReadOnlyTripData(guestTrip), [guestTrip]);
   const routeProgress = useMemo(() => buildRouteProgress(readOnlyTrip, 'all'), [readOnlyTrip]);
@@ -124,7 +124,6 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <PWAInstallButton variant="compact" />
             <button
               type="button"
               onClick={() => void handleRefreshClick()}
@@ -203,12 +202,23 @@ export const GuestTripView: React.FC<GuestTripViewProps> = ({
         {/* Operational / Weather Alerts Notice */}
         {guestTrip.alerts.length > 0 && activeTab === 'schedule' && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 uppercase tracking-wider">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Lưu ý mới nhất từ Ban tổ chức ({guestTrip.alerts.length})</span>
+            <div className="flex items-center justify-between gap-2 text-xs font-extrabold text-amber-900 uppercase tracking-wider">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Lưu ý mới nhất từ Ban tổ chức ({guestTrip.alerts.length})</span>
+              </div>
+              {guestTrip.alerts.length > 4 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllAlerts((prev) => !prev)}
+                  className="text-[11px] font-bold normal-case text-amber-800 hover:text-amber-950 underline"
+                >
+                  {showAllAlerts ? 'Thu gọn' : `Xem tất cả (${guestTrip.alerts.length})`}
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {guestTrip.alerts.slice(0, 4).map((alert) => (
+              {(showAllAlerts ? guestTrip.alerts : guestTrip.alerts.slice(0, 4)).map((alert) => (
                 <div
                   key={alert.id}
                   className="rounded-xl bg-white border border-amber-200/80 px-3 py-2.5 text-xs"

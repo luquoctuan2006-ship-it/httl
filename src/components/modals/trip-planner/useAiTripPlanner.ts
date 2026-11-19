@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { authenticatedFetch, safeJsonResponse } from '../../../api';
-import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../../../utils/alertDetector';
+import { createAiRiskAlerts, detectScheduleAndWeatherAlerts } from '../../../utils/schedule/alertDetector';
 import {
   computeTripBudgetSummaryFields,
   resolveInitialTripCategoryAllocations,
-} from '../../../utils/budgetAlerts';
-import { countPassengerMembers } from '../../../utils/tripJoinHelpers';
-import { buildAIPlanWaypoints, lookupCoordinates } from '../../../utils/vietnamGeo';
+} from '../../../utils/trip/budgetAlerts';
+import { countPassengerMembers } from '../../../utils/trip/tripJoinHelpers';
+import { buildAIPlanWaypoints, lookupCoordinates } from '../../../utils/route/vietnamGeo';
 import type { PlaceCoordinates } from '../../common/PlaceAutocompleteInput';
 import type { TripData } from '../../../types/travel';
 import {

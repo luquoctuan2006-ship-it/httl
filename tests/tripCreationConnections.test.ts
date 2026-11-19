@@ -10,9 +10,9 @@ import {
   normalizeAiMoney,
   normalizeAiSuggestions,
 } from '../src/components/modals/trip-planner/helpers';
-import { buildAIPlanWaypoints, buildDynamicWaypoints } from '../src/utils/vietnamGeo';
-import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../src/utils/tripRouteSync';
-import { countUnreadAlerts } from '../src/utils/seenAlerts';
+import { buildAIPlanWaypoints, buildDynamicWaypoints } from '../src/utils/route/vietnamGeo';
+import { buildCalendarDayMeta, syncDaysWithStartDate, syncTripRouteMetadata } from '../src/utils/route/tripRouteSync';
+import { countUnreadAlerts } from '../src/utils/schedule/seenAlerts';
 
 test('buildManualTrip connects owner account, calendar dates, coordinates, route distance, and budget/schedule alerts', () => {
   const trip = buildManualTrip({

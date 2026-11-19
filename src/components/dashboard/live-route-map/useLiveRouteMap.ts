@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import type { RouteStopWeather } from '../../../types/travel';
-import { formatTravelDuration, type RouteStopItem } from '../../../utils/routeProgress';
+import { formatTravelDuration, type RouteStopItem } from '../../../utils/route/routeProgress';
 import { escapeHtml, findStopWeather, STATUS_LABEL } from './mapHelpers';
 
 interface UseLiveRouteMapOptions {

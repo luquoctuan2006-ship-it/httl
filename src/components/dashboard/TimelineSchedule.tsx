@@ -35,8 +35,6 @@ interface TimelineScheduleProps {
   searchQuery?: string;
   onClearSearch?: () => void;
   onUpdateStatus?: (id: string, newStatus: Activity['status']) => void;
-  onDeleteActivity?: (id: string) => void;
-  onEditActivity?: (activity: Activity) => void;
   onAddDay?: () => void;
   onDeleteDay?: (dayIndex: number) => void;
   onUpdateDayNote?: (dayIndex: number, note: string) => void;
@@ -56,8 +54,6 @@ export const TimelineSchedule: React.FC<TimelineScheduleProps> = ({
   searchQuery = '',
   onClearSearch,
   onUpdateStatus,
-  onDeleteActivity: _onDeleteActivity,
-  onEditActivity: _onEditActivity,
   onAddDay,
   onDeleteDay,
   onUpdateDayNote,

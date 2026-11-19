@@ -6,7 +6,7 @@ import {
   clearPendingRegisteredDisplayName,
   getPendingRegisteredDisplayName,
   PROFILE_UPDATED_EVENT,
-} from '../utils/tripSyncHelpers';
+} from '../utils/trip/tripSyncHelpers';
 
 export function useAuthSession() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);

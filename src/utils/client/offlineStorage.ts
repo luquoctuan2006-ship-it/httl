@@ -1,5 +1,5 @@
-import { normalizeTripData, normalizeTripSummary } from '../data/normalizeTripData';
-import type { TripData } from '../types/travel';
+import { normalizeTripData, normalizeTripSummary } from '../trip/normalizeTripData';
+import type { TripData } from '../../types/travel';
 
 const STORAGE_PREFIX = 'voyager_offline_trips_v1_';
 
@@ -93,6 +93,7 @@ export function saveOfflineTripsCacheDetailed(
   );
   const validTripIds = new Set(trips.map((t) => t.id));
   const cleanedPending = Array.from(new Set(existingPending.filter((id) => validTripIds.has(id))));
+  const pendingSet = new Set(cleanedPending);
 
   const nextTrips = trips.map((t) => {
     const normalized = normalizeStoredTrip(t);
@@ -100,7 +101,9 @@ export function saveOfflineTripsCacheDetailed(
       const existingFull = existingFullById.get(normalized.id);
       if (
         existingFull &&
-        (typeof normalized.version !== 'number' || normalized.version === existingFull.version)
+        (pendingSet.has(normalized.id) ||
+          typeof normalized.version !== 'number' ||
+          normalized.version === existingFull.version)
       ) {
         return existingFull;
       }

@@ -7,9 +7,10 @@ import { TimelineSchedule } from "./TimelineSchedule";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { TripData, Activity, TripMember, Waypoint } from "../../types/travel";
 import { AuthUser } from "../../types/auth";
-import { isUserTripOwnerOrAdmin } from "../../utils/tripJoinHelpers";
-import { countUnreadAlerts, getSeenAlertIds, markAlertsAsSeen } from "../../utils/seenAlerts";
-import { buildRouteProgress, formatTravelDuration } from "../../utils/routeProgress";
+import { isUserTripOwnerOrAdmin } from "../../utils/trip/tripJoinHelpers";
+import { isBudgetAlert } from "../../utils/trip/budgetAlerts";
+import { countUnreadAlerts, getSeenAlertIds, markAlertsAsSeen } from "../../utils/schedule/seenAlerts";
+import { buildRouteProgress, formatTravelDuration } from "../../utils/route/routeProgress";
 import {
   ArrowRight,
   Calendar,
@@ -94,7 +95,6 @@ export function UserDashboard({
   handleToggleMemberAttendance,
   handleUpdateMembers,
   handleUpdateTrip,
-  isAIPlannerOpen: _isAIPlannerOpen,
   setIsAIPlannerOpen,
   isAIOptimizeOpen,
   setIsAIOptimizeOpen,
@@ -157,8 +157,7 @@ export function UserDashboard({
   handleUpdateDayNote: (dayIndex: number, note: string) => Promise<void>;
   handleToggleMemberAttendance: (id: string, nextStatus?: TripMember["attendanceStatus"]) => Promise<void>;
   handleUpdateMembers: (members: TripMember[]) => Promise<void>;
-  handleUpdateTrip: (trip: TripData, message?: string) => Promise<void>;
-  isAIPlannerOpen: boolean;
+  handleUpdateTrip: (trip: TripData, message?: string) => Promise<void | boolean>;
   setIsAIPlannerOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isAIOptimizeOpen: boolean;
   setIsAIOptimizeOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -175,7 +174,7 @@ export function UserDashboard({
     recommendationData?: any,
   ) => void;
   handleAddActivity: (newAct: Activity, targetDayIndex?: number) => void;
-  handleUpdateTripBudget: (updated: TripData) => Promise<void>;
+  handleUpdateTripBudget: (updated: TripData) => Promise<void | boolean>;
   canUndo?: boolean;
   onUndo?: () => void;
   onOpenEditTripModal?: (tripTarget?: TripData) => void;
@@ -212,7 +211,7 @@ export function UserDashboard({
   const isParticipant = Boolean(trip && !isTripOwner);
   const visibleTripAlerts = trip
     ? isParticipant
-      ? (trip.alerts || []).filter((a) => a.category !== "budget" && !a.id.startsWith("alert-budget-"))
+      ? (trip.alerts || []).filter((a) => !isBudgetAlert(a))
       : trip.alerts || []
     : [];
 
@@ -811,8 +810,6 @@ export function UserDashboard({
                       searchQuery={searchQuery}
                       onClearSearch={() => setSearchQuery("")}
                       onUpdateStatus={isTripOwner ? handleUpdateActivityStatus : undefined}
-                      onDeleteActivity={isTripOwner ? handleDeleteActivity : undefined}
-                      onEditActivity={isTripOwner ? handleEditActivity : undefined}
                       onAddDay={isTripOwner ? handleAddDay : undefined}
                       onDeleteDay={isTripOwner ? handleDeleteDay : undefined}
                       onUpdateDayNote={isTripOwner ? handleUpdateDayNote : undefined}

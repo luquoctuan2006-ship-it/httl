@@ -1,6 +1,6 @@
 import type { TripData } from '../../../types/travel';
-import type { RouteStopItem } from '../../../utils/routeProgress';
-import type { RouteWeatherTarget } from '../../../utils/weatherParser';
+import type { RouteStopItem } from '../../../utils/route/routeProgress';
+import type { RouteWeatherTarget } from '../../../utils/route/weatherParser';
 
 export interface LocalLiveWeatherState {
   tripId: string;

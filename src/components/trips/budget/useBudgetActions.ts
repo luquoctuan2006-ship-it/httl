@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { MAX_INVOICES_PER_TRIP } from '../../../data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP } from '../../../utils/trip/normalizeTripData';
 import type { ExpenseInvoice, TripData } from '../../../types/travel';
 import {
   computeTripBudgetSummaryFields,
   getIsoDateForTripDay,
   getTripDayIndexForIsoDate,
-} from '../../../utils/budgetAlerts';
-import { buildExpenseReportCsv } from '../../../utils/tripHelpers';
+} from '../../../utils/trip/budgetAlerts';
+import { buildExpenseReportCsv } from '../../../utils/trip/tripHelpers';
 import { authenticatedFetch, safeJsonResponse } from '../../../api';
 import { receiptImageCache } from './ReceiptImage';
 
 interface UseBudgetActionsOptions {
   trip: TripData;
-  onUpdateTripBudget?: (updatedTrip: TripData) => void | Promise<void>;
+  onUpdateTripBudget?: (updatedTrip: TripData) => void | boolean | Promise<void | boolean>;
   invoicesList: ExpenseInvoice[];
 }
 
@@ -35,7 +35,12 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
   // New / Edit Invoice form state
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invTitle, setInvTitle] = useState('');
-  const [invAmount, setInvAmount] = useState<number>(500000);
+  const [invAmount, setInvAmountState] = useState<number>(500000);
+  const [hasEditedAmount, setHasEditedAmount] = useState(false);
+  const setInvAmount: React.Dispatch<React.SetStateAction<number>> = (val) => {
+    setHasEditedAmount(true);
+    setInvAmountState(val);
+  };
   const [invCategory, setInvCategory] = useState<ExpenseInvoice['category']>('meal');
   const [invVendor, setInvVendor] = useState('');
   const [invNumber, setInvNumber] = useState('');
@@ -59,7 +64,8 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     const startDay = trip.currentDay || 1;
     setEditingInvoiceId(null);
     setInvTitle('');
-    setInvAmount(500000);
+    setInvAmountState(500000);
+    setHasEditedAmount(false);
     setInvCategory('meal');
     setInvVendor('');
     setInvNumber('');
@@ -115,8 +121,8 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
           if (!invTitle.trim()) {
             setInvTitle(found.title);
           }
-          if ((invAmount <= 0 || invAmount === 500000) && (found.cost || 0) > 0) {
-            setInvAmount(Math.round(found.cost || 0));
+          if (!hasEditedAmount && (found.cost || 0) > 0) {
+            setInvAmountState(Math.round(found.cost || 0));
           }
         }
         break;
@@ -138,7 +144,8 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
     const resolvedDay = inv.dayIndex || trip.currentDay || 1;
     setEditingInvoiceId(inv.id);
     setInvTitle(inv.title);
-    setInvAmount(inv.amount);
+    setInvAmountState(inv.amount);
+    setHasEditedAmount(true);
     setInvCategory(inv.category);
     setInvVendor(inv.vendor || '');
     setInvNumber(inv.invoiceNumber || '');
@@ -291,7 +298,10 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
         ...computeTripBudgetSummaryFields(draftTrip),
       };
 
+      const syncedToServer = onUpdateTripBudget ? (await onUpdateTripBudget(updatedTrip)) !== false : true;
+
       if (
+        syncedToServer &&
         editingInvoiceId &&
         originalReceiptId &&
         originalReceiptId !== finalReceiptId &&
@@ -302,10 +312,6 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
           `/api/trips/${encodeURIComponent(trip.id)}/receipts/${encodeURIComponent(originalReceiptId)}`,
           { method: 'DELETE' },
         ).catch(() => {});
-      }
-
-      if (onUpdateTripBudget) {
-        await onUpdateTripBudget(updatedTrip);
       }
 
       resetInvoiceForm();
@@ -331,7 +337,7 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
   };
 
   // Handle Delete Invoice
-  const handleDeleteInvoice = (id: string) => {
+  const handleDeleteInvoice = async (id: string) => {
     const updatedInvoices = invoicesList.filter((i) => i.id !== id);
     const deletedInv = invoicesList.find((i) => i.id === id);
 
@@ -344,16 +350,18 @@ export function useBudgetActions(options: UseBudgetActionsOptions) {
       ...computeTripBudgetSummaryFields(draftTrip),
     };
 
-    if (deletedInv?.receiptId && (typeof navigator === 'undefined' || navigator.onLine)) {
-      receiptImageCache.delete(`${trip.id}:${deletedInv.receiptId}`);
-      void authenticatedFetch(
-        `/api/trips/${encodeURIComponent(trip.id)}/receipts/${encodeURIComponent(deletedInv.receiptId)}`,
-        { method: 'DELETE' },
-      ).catch(() => {});
-    }
-
-    if (onUpdateTripBudget) {
-      onUpdateTripBudget(updatedTrip);
+    try {
+      const syncedToServer = onUpdateTripBudget ? (await onUpdateTripBudget(updatedTrip)) !== false : true;
+      if (syncedToServer && deletedInv?.receiptId && (typeof navigator === 'undefined' || navigator.onLine)) {
+        receiptImageCache.delete(`${trip.id}:${deletedInv.receiptId}`);
+        void authenticatedFetch(
+          `/api/trips/${encodeURIComponent(trip.id)}/receipts/${encodeURIComponent(deletedInv.receiptId)}`,
+          { method: 'DELETE' },
+        ).catch(() => {});
+      }
+    } catch (error) {
+      // Giữ nguyên chứng từ nếu lưu chuyến đi thất bại để tránh mồ côi dữ liệu
+      console.error('Không thể xóa hóa đơn:', error);
     }
   };
 

@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizeTripData } from '../src/data/normalizeTripData';
+import { normalizeTripData } from '../src/utils/trip/normalizeTripData';
 import {
   buildExpenseReportCsv,
   cloneTripForTemplate,
   findMatchingActivityForWaypoint,
-} from '../src/utils/tripHelpers';
+} from '../src/utils/trip/tripHelpers';
 import {
   clearTripPendingOfflineSync,
   loadOfflineTripsCache,
   markTripPendingOfflineSyncDetailed,
   saveOfflineTripsCacheDetailed,
   type StorageLike,
-} from '../src/utils/offlineStorage';
+} from '../src/utils/client/offlineStorage';
 import type { TripData } from '../src/types/travel';
 
 function createMemoryStorage(): StorageLike {
@@ -254,3 +254,24 @@ test('offlineStorage caches trips per user and tracks pending sync IDs cleanly',
   assert.ok(cleared);
   assert.deepEqual(cleared.pendingSyncIds, []);
 });
+
+test('inMemoryFirestore handles FieldValue.delete() and countDayActivities includes Chờ duyệt', async () => {
+  const { FieldValue } = await import('firebase-admin/firestore');
+  const { createInMemoryFirestore } = await import('../src/server/services/inMemoryFirestore');
+  const { countDayActivities } = await import('../src/utils/trip/tripHelpers');
+
+  const db = createInMemoryFirestore();
+  const ref = db.collection('trips').doc('trip-del-1');
+  await ref.set({ id: 'trip-del-1', participantUids: ['u2'], title: 'Test' });
+  await ref.update({ participantUids: FieldValue.delete() });
+  const snap = await ref.get();
+  assert.equal('participantUids' in (snap.data() || {}), false);
+
+  const counts = countDayActivities([
+    { id: '1', timeStart: '08:00', timeEnd: '09:00', title: 'A', location: 'L', status: 'Hoàn tất', type: 'meal', details: '' },
+    { id: '2', timeStart: '09:00', timeEnd: '10:00', title: 'B', location: 'L', status: 'Chờ duyệt', type: 'meal', details: '' },
+    { id: '3', timeStart: '10:00', timeEnd: '11:00', title: 'C', location: 'L', status: 'Cần xử lý', type: 'meal', details: '' },
+  ]);
+  assert.deepEqual(counts, { confirmedCount: 1, pendingCount: 2 });
+});
+

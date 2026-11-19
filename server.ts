@@ -67,7 +67,6 @@ app.use(
           'https://unpkg.com',
         ],
         workerSrc: ["'self'", 'blob:'],
-        manifestSrc: ["'self'"],
         connectSrc: [
           "'self'",
           'https://*.googleapis.com',
@@ -229,7 +228,7 @@ registerFleetRoutes(app, {
   getSystemConfig: configStore.getSystemConfig,
   getReferenceCosts: configStore.getReferenceCosts,
   setSystemConfig: configStore.setFleetSystemConfig,
-  syncSystemConfigIfStale: () => configStore.syncSystemConfigIfStale(),
+  syncSystemConfigIfStale: configStore.syncSystemConfigIfStale,
   saveSystemConfig: configStore.saveSystemConfig,
   recordAuditLog,
 });

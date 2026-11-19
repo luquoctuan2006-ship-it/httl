@@ -15,13 +15,13 @@ import {
   setPendingRegisteredDisplayName,
   validateActivityTimeRange,
   validateTripDateRange,
-} from '../src/utils/tripSyncHelpers';
+} from '../src/utils/trip/tripSyncHelpers';
 import {
   isStorageQuotaError,
   markTripPendingOfflineSyncDetailed,
   saveOfflineTripsCacheDetailed,
-} from '../src/utils/offlineStorage';
-import { normalizeTripData } from '../src/data/normalizeTripData';
+} from '../src/utils/client/offlineStorage';
+import { normalizeTripData } from '../src/utils/trip/normalizeTripData';
 
 test('SingleFlightQueue serializes concurrent tasks so they never overlap', async () => {
   const queue = new SingleFlightQueue();
@@ -202,5 +202,41 @@ test('offlineStorage detailed helpers flag quotaExceeded cleanly when localStora
   const markRes = markTripPendingOfflineSyncDetailed('user-1', sampleTrip, mockFullStorage);
   assert.equal(markRes.cache, null);
   assert.equal(markRes.quotaExceeded, true);
+});
+
+test('offlineStorage preserves full pending trip when server returns newer summary version', () => {
+  const store = new Map<string, string>();
+  const mockStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      store.set(k, v);
+    },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
+  };
+
+  const editedOffline = normalizeTripData({
+    id: 'trip-pending',
+    title: 'Bản sửa ngoại tuyến mới nhất',
+    version: 2,
+    days: [{ dayIndex: 1, activities: [{ id: 'a1', title: 'Hoạt động offline', timeStart: '09:00', timeEnd: '10:00', location: 'Huế' }] }],
+  });
+  markTripPendingOfflineSyncDetailed('user-1', editedOffline, mockStorage);
+
+  const serverNewerSummary = {
+    id: 'trip-pending',
+    title: 'Bản trên server',
+    version: 5,
+    isSummary: true,
+    days: [],
+  } as unknown as ReturnType<typeof normalizeTripData>;
+
+  const merged = saveOfflineTripsCacheDetailed('user-1', [serverNewerSummary], 'trip-pending', ['trip-pending'], mockStorage);
+  assert.ok(merged.cache);
+  assert.equal(merged.cache.trips[0].isSummary, undefined);
+  assert.equal(merged.cache.trips[0].title, 'Bản sửa ngoại tuyến mới nhất');
+  assert.equal(merged.cache.trips[0].days[0].activities.length, 1);
+  assert.deepEqual(merged.cache.pendingSyncIds, ['trip-pending']);
 });
 

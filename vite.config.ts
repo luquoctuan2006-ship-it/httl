@@ -2,94 +2,12 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
-import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
-      VitePWA({
-        registerType: 'autoUpdate',
-        includeAssets: [
-          'favicon.png',
-          'apple-touch-icon.png',
-          'pwa-192x192.png',
-          'pwa-512x512.png',
-          'pwa-maskable-512x512.png',
-        ],
-        manifest: {
-          id: '/',
-          name: 'Voyager - Bảng điều phối du lịch thông minh',
-          short_name: 'Voyager Ops',
-          description: 'Hệ thống hoạch định và điều phối lịch trình du lịch thông minh, hỗ trợ tra cứu lịch trình offline cho hướng dẫn viên.',
-          theme_color: '#0D9488',
-          background_color: '#0F172A',
-          display: 'standalone',
-          orientation: 'portrait-primary',
-          scope: '/',
-          start_url: '/',
-          lang: 'vi',
-          icons: [
-            {
-              src: 'pwa-192x192.png',
-              sizes: '192x192',
-              type: 'image/png',
-            },
-            {
-              src: 'pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-            },
-            {
-              src: 'pwa-maskable-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable',
-            },
-          ],
-        },
-        workbox: {
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\/api\//],
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/[abc]\.basemaps\.cartocdn\.com\/light_all\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'carto-street-tiles-cache',
-                expiration: {
-                  maxEntries: 250,
-                  maxAgeSeconds: 60 * 60 * 24 * 7,
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-cache',
-                expiration: {
-                  maxEntries: 30,
-                  maxAgeSeconds: 60 * 60 * 24 * 365,
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-          ],
-        },
-        devOptions: {
-          enabled: true,
-          type: 'module',
-        },
-      }),
     ],
     resolve: {
       alias: {

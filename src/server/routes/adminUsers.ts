@@ -2,6 +2,11 @@ import type { Express, Request, RequestHandler } from 'express';
 import type { Auth as FirebaseAdminAuth, DecodedIdToken, UserRecord } from 'firebase-admin/auth';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { ManagedUserRecord } from '../../types/auth';
+import { normalizeTripData } from '../../utils/trip/normalizeTripData';
+import {
+  buildMemberDerivedUpdateFields,
+  computeAuthoritativeTripDerivedFields,
+} from '../../utils/trip/tripRepository';
 
 type AuthenticatedRequest = Request & { authUser?: DecodedIdToken };
 
@@ -37,8 +42,8 @@ export function registerAdminUserRoutes(app: Express, dependencies: AdminUserRou
   
       const mappedUsers: ManagedUserRecord[] = fetchedUsers.map((u) => {
         const fsUser = firestoreUsersMap[u.uid] || {};
-        // Xác thực quyền Admin từ Custom Claims hoặc Firestore, không dựa trên email cố định
-        const isAdmin = u.customClaims?.role === 'admin' || fsUser.role === 'Admin';
+        // Xác thực quyền Admin nhất quán theo Custom Claims (khớp với middleware requireAdmin)
+        const isAdmin = u.customClaims?.role === 'admin';
         const role = isAdmin ? 'Admin' : 'Khách du lịch';
         const createdDate = u.metadata.creationTime ? new Date(u.metadata.creationTime).toLocaleDateString('vi-VN') : 'Mới tạo';
         const lastLogin = u.metadata.lastSignInTime ? new Date(u.metadata.lastSignInTime).toLocaleString('vi-VN') : 'Chưa đăng nhập';
@@ -232,20 +237,25 @@ export function registerAdminUserRoutes(app: Express, dependencies: AdminUserRou
       const docUpdates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
       if (typeof isLocked === 'boolean') docUpdates.isLocked = isLocked;
       if (role) docUpdates.role = role;
-      await firestore.collection('users').doc(userId).set(docUpdates, { merge: true });
-  
-      const updatedRecord = await firebaseAuth.getUser(userId);
+      const userDocRef = firestore.collection('users').doc(userId);
+      await userDocRef.set(docUpdates, { merge: true });
+
+      const [updatedRecord, userDocSnap] = await Promise.all([
+        firebaseAuth.getUser(userId),
+        userDocRef.get(),
+      ]);
+      const fsUser = userDocSnap.exists ? (userDocSnap.data() || {}) : {};
       const auditMsg = `${typeof isLocked === 'boolean' ? (isLocked ? 'Khóa' : 'Mở khóa') : ''} ${role ? `Đổi vai trò -> ${role}` : ''} cho tài khoản ${updatedRecord.email}`;
       recordAuditLog(req.authUser?.email || 'Admin', auditMsg.trim());
-  
+
       const finalRole: 'Admin' | 'Khách du lịch' = updatedRecord.customClaims?.role === 'admin' ? 'Admin' : 'Khách du lịch';
       return res.json({
         success: true,
         user: {
           id: updatedRecord.uid,
-          name: updatedRecord.displayName || updatedRecord.email?.split('@')[0] || 'User',
+          name: updatedRecord.displayName || fsUser.name || updatedRecord.email?.split('@')[0] || 'User',
           email: updatedRecord.email || '',
-          phone: updatedRecord.phoneNumber || '',
+          phone: updatedRecord.phoneNumber || fsUser.phone || '',
           role: finalRole,
           isLocked: !!updatedRecord.disabled,
           createdAt: updatedRecord.metadata?.creationTime ? new Date(updatedRecord.metadata.creationTime).toLocaleDateString('vi-VN') : '',
@@ -277,7 +287,31 @@ export function registerAdminUserRoutes(app: Express, dependencies: AdminUserRou
     await deleteByField('trips', 'ownerId');
     await deleteByField('trip_receipts', 'ownerId');
     await deleteByField('gemini_jobs', 'ownerUid');
-  
+
+    // Gỡ user đã xóa khỏi danh sách participantUids, members và người thân đi cùng ở các chuyến đã tham gia
+    const joinedSnap = await db.collection('trips').where('participantUids', 'array-contains', userId).get();
+    for (const tripDoc of joinedSnap.docs) {
+      await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(tripDoc.ref);
+        if (!fresh.exists) return;
+        const latest = normalizeTripData(fresh.data());
+        const nextParticipantUids = (latest.participantUids || []).filter((uid) => uid !== userId);
+        const nextMembers = (latest.members || []).filter(
+          (m) => m.uid !== userId && m.invitedByUid !== userId,
+        );
+        const authoritative = computeAuthoritativeTripDerivedFields({
+          ...latest,
+          participantUids: nextParticipantUids,
+          members: nextMembers,
+        });
+        tx.update(tripDoc.ref, {
+          participantUids: nextParticipantUids.length > 0 ? nextParticipantUids : FieldValue.delete(),
+          ...buildMemberDerivedUpdateFields(authoritative, (latest.version || 0) + 1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+    }
+
     const metaBatch = db.batch();
     metaBatch.delete(db.collection('users').doc(userId));
     metaBatch.delete(db.collection('user_metadata').doc(userId));

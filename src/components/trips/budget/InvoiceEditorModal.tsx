@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, ImagePlus, Link2, Receipt } from 'lucide-react';
 import type { ExpenseInvoice, TripData } from '../../../types/travel';
-import { BUDGET_NEAR_LIMIT_RATIO, getTripDayIndexForIsoDate } from '../../../utils/budgetAlerts';
+import { BUDGET_NEAR_LIMIT_RATIO, getTripDayIndexForIsoDate } from '../../../utils/trip/budgetAlerts';
 import { Modal, ModalFooter } from '../../common/Modal';
 import { Field, SelectInput, TextInput } from '../../common/Field';
 import { ReceiptImage } from './ReceiptImage';

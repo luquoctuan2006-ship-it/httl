@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../src/data/normalizeTripData';
+import { MAX_INVOICES_PER_TRIP, normalizeTripData } from '../src/utils/trip/normalizeTripData';
 import type { TripData } from '../src/types/travel';
 import {
   computeBudgetMetrics,
@@ -11,20 +11,20 @@ import {
   resolveCategoryAllocations,
   resolveInitialTripCategoryAllocations,
   resolveScaledAllocationsForBudget,
-} from '../src/utils/budgetAlerts';
-import { buildExpenseReportCsv } from '../src/utils/tripHelpers';
+} from '../src/utils/trip/budgetAlerts';
+import { buildExpenseReportCsv } from '../src/utils/trip/tripHelpers';
 import {
   countPassengerMembers,
   isStaffRole,
   MAX_GUEST_COMPANIONS_PER_PASSENGER,
   MEMBER_ROLES,
   STAFF_ROLES,
-} from '../src/utils/tripJoinHelpers';
+} from '../src/utils/trip/tripJoinHelpers';
 import {
   computeAuthoritativeTripDerivedFields,
   type FirestoreDbLike,
   upsertTripForUser,
-} from '../src/utils/tripRepository';
+} from '../src/utils/trip/tripRepository';
 
 function createMockDb(initialDocs: Record<string, TripData>): FirestoreDbLike {
   const store = new Map<string, Record<string, unknown>>(
