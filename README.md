@@ -52,6 +52,7 @@ Menu quản trị có bốn mục chính: **Tổng quan**, **Quản lý người
 3. Cấu hình môi trường:
 
    - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` và `VITE_FIREBASE_DATABASE_ID` dùng cho Firebase client. Nếu không đặt, client đọc giá trị trong `firebase-applet-config.json`.
+   - `VITE_CARTO_API_KEY` dùng để tải tile bản đồ CARTO; key này được gửi từ trình duyệt nên hãy giới hạn domain được phép sử dụng trong CARTO.
    - `GEMINI_API_KEY` chỉ dùng phía server; không đổi thành `VITE_*` và không đưa vào mã client.
    - Đặt Firebase Admin service account ở `secrets/firebase-service-account.json`, hoặc chỉ định đường dẫn bằng `FIREBASE_SERVICE_ACCOUNT_PATH`.
    - `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_CACHE_TTL_MS` và `GEMINI_TIMEOUT_MS` là tùy chọn. Mặc định lần lượt là `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `300000` ms và `30000` ms.
@@ -107,43 +108,47 @@ Lệnh này thay đổi dữ liệu Firestore; hãy xác minh UID và sao lưu d
 
 ```text
 .
-├── public/                         # Biểu tượng và tài nguyên tĩnh
-├── scripts/                        # Lệnh cấp role và migration dữ liệu
+├── public/                         # Tài nguyên tĩnh, favicon
+├── scripts/                        # Cấp role và gán owner cho chuyến cũ
 ├── src/
 │   ├── components/
-│   │   ├── admin/                  # Tổng quan, người dùng, chuyến đi, AI
-│   │   │   └── planning-data/      # Tab, modal, hook dữ liệu hoạch định
+│   │   ├── admin/                  # Dashboard và màn hình quản trị
+│   │   │   └── planning-data/      # Địa điểm, chi phí, giờ mở cửa, quãng đường
 │   │   ├── auth/                   # Đăng nhập và đăng ký
-│   │   ├── common/                 # Form field và modal dùng chung
-│   │   ├── dashboard/              # Dashboard người dùng và thành phần chung
-│   │   │   └── live-route-map/     # Bản đồ, tuyến, thời tiết và điều khiển
-│   │   ├── guest/                  # Giao diện khách tham gia chuyến
-│   │   ├── modals/                 # Modal cấp ứng dụng
-│   │   │   └── trip-planner/       # Tạo chuyến thủ công và bằng AI
-│   │   └── trips/                  # Danh sách chuyến, thành viên, ngân sách
-│   │       └── budget/             # Chi tiết ngân sách, hóa đơn, báo cáo
-│   ├── data/                       # Dữ liệu mẫu và chuẩn hóa TripData
-│   ├── hooks/                      # Hook xác thực, đồng bộ và trạng thái
+│   │   ├── common/                 # Field, modal, autocomplete dùng chung
+│   │   ├── dashboard/              # Dashboard người dùng và các panel
+│   │   │   └── live-route-map/     # Leaflet, tuyến đường, thời tiết
+│   │   ├── guest/                  # Màn hình chuyến dành cho khách
+│   │   ├── modals/
+│   │   │   └── trip-planner/       # Tạo chuyến thủ công hoặc bằng AI
+│   │   └── trips/
+│   │       └── budget/             # Ngân sách, giao dịch, hóa đơn, báo cáo
+│   ├── hooks/                      # Hook xác thực, trạng thái mạng, chuyến đi
 │   ├── server/
-│   │   ├── errors/                 # Lỗi nghiệp vụ phía server
-│   │   ├── middleware/             # Xác thực và rate limiting
-│   │   ├── routes/                 # API theo nhóm chức năng
-│   │   ├── services/               # Firebase, Gemini, cấu hình và nhật ký
-│   │   └── types/                  # Kiểu dữ liệu server
-│   ├── types/                      # Kiểu dữ liệu dùng chung phía client
-│   ├── utils/                      # Cảnh báo, lịch trình, ngân sách, offline
-│   ├── App.tsx                     # Kết nối màn hình và state cấp ứng dụng
-│   ├── api.ts                      # Client gọi API
-│   ├── firebase.ts                 # Firebase client
+│   │   ├── errors/                 # Lỗi nghiệp vụ
+│   │   ├── middleware/             # Xác thực và giới hạn request
+│   │   ├── routes/                 # API admin, chuyến, guest, AI, routing
+│   │   ├── services/               # Firebase, Gemini, lưu trữ, log, cấu hình
+│   │   └── types/                  # Kiểu dữ liệu riêng của server
+│   ├── types/                      # Kiểu dữ liệu auth và chuyến đi
+│   ├── utils/
+│   │   ├── client/                 # Lưu offline, guest session, JSON Gemini
+│   │   ├── route/                  # Tuyến đường, tọa độ, tiến độ, thời tiết
+│   │   ├── schedule/               # Tối ưu, sắp lịch, kiểm tra và cảnh báo
+│   │   └── trip/                   # Chuẩn hóa, đồng bộ, thành viên, ngân sách
+│   ├── App.tsx                     # Thành phần gốc của ứng dụng
+│   ├── api.ts                      # Hàm gọi API server từ client
+│   ├── firebase.ts                 # Khởi tạo Firebase client
 │   ├── index.css                   # CSS toàn cục
-│   └── main.tsx                    # Điểm khởi chạy React
+│   └── main.tsx                    # Khởi chạy React
 ├── tests/                          # Unit test và test tích hợp
-├── data/                           # Dữ liệu runtime cục bộ; không commit
-├── secrets/                        # Credential cục bộ; không commit
-├── server.ts                       # Khởi tạo Express và đăng ký API
+├── data/                           # Dữ liệu runtime cục bộ, không commit
+├── secrets/                        # Service account cục bộ, không commit
+├── server.ts                       # Khởi tạo Express, middleware và API
 ├── firebase.json                   # Cấu hình Firebase CLI/Emulator
 ├── firestore.rules                 # Quy tắc truy cập Firestore
 ├── firebase-applet-config.json     # Cấu hình Firebase client
+├── .env.example                    # Mẫu biến môi trường
 ├── package.json                    # Dependencies và scripts
 ├── vite.config.ts                  # Cấu hình Vite và Tailwind
 └── README.md
@@ -151,16 +156,15 @@ Lệnh này thay đổi dữ liệu Firestore; hãy xác minh UID và sao lưu d
 
 ### Các module quan trọng
 
-- `src/components/admin/AdminDashboard.tsx`: điều phối giao diện và bốn mục quản trị.
-- `src/components/admin/AdminTripsManagementView.tsx`: gom danh sách chuyến, giám sát và dữ liệu hoạch định.
-- `src/components/dashboard/UserDashboard.tsx`: dashboard người dùng.
-- `src/components/dashboard/LiveRouteMap.tsx`: bản đồ tuyến đường; các hook và thành phần con ở `live-route-map/`.
-- `src/components/modals/trip-planner/`: tạo chuyến thủ công, gọi AI và chuẩn hóa kết quả.
-- `src/components/trips/budget/`: tính toán, cập nhật ngân sách, hóa đơn và báo cáo.
-- `src/data/normalizeTripData.ts`: kiểm tra và chuẩn hóa dữ liệu chuyến trước khi sử dụng.
-- `src/utils/alertDetector.ts` và `src/utils/budgetAlerts.ts`: phát hiện cảnh báo lịch trình, thời tiết và ngân sách.
-- `src/server/routes/`: API cho chuyến đi, người dùng, quản trị, Gemini, phương tiện, routing và guest.
-- `server.ts`: cấu hình Express, middleware, Firebase Admin và đăng ký các route.
+- `src/components/admin/`: dashboard quản trị, người dùng, chuyến đi, AI và dữ liệu hoạch định.
+- `src/components/dashboard/`: dashboard người dùng; `live-route-map/` chứa canvas, layer, điều khiển và xử lý tuyến/thời tiết.
+- `src/components/modals/trip-planner/`: quy trình tạo chuyến thủ công và tạo chuyến bằng Gemini.
+- `src/components/trips/`: danh sách chuyến, thành viên và ngân sách; `budget/` chứa thao tác và các phần hiển thị chi phí.
+- `src/hooks/`: phiên đăng nhập, trạng thái online, đồng bộ chuyến và quét cảnh báo.
+- `src/utils/route/`, `src/utils/schedule/`, `src/utils/trip/`: logic nghiệp vụ dùng chung theo miền tuyến đường, lịch trình và chuyến đi.
+- `src/server/routes/`: API theo nhóm quản trị, chuyến đi, guest, Gemini, routing và đội xe.
+- `src/server/services/`: tích hợp Firebase Admin/Gemini và các dịch vụ lưu trữ, cấu hình, log.
+- `server.ts`: cấu hình Express, middleware và đăng ký route API.
 
 ## Scripts
 
@@ -184,19 +188,19 @@ firebase emulators:exec --project demo-httl-server-tests --only firestore "npm r
 
 Test emulator sẽ bị bỏ qua nếu chưa cấu hình `FIRESTORE_EMULATOR_HOST`; các unit test thông thường vẫn chạy bằng `npm test`.
 
-## Phân công thành viên
+## Phân công nhiệm vụ
 
-Tên thành viên được giữ theo danh sách hiện có; phạm vi và file kiểm thử được cập nhật theo cấu trúc mã nguồn hiện tại.
+Mỗi thành viên phụ trách logic và kiểm thử của một nhóm chức năng. Đường dẫn mã nguồn trong bảng tính từ `src/`, còn tên test tính từ `tests/`. Các file dùng chung được ghi ở cuối bảng để chủ động phối hợp khi thay đổi.
 
-| Thành viên | Phạm vi phụ trách | Mã nguồn chính | Kiểm thử liên quan |
+| Thành viên | Nhiệm vụ | Mã nguồn chính | Kiểm thử liên quan |
 | --- | --- | --- | --- |
-| **TV1 — Tín Phát** | Lập chuyến và lịch trình bằng Gemini | `TripPlannerModal.tsx`, `trip-planner/`, `routes/gemini.ts`, `routes/geminiJobs.ts`, `vietnamGeo.ts` | `aiGeneratedTrip.test.ts`, `tripCreationConnections.test.ts`, `geminiJson.test.ts` |
-| **TV2 — Phạm Huy** | Tối ưu và xác thực lịch trình bằng AI | `AIOptimizeModal.tsx`, `scheduleOptimizer.ts`, `scheduleValidator.ts`, `applyOptimization.ts` | `applyOptimizationAndDiff.test.ts`, `scheduleOptimizer.test.ts`, `scheduleValidator.test.ts` |
-| **TV3 — Gia Khánh** | Bản đồ tuyến đường, định tuyến và thời tiết | `LiveRouteMap.tsx`, `live-route-map/`, `routeProgress.ts`, `weatherParser.ts`, `routes/routing.ts` | `routeProgress.test.ts`, `weatherParser.test.ts`, `tripData.test.ts` |
-| **TV4 — Quốc Tuấn** | Thành viên, điểm danh, tham gia và mã mời | `MembersView.tsx`, `tripJoinHelpers.ts`, `useTripActions.ts`, `routes/tripManagement.ts` | `tripJoinAndGuest.test.ts`, `tripConcurrencyAndValidation.test.ts`, `tripSyncHelpers.test.ts` |
-| **TV5 — Minh Tuấn** | Ngân sách, hóa đơn và báo cáo chi phí | `BudgetView.tsx`, `trips/budget/`, `budgetAlerts.ts`, `routes/trips.ts` | `budgetAndMembersIntegrity.test.ts`, `newFeatures.test.ts`, `tripData.test.ts` |
+| **TV1 — Tín Phát** | Tạo chuyến thủ công hoặc bằng AI; xử lý đầu ra Gemini thành dữ liệu chuyến | `components/modals/TripPlannerModal.tsx`, `components/modals/trip-planner/`, `server/routes/gemini.ts`, `server/routes/geminiJobs.ts`, `utils/route/vietnamGeo.ts` | `aiGeneratedTrip.test.ts`, `tripCreationConnections.test.ts`, `geminiJson.test.ts` |
+| **TV2 — Phạm Huy** | Tối ưu, tự sắp xếp và xác thực lịch trình; áp dụng kết quả tối ưu vào chuyến | `components/modals/AIOptimizeModal.tsx`, `components/modals/AutoArrangeModal.tsx`, `utils/schedule/` | `applyOptimizationAndDiff.test.ts`, `scheduleAutoArranger.test.ts`, `scheduleOptimizer.test.ts`, `scheduleValidator.test.ts` |
+| **TV3 — Gia Khánh** | Hiển thị bản đồ, tính/đồng bộ tuyến đường, tiến độ và thông tin thời tiết | `components/dashboard/LiveRouteMap.tsx`, `components/dashboard/live-route-map/`, `utils/route/`, `server/routes/routing.ts` | `routeProgress.test.ts`, `routeTspOptimizer.test.ts`, `weatherParser.test.ts` |
+| **TV4 — Quốc Tuấn** | Quản lý thành viên, tham gia chuyến, mã mời và quyền truy cập của khách | `components/trips/MembersView.tsx`, `components/guest/GuestTripView.tsx`, `utils/trip/tripJoinHelpers.ts`, `hooks/useTripActions.ts`, `server/routes/tripManagement.ts`, `server/routes/guest.ts` | `tripJoinAndGuest.test.ts`, `tripConcurrencyAndValidation.test.ts`, `tripSyncHelpers.test.ts` |
+| **TV5 — Minh Tuấn** | Quản lý ngân sách, khoản thu/chi, hóa đơn và báo cáo chi phí chuyến đi | `components/trips/BudgetView.tsx`, `components/trips/budget/`, `utils/trip/budgetAlerts.ts`, `server/routes/trips.ts` | `budgetAndMembersIntegrity.test.ts`, `newFeatures.test.ts`, `tripData.test.ts` |
 
-`App.tsx`, `api.ts`, `server.ts`, `src/types/travel.ts` và `normalizeTripData.ts` là các phần dùng chung; thay đổi các file này cần phối hợp với thành viên phụ trách use case liên quan.
+`src/App.tsx`, `src/api.ts`, `server.ts`, `src/types/travel.ts` và `src/utils/trip/normalizeTripData.ts` là các phần dùng chung; thay đổi các file này cần phối hợp với thành viên phụ trách use case liên quan.
 
 ## Gợi ý phát triển tiếp
 

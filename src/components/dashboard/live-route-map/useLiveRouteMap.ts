@@ -179,8 +179,12 @@ export function useLiveRouteMap({
       zoomControl: false,
     });
     mapInstanceRef.current = map;
+    const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY?.trim();
+    const cartoTileUrl =
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' +
+      (cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : '');
     L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      cartoTileUrl,
       {
         attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
         subdomains: 'abcd',
