@@ -16,6 +16,13 @@ test('searchLocalPlaces matches accented and unaccented Vietnamese queries', () 
   assert.equal(searchLocalPlaces('a').length, 0);
 });
 
+test('searchLocalPlaces includes Thanh Hoa and Thanh Hoa landmarks', () => {
+  const province = searchLocalPlaces('Thanh Hóa');
+  const landmark = searchLocalPlaces('Sầm Sơn');
+  assert.ok(province.some((item) => item.name === 'Thanh Hóa'));
+  assert.ok(landmark.some((item) => item.name === 'Sầm Sơn'));
+});
+
 test('searchPlaces validates query length, queries Nominatim with caching, and handles global fallback', async () => {
   const shortRes = await searchPlaces('a');
   assert.equal(shortRes.status, 400);

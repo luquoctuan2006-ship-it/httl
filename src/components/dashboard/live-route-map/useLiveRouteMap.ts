@@ -267,15 +267,15 @@ export function useLiveRouteMap({
           className: 'route-segment-pill',
           html: `
             <div style="
-              background: rgba(10,10,15,0.92);
-              color: #FFFFFF;
+              background: #FFFFFF;
+              color: #111827;
               border: 1px solid ${curr.legSource === 'osrm' ? '#3B82F6' : '#EF4444'};
               border-radius: 9999px;
               padding: 2px 7px;
               font-size: 10px;
-              font-weight: 700;
+              font-weight: 800;
               white-space: nowrap;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+              box-shadow: 0 2px 8px rgba(15,23,42,0.28);
               transform: translate(-50%, -50%);
               pointer-events: none;
             ">
